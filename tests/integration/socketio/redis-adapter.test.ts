@@ -319,12 +319,12 @@ describe('Socket.IO Redis Adapter Integration', () => {
             if (room === room1) resolve();
           });
         }),
-          new Promise<void>(resolve => {
-            client.emit('join-room', room2);
-            client.on('joined-room', (room: string) => {
-              if (room === room2) resolve();
-            });
-          }));
+        new Promise<void>(resolve => {
+          client.emit('join-room', room2);
+          client.on('joined-room', (room: string) => {
+            if (room === room2) resolve();
+          });
+        })),
       ]);
 
       // Leave one room

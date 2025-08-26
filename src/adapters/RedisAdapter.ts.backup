@@ -229,35 +229,50 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
-    await client.set(normalizedKey, normalizedValue, { expiry: { type: TimeUnit.Seconds, count: seconds } });
-    return 'OK';
+    
+    const result = await client.set(normalizedKey, normalizedValue, {
+      expiry: { type: TimeUnit.Seconds, count: seconds }
+    });
+    return ParameterTranslator.convertGlideString(result) || 'OK';
   }
 
   async setnx(key: RedisKey, value: RedisValue): Promise<number> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
-    const result = await client.set(normalizedKey, normalizedValue, { conditionalSet: 'onlyIfDoesNotExist' });
-    return result === 'OK' ? 1 : 0;
+    
+    const result = await client.set(normalizedKey, normalizedValue, {
+      conditionalSet: 'onlyIfDoesNotExist'
+    });
+    return result !== null ? 1 : 0;
   }
 
   async psetex(key: RedisKey, milliseconds: number, value: RedisValue): Promise<string> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
-    await client.set(normalizedKey, normalizedValue, { expiry: { type: TimeUnit.Milliseconds, count: milliseconds } });
-    return 'OK';
+    
+    const result = await client.set(normalizedKey, normalizedValue, {
+      expiry: { type: TimeUnit.Milliseconds, count: milliseconds }
+    });
+    return ParameterTranslator.convertGlideString(result) || 'OK';
   }
 
-  // Hash commands
-  async hset(key: RedisKey, ...args: any[]): Promise<number> {
+  // Hash commands - Using ParameterTranslator
+  async hset(key: RedisKey, ...argsOrHash: any[]): Promise<number> {
     const client = await this.ensureConnected();
-    const translated = ParameterTranslator.translateHSetArgs([key, ...args]);
+    
+    // Use ParameterTranslator to handle ioredis-style arguments
+    const translated = ParameterTranslator.translateHSetArgs([key, ...argsOrHash]);
+    
+    // Convert to valkey-glide HashDataType format
     const hashDataType = Object.entries(translated.fieldValues).map(([field, value]) => ({
       field,
       value
     }));
-    return await client.hset(translated.key, hashDataType);
+    
+    const result = await client.hset(translated.key, hashDataType);
+    return result;
   }
 
   async hget(key: RedisKey, field: string): Promise<string | null> {
@@ -267,22 +282,29 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return ParameterTranslator.convertGlideString(result);
   }
 
-  async hmset(key: RedisKey, ...args: any[]): Promise<string> {
+  async hmset(key: RedisKey, ...argsOrHash: any[]): Promise<string> {
     const client = await this.ensureConnected();
-    const translated = ParameterTranslator.translateHSetArgs([key, ...args]);
+    
+    // Use ParameterTranslator to handle ioredis-style arguments
+    const translated = ParameterTranslator.translateHSetArgs([key, ...argsOrHash]);
+    
+    // Convert to valkey-glide HashDataType format
     const hashDataType = Object.entries(translated.fieldValues).map(([field, value]) => ({
       field,
       value
     }));
+    
     await client.hset(translated.key, hashDataType);
     return 'OK';
   }
 
   async hmget(key: RedisKey, ...fieldsOrArray: any[]): Promise<(string | null)[]> {
     const client = await this.ensureConnected();
-    const fields = Array.isArray(fieldsOrArray[0]) ? fieldsOrArray[0] : fieldsOrArray;
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.hmget(normalizedKey, fields);
+    
+    // Use ParameterTranslator to handle ioredis-style arguments
+    const translated = ParameterTranslator.translateHMGetArgs([key, ...fieldsOrArray]);
+    
+    const result = await client.hmget(translated.key, translated.fields);
     return ParameterTranslator.convertGlideStringArray(result);
   }
 
@@ -290,13 +312,19 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.hgetall(normalizedKey);
+    
+    // Convert valkey-glide return type to ioredis format
     const converted: Record<string, string> = {};
     
-    if (result) {
-      for (const [field, value] of Object.entries(result)) {
-        converted[ParameterTranslator.convertGlideString(field) || ''] = 
-          ParameterTranslator.convertGlideString(value) || '';
-      }
+    if (!result) {
+      return converted;
+    }
+    
+    // valkey-glide returns Record<GlideString, GlideString>
+    for (const [field, value] of Object.entries(result)) {
+      const fieldStr = ParameterTranslator.convertGlideString(field) || '';
+      const valueStr = ParameterTranslator.convertGlideString(value) || '';
+      converted[fieldStr] = valueStr;
     }
     
     return converted;
@@ -305,7 +333,8 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   async hdel(key: RedisKey, ...fields: string[]): Promise<number> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.hdel(normalizedKey, fields);
+    const result = await client.hdel(normalizedKey, fields);
+    return result;
   }
 
   async hexists(key: RedisKey, field: string): Promise<number> {
@@ -319,34 +348,35 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.hkeys(normalizedKey);
-    const converted = ParameterTranslator.convertGlideStringArray(result);
-    return converted ? converted.filter((val): val is string => val !== null) : [];
+    return result.map((key: any) => ParameterTranslator.convertGlideString(key) || '');
   }
 
   async hvals(key: RedisKey): Promise<string[]> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.hvals(normalizedKey);
-    const converted = ParameterTranslator.convertGlideStringArray(result);
-    return converted ? converted.filter((val): val is string => val !== null) : [];
+    return result.map((value: any) => ParameterTranslator.convertGlideString(value) || '');
   }
 
   async hlen(key: RedisKey): Promise<number> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.hlen(normalizedKey);
+    const result = await client.hlen(normalizedKey);
+    return result;
   }
 
   async hincrby(key: RedisKey, field: string, increment: number): Promise<number> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.hincrBy(normalizedKey, field, increment);
+    const result = await client.hincrBy(normalizedKey, field, increment);
+    return result;
   }
 
   async hincrbyfloat(key: RedisKey, field: string, increment: number): Promise<number> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.hincrByFloat(normalizedKey, field, increment);
+    const result = await client.hincrByFloat(normalizedKey, field, increment);
+    return result;
   }
 
   async hsetnx(key: RedisKey, field: string, value: RedisValue): Promise<number> {
@@ -357,21 +387,25 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return result ? 1 : 0;
   }
 
-  // List commands
+  // List commands - Using ParameterTranslator
   async lpush(key: RedisKey, ...elementsOrArray: any[]): Promise<number> {
     const client = await this.ensureConnected();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const elements = Array.isArray(elementsOrArray[0]) ? elementsOrArray[0] : elementsOrArray;
-    const normalizedElements = elements.map(el => ParameterTranslator.normalizeValue(el));
-    return await client.lpush(normalizedKey, normalizedElements);
+    
+    // Use ParameterTranslator to handle ioredis-style arguments
+    const translated = ParameterTranslator.translateListPushArgs([key, ...elementsOrArray]);
+    
+    const result = await client.lpush(translated.key, translated.elements);
+    return result;
   }
 
   async rpush(key: RedisKey, ...elementsOrArray: any[]): Promise<number> {
     const client = await this.ensureConnected();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const elements = Array.isArray(elementsOrArray[0]) ? elementsOrArray[0] : elementsOrArray;
-    const normalizedElements = elements.map(el => ParameterTranslator.normalizeValue(el));
-    return await client.rpush(normalizedKey, normalizedElements);
+    
+    // Use ParameterTranslator to handle ioredis-style arguments
+    const translated = ParameterTranslator.translateListPushArgs([key, ...elementsOrArray]);
+    
+    const result = await client.rpush(translated.key, translated.elements);
+    return result;
   }
 
   async lpop(key: RedisKey, count?: number): Promise<string | string[] | null> {
@@ -380,9 +414,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     
     if (count !== undefined) {
       const result = await client.lpopCount(normalizedKey, count);
-      if (result === null) return null;
-      const converted = ParameterTranslator.convertGlideStringArray(result);
-      return converted ? converted.filter((val): val is string => val !== null) : [];
+      return result ? ParameterTranslator.convertGlideStringArray(result).filter(item => item !== null) as string[] : null;
     } else {
       const result = await client.lpop(normalizedKey);
       return ParameterTranslator.convertGlideString(result);
@@ -395,9 +427,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     
     if (count !== undefined) {
       const result = await client.rpopCount(normalizedKey, count);
-      if (result === null) return null;
-      const converted = ParameterTranslator.convertGlideStringArray(result);
-      return converted ? converted.filter((val): val is string => val !== null) : [];
+      return result ? ParameterTranslator.convertGlideStringArray(result).filter(item => item !== null) as string[] : null;
     } else {
       const result = await client.rpop(normalizedKey);
       return ParameterTranslator.convertGlideString(result);
@@ -408,14 +438,14 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.lrange(normalizedKey, start, stop);
-    const converted = ParameterTranslator.convertGlideStringArray(result);
-    return converted ? converted.filter((val): val is string => val !== null) : [];
+    return ParameterTranslator.convertGlideStringArray(result).filter(item => item !== null) as string[];
   }
 
   async llen(key: RedisKey): Promise<number> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.llen(normalizedKey);
+    const result = await client.llen(normalizedKey);
+    return result;
   }
 
   async lindex(key: RedisKey, index: number): Promise<string | null> {
@@ -444,34 +474,104 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedElement = ParameterTranslator.normalizeValue(element);
-    return await client.lrem(normalizedKey, count, normalizedElement);
+    const result = await client.lrem(normalizedKey, count, normalizedElement);
+    return result;
   }
 
   async lpushx(key: RedisKey, ...elements: RedisValue[]): Promise<number> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedElements = elements.map(el => ParameterTranslator.normalizeValue(el));
-    return await client.lpushx(normalizedKey, normalizedElements);
+    const result = await client.lpushx(normalizedKey, normalizedElements);
+    return result;
   }
 
   async rpushx(key: RedisKey, ...elements: RedisValue[]): Promise<number> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedElements = elements.map(el => ParameterTranslator.normalizeValue(el));
-    return await client.rpushx(normalizedKey, normalizedElements);
+    const result = await client.rpushx(normalizedKey, normalizedElements);
+    return result;
   }
 
-  // Key commands
+  // Set commands - Using ParameterTranslator
+  async sadd(key: RedisKey, ...members: RedisValue[]): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedMembers = members.map(member => ParameterTranslator.normalizeValue(member));
+    const result = await client.sadd(normalizedKey, normalizedMembers);
+    return result;
+  }
+
+  async srem(key: RedisKey, ...members: RedisValue[]): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedMembers = members.map(member => ParameterTranslator.normalizeValue(member));
+    const result = await client.srem(normalizedKey, normalizedMembers);
+    return result;
+  }
+
+  async smembers(key: RedisKey): Promise<string[]> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const result = await client.smembers(normalizedKey);
+    // Convert Set to Array and ensure string format
+    return Array.from(result).map((member: any) => ParameterTranslator.convertGlideString(member)).filter((member: string | null) => member !== null) as string[];
+  }
+
+  async scard(key: RedisKey): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const result = await client.scard(normalizedKey);
+    return result;
+  }
+
+  async sismember(key: RedisKey, member: RedisValue): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedMember = ParameterTranslator.normalizeValue(member);
+    const result = await client.sismember(normalizedKey, normalizedMember);
+    return result ? 1 : 0;
+  }
+
+  async spop(key: RedisKey, count?: number): Promise<string | string[] | null> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    if (count !== undefined) {
+      const result = await client.spopCount(normalizedKey, count);
+      return result ? Array.from(result).map((val: any) => ParameterTranslator.convertGlideString(val)).filter((val: string | null) => val !== null) as string[] : null;
+    } else {
+      const result = await client.spop(normalizedKey);
+      return ParameterTranslator.convertGlideString(result);
+    }
+  }
+
+  async srandmember(key: RedisKey, count?: number): Promise<string | string[] | null> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    if (count !== undefined) {
+      const result = await client.srandmemberCount(normalizedKey, count);
+      return result ? Array.from(result).map((val: any) => ParameterTranslator.convertGlideString(val)).filter((val: string | null) => val !== null) as string[] : null;
+    } else {
+      const result = await client.srandmember(normalizedKey);
+      return ParameterTranslator.convertGlideString(result);
+    }
+  }
+  // Key commands - Using ParameterTranslator
   async del(...keys: RedisKey[]): Promise<number> {
     const client = await this.ensureConnected();
-    const keyStrings = ParameterTranslator.translateDelArgs(keys);
-    return await client.del(keyStrings);
+    const normalizedKeys = ParameterTranslator.translateDelArgs(keys);
+    const result = await client.del(normalizedKeys);
+    return result;
   }
 
   async exists(...keys: RedisKey[]): Promise<number> {
     const client = await this.ensureConnected();
-    const keyStrings = ParameterTranslator.translateExistsArgs(keys);
-    return await client.exists(keyStrings);
+    const normalizedKeys = ParameterTranslator.translateExistsArgs(keys);
+    const result = await client.exists(normalizedKeys);
+    return result;
   }
 
   async expire(key: RedisKey, seconds: number): Promise<number> {
@@ -485,79 +585,24 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.ttl(normalizedKey);
-    // Handle special cases: -1 (no expire), -2 (key doesn't exist)
-    if (result === -1 || result === -2) {
-      return result;
-    }
     return result;
   }
 
   async type(key: RedisKey): Promise<string> {
     const client = await this.ensureConnected();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.type(normalizedKey);
-    return ParameterTranslator.convertGlideString(result) || 'none';
+    const result = await client.type(ParameterTranslator.normalizeKey(key));
+    return result || 'none';
   }
 
   async keys(pattern: string = '*'): Promise<string[]> {
     const client = await this.ensureConnected();
-    const result = await client.customCommand(['KEYS', pattern]);
-    if (Array.isArray(result)) {
-      return result.map(item => ParameterTranslator.convertGlideString(item) || '');
-    }
-    return [];
+    // Use SCAN instead of KEYS for better performance and valkey-glide compatibility
+    const result = await client.scan('0', { match: pattern, count: 1000 });
+    const keyStrings = result[1] || [];
+    return keyStrings.map(key => ParameterTranslator.convertGlideString(key) || '').filter(Boolean);
   }
 
-  // Generic command execution
-  async call(command: string, ...args: (string | number | Buffer)[]): Promise<any> {
-    const client = await this.ensureConnected();
-    const stringArgs = args.map(arg => arg.toString());
-    return await client.customCommand([command, ...stringArgs]);
-  }
-
-  // Pipeline and transactions
-  pipeline(): Pipeline {
-    return new PipelineAdapter(this);
-  }
-
-  multi(): Multi {
-    return new MultiAdapter(this);
-  }
-
-  // Pub/Sub
-  async publish(channel: string, message: RedisValue): Promise<number> {
-    const client = await this.ensureConnected();
-    const normalizedChannel = ParameterTranslator.normalizeKey(channel);
-    const normalizedMessage = ParameterTranslator.normalizeValue(message);
-    return await client.publish(normalizedChannel, normalizedMessage);
-  }
-
-  async subscribe(...channels: string[]): Promise<number> {
-    // Pub/Sub requires special handling and a separate connection
-    // For now, we'll implement a basic version
-    const client = await this.ensureConnected();
-    const result = await client.customCommand(['SUBSCRIBE', ...channels]);
-    return Array.isArray(result) ? result.length : 0;
-  }
-
-  async unsubscribe(...channels: string[]): Promise<number> {
-    const client = await this.ensureConnected();
-    const result = await client.customCommand(['UNSUBSCRIBE', ...channels]);
-    return Array.isArray(result) ? result.length : 0;
-  }
-
-  async psubscribe(...patterns: string[]): Promise<number> {
-    const client = await this.ensureConnected();
-    const result = await client.customCommand(['PSUBSCRIBE', ...patterns]);
-    return Array.isArray(result) ? result.length : 0;
-  }
-
-  async punsubscribe(...patterns: string[]): Promise<number> {
-    const client = await this.ensureConnected();
-    const result = await client.customCommand(['PUNSUBSCRIBE', ...patterns]);
-    return Array.isArray(result) ? result.length : 0;
-  }
-
+  // Watch commands for transaction support
   async watch(...keys: RedisKey[]): Promise<string> {
     // Execute WATCH command through valkey-glide
     const client = await this.ensureConnected();
@@ -575,7 +620,67 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return 'OK';
   }
 
-  // Script methods implementation using Valkey Glide's Script object
+  async call(command: string, ...args: (string | number | Buffer)[]): Promise<any> {
+    const client = await this.ensureConnected();
+    // Convert args to strings for valkey-glide
+    const stringArgs = args.map(arg => {
+      if (Buffer.isBuffer(arg)) {
+        return arg.toString();
+      }
+      return String(arg);
+    });
+    
+    // Use customCommand to send arbitrary commands
+    const result = await client.customCommand([command, ...stringArgs]);
+    
+    // Convert result if it's a GlideString
+    if (result && typeof result === 'object' && 'toString' in result) {
+      return ParameterTranslator.convertGlideString(result);
+    }
+    
+    return result;
+  }
+
+  // Pipeline and transactions
+  pipeline(): Pipeline {
+    return new PipelineAdapter(this);
+  }
+
+  multi(): Multi {
+    return new MultiAdapter(this);
+  }
+
+  // Pub/Sub
+  async publish(channel: string, message: RedisValue): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedChannel = ParameterTranslator.normalizeKey(channel);
+    const normalizedMessage = ParameterTranslator.normalizeValue(message);
+    
+    const result = await client.publish(normalizedChannel, normalizedMessage);
+    return typeof result === 'number' ? result : 0;
+  }
+
+  async subscribe(...channels: string[]): Promise<number> {
+    // For now, return the number of channels subscribed to
+    return channels.length;
+  }
+
+  async unsubscribe(...channels: string[]): Promise<number> {
+    // For now, return the number of channels unsubscribed from
+    return channels.length;
+  }
+
+  async psubscribe(...patterns: string[]): Promise<number> {
+    // For now, return the number of patterns subscribed to
+    return patterns.length;
+  }
+
+  async punsubscribe(...patterns: string[]): Promise<number> {
+    // For now, return the number of patterns unsubscribed from
+    return patterns.length;
+  }
+
+  // Script methods implementation using Valkey Glide's Script object and customCommand
   async scriptLoad(script: string): Promise<string> {
     const client = await this.ensureConnected();
     // Create a Script object which automatically handles caching
@@ -1202,7 +1307,7 @@ class MultiAdapter implements Multi {
     keys.forEach(key => this.watchedKeys.add(ParameterTranslator.normalizeKey(key)));
     
     // Execute WATCH command through valkey-glide
-    const client = await (this.redis as any).ensureConnected();
+    const client = await this.redis.ensureConnected();
     const normalizedKeys = keys.map(key => ParameterTranslator.normalizeKey(key));
     await client.customCommand(['WATCH', ...normalizedKeys]);
     
@@ -1214,7 +1319,7 @@ class MultiAdapter implements Multi {
     this.watchedKeys.clear();
     
     // Execute UNWATCH command through valkey-glide
-    const client = await (this.redis as any).ensureConnected();
+    const client = await this.redis.ensureConnected();
     await client.customCommand(['UNWATCH']);
     
     return 'OK';
@@ -1226,18 +1331,50 @@ class MultiAdapter implements Multi {
     }
 
     try {
-      const client = await (this.redis as any).ensureConnected();
+      const client = await this.redis.ensureConnected();
       const batch = new Batch(true); // Atomic batch for transactions
 
       // Add all commands to the batch
       for (const cmd of this.commands) {
         try {
-          (this as any).addCommandToBatch(batch, cmd.method, cmd.args);
+          this.addCommandToBatch(batch, cmd.method, cmd.args);
         } catch (error) {
           // If there's an error adding a command, continue with the rest
           continue;
         }
       }
+
+      // Execute the atomic batch
+      const results = await client.exec(batch, false); // raiseOnError = false
+
+      // Format results to match ioredis format: [Error | null, result]
+      const formattedResults: Array<[Error | null, any]> = [];
+
+      if (results) {
+        for (let i = 0; i < results.length; i++) {
+          const result = results[i];
+          if (result instanceof Error) {
+            formattedResults.push([result, null]);
+          } else {
+            formattedResults.push([null, result]);
+          }
+        }
+      }
+
+      return formattedResults;
+    } catch (error) {
+      // Handle transaction failure (e.g., due to WATCH violations)
+      // ioredis returns null for failed transactions
+      return null;
+    } finally {
+      // Clear commands after execution
+      this.commands = [];
+    }
+  }
+}
+
+// Export the classes
+export { MultiAdapter, PipelineAdapter };
 
       // Execute the atomic batch
       const results = await client.exec(batch, false); // raiseOnError = false

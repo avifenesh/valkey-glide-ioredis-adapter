@@ -339,7 +339,8 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       expect(results[0]).toEqual([null, 'OK']);
       expect(results[1]).toEqual([null, 11]);
       expect(results[2]).toEqual([null, 'OK']);
-      expect(results[3][0]).toBeInstanceOf(Error); // Error for incr on text
+      expect(results[3]).toBeDefined();
+      if (results[3]) expect(results[3][0]).toBeInstanceOf(Error); // Error for incr on text
       expect(results[4]).toEqual([null, '11']);
     });
 
@@ -462,7 +463,8 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       const results = await pipeline.exec();
 
       expect(results[0]).toEqual([null, 'OK']);
-      expect(results[1][0]).toBeInstanceOf(Error);
+      expect(results[1]).toBeDefined();
+      if (results[1]) expect(results[1][0]).toBeInstanceOf(Error);
       expect(results[2]).toEqual([null, 'OK']);
       expect(results[3]).toEqual([null, 'value1']);
       expect(results[4]).toEqual([null, 'value2']);

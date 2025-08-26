@@ -207,7 +207,7 @@ export interface RedisEvents {
 // Main interfaces
 export interface IRedisAdapter extends EventEmitter {
   readonly status: ConnectionStatus;
-  
+
   // Connection management
   connect(): Promise<void>;
   disconnect(): Promise<void>;
@@ -231,7 +231,11 @@ export interface IRedisAdapter extends EventEmitter {
   setrange(key: RedisKey, offset: number, value: RedisValue): Promise<number>;
   setex(key: RedisKey, seconds: number, value: RedisValue): Promise<string>;
   setnx(key: RedisKey, value: RedisValue): Promise<number>;
-  psetex(key: RedisKey, milliseconds: number, value: RedisValue): Promise<string>;
+  psetex(
+    key: RedisKey,
+    milliseconds: number,
+    value: RedisValue
+  ): Promise<string>;
 
   // Hash commands
   hset(key: RedisKey, ...args: any[]): Promise<number>;
@@ -248,7 +252,11 @@ export interface IRedisAdapter extends EventEmitter {
   hvals(key: RedisKey): Promise<string[]>;
   hlen(key: RedisKey): Promise<number>;
   hincrby(key: RedisKey, field: string, increment: number): Promise<number>;
-  hincrbyfloat(key: RedisKey, field: string, increment: number): Promise<number>;
+  hincrbyfloat(
+    key: RedisKey,
+    field: string,
+    increment: number
+  ): Promise<number>;
   hsetnx(key: RedisKey, field: string, value: RedisValue): Promise<number>;
 
   // List commands
@@ -289,9 +297,23 @@ export interface IRedisAdapter extends EventEmitter {
   psubscribe(...patterns: string[]): Promise<number>;
   punsubscribe(...patterns: string[]): Promise<number>;
 
+  // Add watch method to match ioredis API
+  watch(...keys: RedisKey[]): Promise<string>;
+  unwatch(): Promise<string>;
+
+  // Script methods to match ioredis API
+  scriptLoad(script: string): Promise<string>;
+  scriptExists(...scripts: string[]): Promise<boolean[]>;
+  scriptFlush(): Promise<string>;
+  eval(script: string, numkeys: number, ...keysAndArgs: any[]): Promise<any>;
+  evalsha(sha1: string, numkeys: number, ...keysAndArgs: any[]): Promise<any>;
+
   // Event emitter methods (inherited from EventEmitter)
   on<K extends keyof RedisEvents>(event: K, listener: RedisEvents[K]): this;
-  emit<K extends keyof RedisEvents>(event: K, ...args: Parameters<RedisEvents[K]>): boolean;
+  emit<K extends keyof RedisEvents>(
+    event: K,
+    ...args: Parameters<RedisEvents[K]>
+  ): boolean;
 }
 
 export interface IClusterAdapter extends IRedisAdapter {
