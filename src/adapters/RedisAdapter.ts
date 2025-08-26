@@ -1309,7 +1309,12 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
                 // Recursively serialize array elements
                 const serializedItems = arg.map((item) => {
                   if (typeof item === 'object' && item !== null) {
-                    return adapter.serializeGenericObject(item);
+                    // Use a safe fallback for object serialization during array processing
+                    try {
+                      return JSON.stringify(item).replace(/[{}'"\[\]]/g, '').replace(/,/g, '|');
+                    } catch {
+                      return String(item);
+                    }
                   }
                   return String(item);
                 });
@@ -1326,27 +1331,46 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
               // Handle Bull-specific object patterns
               if (typeof arg === 'object') {
                 // Bull Job Data Object - most common pattern
-                if (adapter.isBullJobData(arg)) {
-                  return adapter.serializeBullJobData(arg);
+                if (serializer.isBullJobData(arg)) {
+                  return serializer.serializeBullJobData(arg);
                 }
                 
                 // Bull Job Options Object
-                if (adapter.isBullJobOptions(arg)) {
-                  return adapter.serializeBullJobOptions(arg);
+                if (serializer.isBullJobOptions(arg)) {
+                  return serializer.serializeBullJobOptions(arg);
                 }
                 
                 // Bull Queue Settings
-                if (adapter.isBullQueueSettings(arg)) {
-                  return adapter.serializeBullQueueSettings(arg);
+                if (serializer.isBullQueueSettings(arg)) {
+                  return serializer.serializeBullQueueSettings(arg);
                 }
                 
                 // Handle nested objects with proper flattening
-                if (adapter.isNestedObject(arg)) {
-                  return adapter.flattenObject(arg);
+                if (serializer.isNestedObject(arg)) {
+                  return serializer.flattenObject(arg);
                 }
                 
                 // Generic object fallback with better structure preservation
-                return adapter.serializeGenericObject(arg);
+                try {
+                  // For plain objects, convert to key=value pairs
+                  if (arg.constructor === Object) {
+                    return Object.entries(arg)
+                      .map(([key, value]) => {
+                        const valueStr = typeof value === 'object' && value !== null
+                          ? JSON.stringify(value).replace(/[{}'"]/g, '').replace(/,/g, ';')
+                          : String(value);
+                        return `${key}=${valueStr}`;
+                      })
+                      .join('|');
+                  }
+                  
+                  // For other objects, try JSON but clean it up for Lua
+                  const jsonStr = JSON.stringify(arg);
+                  return jsonStr.replace(/[{}'"\[\]]/g, '').replace(/,/g, '|');
+                } catch (error) {
+                  console.warn(`Failed to serialize object:`, error);
+                  return String(arg);
+                }
               }
               
               // Fallback - ensure all values are strings or convert to safe representation
@@ -1466,8 +1490,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
           }
         };
         
-        // Store reference to adapter for method access
-        const adapter = {
+
           serializeGenericObject: (obj: any): string => {
             try {
               // For plain objects, convert to key=value pairs
@@ -1514,8 +1537,23 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
               const fullKey = prefix ? `${prefix}.${key}` : key;
               
               if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                // Recursively flatten nested objects
-                flattened.push(adapter.flattenObject(value, fullKey));
+                // Use direct recursion instead of adapter reference
+                const flattenObjectRecursive = (nestedObj: any, nestedPrefix: string): string => {
+                  const nestedFlattened: string[] = [];
+                  for (const [nestedKey, nestedValue] of Object.entries(nestedObj)) {
+                    const nestedFullKey = nestedPrefix ? `${nestedPrefix}.${nestedKey}` : nestedKey;
+                    if (typeof nestedValue === 'object' && nestedValue !== null && !Array.isArray(nestedValue)) {
+                      nestedFlattened.push(flattenObjectRecursive(nestedValue, nestedFullKey));
+                    } else {
+                      const nestedValueStr = Array.isArray(nestedValue) 
+                        ? nestedValue.map(String).join(';')
+                        : String(nestedValue);
+                      nestedFlattened.push(`${nestedFullKey}=${nestedValueStr}`);
+                    }
+                  }
+                  return nestedFlattened.join('|');
+                };
+                flattened.push(flattenObjectRecursive(value, fullKey));
               } else {
                 // Convert value to string representation
                 const valueStr = Array.isArray(value) 
@@ -1535,8 +1573,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
           isBullQueueSettings: serializer.isBullQueueSettings,
           serializeBullQueueSettings: serializer.serializeBullQueueSettings
         };
-        
-        return serializer;
+
       };
       
       // Create specialized serializer for this command
