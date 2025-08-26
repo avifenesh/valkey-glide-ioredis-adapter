@@ -33,7 +33,7 @@ describe('List Commands (ioredis compatibility)', () => {
     
     // Clean up any existing test data
     try {
-      await redis.del('mylist', 'newlist', 'anotherlist', 'emptylist', 'nonexistent', 'largehash');
+      await redis.del('mylist', 'newlist', 'anotherlist', 'emptylist', 'nonexistent', 'largehash', 'existing', 'largelist');
     } catch {
       // Ignore cleanup errors
     }

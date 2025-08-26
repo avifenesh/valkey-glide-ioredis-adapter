@@ -4,6 +4,7 @@
  */
 
 import { RedisKey, RedisValue } from '../types';
+import { TimeUnit } from '@valkey/valkey-glide';
 
 export class ParameterTranslator {
   /**
@@ -41,14 +42,44 @@ export class ParameterTranslator {
     for (let i = 0; i < args.length; i++) {
       const arg = args[i];
       
-      if (typeof arg === 'string') {
+      // Handle connect-redis object format: { expiration: { type: 'EX', value: 3600 } }
+      if (typeof arg === 'object' && arg !== null && !Array.isArray(arg)) {
+        if (arg.expiration) {
+          const expiration = arg.expiration;
+          if (expiration.type && expiration.value !== undefined) {
+            switch (expiration.type.toUpperCase()) {
+              case 'EX':
+                options.expiry = {
+                  type: TimeUnit.Seconds,
+                  count: parseInt(expiration.value, 10)
+                };
+                break;
+              case 'PX':
+                options.expiry = {
+                  type: TimeUnit.Milliseconds,
+                  count: parseInt(expiration.value, 10)
+                };
+                break;
+            }
+          }
+        }
+        // Handle other object properties if needed
+        if (arg.conditionalSet) {
+          options.conditionalSet = arg.conditionalSet;
+        }
+        if (arg.returnOldValue) {
+          options.returnOldValue = arg.returnOldValue;
+        }
+      }
+      // Handle ioredis string format: 'EX', 1, 'NX', etc.
+      else if (typeof arg === 'string') {
         const upperArg = arg.toUpperCase();
         
         switch (upperArg) {
           case 'EX':
             if (i + 1 < args.length) {
               options.expiry = {
-                type: 'EX', // TimeUnit.Seconds
+                type: TimeUnit.Seconds,
                 count: parseInt(args[++i], 10)
               };
             }
@@ -56,7 +87,7 @@ export class ParameterTranslator {
           case 'PX':
             if (i + 1 < args.length) {
               options.expiry = {
-                type: 'PX', // TimeUnit.Milliseconds
+                type: TimeUnit.Milliseconds,
                 count: parseInt(args[++i], 10)
               };
             }

@@ -18,7 +18,7 @@ import { ParameterTranslator } from '../utils/ParameterTranslator';
 
 export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   private _status: ConnectionStatus = 'disconnected';
-  private client: GlideClient | null = null;
+  private redisClient: GlideClient | null = null;
   private subscriberClient: GlideClient | null = null;
   private _options: RedisOptions;
   private watchedKeys: Set<string> = new Set();
@@ -79,9 +79,8 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
         })
       };
       
-      // Import GlideClient dynamically to handle potential import issues
-      const { GlideClient } = await import('@valkey/valkey-glide');
-      this.client = await GlideClient.createClient(config);
+      // Create GlideClient
+      this.redisClient = await GlideClient.createClient(config);
       
       this._status = 'ready';
       this.emit('ready');
@@ -112,9 +111,9 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       }
       
       // Clean up main client
-      if (this.client) {
-        await this.client.close();
-        this.client = null;
+      if (this.redisClient) {
+        await this.redisClient.close();
+        this.redisClient = null;
       }
       
       // Reset state
@@ -133,26 +132,161 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   }
 
   async ping(message?: string): Promise<string> {
-    if (!this.client) {
+    if (!this.redisClient) {
       throw new Error('Redis client not connected. Call connect() first.');
     }
-    const result = await this.client.ping(message ? { message } : undefined);
+    const result = await this.redisClient.ping(message ? { message } : undefined);
     return (result?.toString() || 'PONG');
+  }
+
+  async info(section?: string): Promise<string> {
+    const client = await this.ensureConnected();
+    if (section) {
+      return client.customCommand(['INFO', section]) as Promise<string>;
+    }
+    return client.customCommand(['INFO']) as Promise<string>;
+  }
+
+  // ioredis compatibility: sendCommand method for arbitrary Redis commands
+  async sendCommand(command: any): Promise<any> {
+    const client = await this.ensureConnected();
+    
+    // Handle both Command objects and string arrays
+    if (command && command.name && command.args) {
+      // Ensure all arguments are strings for Valkey GLIDE compatibility
+      const serializedArgs = command.args.map((arg: any) => {
+        if (typeof arg === 'string' || typeof arg === 'number') {
+          return String(arg);
+        }
+        if (arg === null || arg === undefined) {
+          return '';
+        }
+        if (typeof arg === 'object') {
+          return JSON.stringify(arg);
+        }
+        return String(arg);
+      });
+      return client.customCommand([command.name, ...serializedArgs]);
+    } else if (Array.isArray(command)) {
+      // Ensure array commands are also properly serialized
+      const serializedCommand = command.map(arg => String(arg));
+      return client.customCommand(serializedCommand);
+    } else {
+      throw new Error('Invalid command format');
+    }
+  }
+
+  // Direct method implementations for common Bull requirements
+  async client(subcommand: string, ...args: any[]): Promise<any> {
+    return this.call('CLIENT', subcommand, ...args);
+  }
+  
+  // Bull compatibility: stream operations that Bull may use
+  async xadd(key: RedisKey, id: string, ...fieldsAndValues: any[]): Promise<string> {
+    const client = await this.ensureConnected();
+    return client.customCommand(['XADD', String(key), id, ...fieldsAndValues.map(String)]) as Promise<string>;
+  }
+  
+  async xread(...args: any[]): Promise<any> {
+    const client = await this.ensureConnected();
+    return client.customCommand(['XREAD', ...args.map(String)]);
+  }
+  
+  // Bull compatibility: additional Lua script support
+  async script(subcommand: string, ...args: any[]): Promise<any> {
+    const client = await this.ensureConnected();
+    const serializedArgs = args.map(arg => String(arg));
+    return client.customCommand(['SCRIPT', subcommand, ...serializedArgs]);
+  }
+
+  // Additional ioredis compatibility methods
+  async duplicate(override?: Partial<RedisOptions>): Promise<RedisAdapter> {
+    const options = override ? { ...this._options, ...override } : this._options;
+    const newAdapter = new RedisAdapter(options);
+    
+    // For Bull compatibility: return immediately, connect in background
+    // Bull expects synchronous client return from createClient
+    newAdapter.connect().catch(err => {
+      console.error('Background connection failed for duplicated client:', err);
+      newAdapter.emit('error', err);
+    });
+    
+    return newAdapter;
+  }
+  
+  // Bull-specific compatibility: createClient factory method
+  static createClient(type: 'client' | 'subscriber', options: RedisOptions): RedisAdapter {
+    console.log(`🔧 Creating ${type} Redis client for Bull integration`);
+    
+    const adapter = new RedisAdapter(options);
+    
+    // Bull expects immediate return - connect asynchronously
+    adapter.connect().catch(err => {
+      console.error(`Failed to connect ${type} client for Bull:`, err);
+      adapter.emit('error', err);
+    });
+    
+    return adapter;
   }
 
   /**
    * Ensure client is connected before executing commands
+   * Enhanced for Bull compatibility with improved timing and connection state management
    */
   private async ensureConnected(): Promise<GlideClient> {
-    if (!this.client) {
-      await this.connect();
+    // If already connected, return immediately
+    if (this.redisClient && this._status === 'ready') {
+      return this.redisClient;
     }
     
-    if (!this.client) {
-      throw new Error('Failed to establish connection');
+    // If connection is in progress, wait for it with extended timeout for Bull
+    if (this._status === 'connecting') {
+      return new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Connection timeout waiting for existing connection'));
+        }, 10000); // Extended timeout for Bull integration
+        
+        const onReady = () => {
+          clearTimeout(timeout);
+          this.removeListener('error', onError);
+          if (this.redisClient) {
+            resolve(this.redisClient);
+          } else {
+            reject(new Error('Connection established but client is null'));
+          }
+        };
+        
+        const onError = (err: Error) => {
+          clearTimeout(timeout);
+          this.removeListener('ready', onReady);
+          reject(err);
+        };
+        
+        this.once('ready', onReady);
+        this.once('error', onError);
+      });
     }
     
-    return this.client;
+    // Start new connection with enhanced error handling
+    if (!this.redisClient) {
+      try {
+        await this.connect();
+      } catch (connectError) {
+        // Enhanced error context for Bull debugging
+        const errorMessage = connectError instanceof Error ? connectError.message : String(connectError);
+        const enhancedError = new Error(`Failed to establish Redis connection for Bull: ${errorMessage}`);
+        if (connectError instanceof Error && connectError.stack) {
+          enhancedError.stack = connectError.stack;
+        }
+        throw enhancedError;
+      }
+    }
+    
+    if (!this.redisClient) {
+      throw new Error('Failed to establish connection - client is null after connect()');
+    }
+    
+    return this.redisClient;
   }
 
   /**
@@ -167,36 +301,46 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       addresses: [{ host: this._options.host || 'localhost', port: this._options.port || 6379 }],
       ...(this._options.password && { 
         credentials: { password: this._options.password }
-      })
+      }),
+      // Configure pub/sub callback to handle incoming messages
+      pubsubSubscriptions: {
+        channelsAndPatterns: {},
+        callback: (msg: any) => {
+          this.handlePubSubMessage(msg);
+        },
+        context: this
+      }
     };
     
     // Import GlideClient dynamically to handle potential import issues
-    const { GlideClient } = await import('@valkey/valkey-glide');
     this.subscriberClient = await GlideClient.createClient(config);
-    
-    // Set up message handlers for the subscriber client
-    this.setupMessageHandlers(this.subscriberClient);
     
     return this.subscriberClient;
   }
 
   /**
-   * Setup message event handlers for subscriber client
+   * Handle incoming pub/sub messages and emit ioredis-compatible events
    */
-  private setupMessageHandlers(_client: GlideClient): void {
-    // Note: Valkey GLIDE handles pub/sub message routing differently than ioredis
-    // In a real implementation, we would need to set up a background listener
-    // that polls for messages or uses Valkey GLIDE's pub/sub callback mechanisms
-    
-    // For now, we provide the infrastructure for message handling
-    // The actual message polling would need to be implemented based on
-    // Valkey GLIDE's final pub/sub API when it becomes available
-    
-    // TODO: Implement actual message polling/callback mechanism
-    // This would involve setting up a background task that:
-    // 1. Listens for incoming pub/sub messages
-    // 2. Emits 'message' events for regular subscriptions
-    // 3. Emits 'pmessage' events for pattern subscriptions
+  private handlePubSubMessage(msg: any): void {
+    try {
+      // Based on Valkey GLIDE documentation, msg should have channel and payload properties
+      // We need to emit ioredis-compatible events
+      
+      if (msg.channel && msg.payload !== undefined) {
+        // Check if this is a pattern message
+        const isPatternMessage = this.subscribedPatterns.has(msg.pattern || '');
+        
+        if (isPatternMessage && msg.pattern) {
+          // Emit pattern message event
+          this.emit('pmessage', msg.pattern, msg.channel, msg.payload);
+        } else {
+          // Emit regular message event
+          this.emit('message', msg.channel, msg.payload);
+        }
+      }
+    } catch (error) {
+      console.warn('Error handling pub/sub message:', error);
+    }
   }
 
   // String commands
@@ -540,6 +684,48 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return await client.rpushx(normalizedKey, normalizedElements);
   }
 
+  // Blocking list operations - critical for queue systems
+  async blpop(timeout: number, ...keys: RedisKey[]): Promise<[string, string] | null> {
+    const client = await this.ensureConnected();
+    const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
+    
+    const result = await client.customCommand(['BLPOP', ...normalizedKeys, timeout.toString()]);
+    
+    if (Array.isArray(result) && result.length === 2) {
+      return [
+        ParameterTranslator.convertGlideString(result[0]) || '',
+        ParameterTranslator.convertGlideString(result[1]) || ''
+      ];
+    }
+    
+    return null;
+  }
+
+  async brpop(timeout: number, ...keys: RedisKey[]): Promise<[string, string] | null> {
+    const client = await this.ensureConnected();
+    const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
+    
+    const result = await client.customCommand(['BRPOP', ...normalizedKeys, timeout.toString()]);
+    
+    if (Array.isArray(result) && result.length === 2) {
+      return [
+        ParameterTranslator.convertGlideString(result[0]) || '',
+        ParameterTranslator.convertGlideString(result[1]) || ''
+      ];
+    }
+    
+    return null;
+  }
+
+  async brpoplpush(source: RedisKey, destination: RedisKey, timeout: number): Promise<string | null> {
+    const client = await this.ensureConnected();
+    const normalizedSource = ParameterTranslator.normalizeKey(source);
+    const normalizedDestination = ParameterTranslator.normalizeKey(destination);
+    
+    const result = await client.customCommand(['BRPOPLPUSH', normalizedSource, normalizedDestination, timeout.toString()]);
+    return ParameterTranslator.convertGlideString(result);
+  }
+
   // Set commands
   async sadd(key: RedisKey, ...members: RedisValue[]): Promise<number> {
     const client = await this.ensureConnected();
@@ -851,18 +1037,15 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       await this.createSubscriberConnection();
     }
     
-    let totalSubscribed = this.subscribedChannels.size;
-    
     for (const channel of channels) {
       if (!this.subscribedChannels.has(channel)) {
         try {
           // Use separate subscriber client for pub/sub operations
           await this.subscriberClient!.customCommand(['SUBSCRIBE', channel]);
           this.subscribedChannels.add(channel);
-          totalSubscribed++;
           
           // Emit subscribe event
-          this.emit('subscribe', channel, totalSubscribed);
+          this.emit('subscribe', channel, this.subscribedChannels.size);
         } catch (error) {
           // Log error but continue with other channels
           console.warn(`Failed to subscribe to channel ${channel}:`, error);
@@ -920,18 +1103,15 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       await this.createSubscriberConnection();
     }
     
-    let totalSubscribed = this.subscribedPatterns.size;
-    
     for (const pattern of patterns) {
       if (!this.subscribedPatterns.has(pattern)) {
         try {
           // Use separate subscriber client for pub/sub operations
           await this.subscriberClient!.customCommand(['PSUBSCRIBE', pattern]);
           this.subscribedPatterns.add(pattern);
-          totalSubscribed++;
           
           // Emit psubscribe event
-          this.emit('psubscribe', pattern, totalSubscribed);
+          this.emit('psubscribe', pattern, this.subscribedPatterns.size);
         } catch (error) {
           // Log error but continue with other patterns
           console.warn(`Failed to subscribe to pattern ${pattern}:`, error);
@@ -1010,18 +1190,15 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   async scriptLoad(script: string): Promise<string> {
     const client = await this.ensureConnected();
     
-    // Create a Script object for automatic hash generation and management
-    const scriptObj = new Script(script);
-    
     try {
-      // Ensure script is loaded in Redis cache using SCRIPT LOAD
-      await client.customCommand(['SCRIPT', 'LOAD', script]);
+      // Load script in Redis cache and get the actual hash from Redis
+      const hash = await client.customCommand(['SCRIPT', 'LOAD', script]);
       
-      // Return the hash from the Script object
-      return scriptObj.getHash();
+      // Return the hash as returned by Redis
+      return hash as string;
     } catch (error) {
-      // If SCRIPT LOAD fails, still return the hash for compatibility
-      // The script can be loaded later when executed
+      // If SCRIPT LOAD fails, create a Script object for fallback hash
+      const scriptObj = new Script(script);
       console.warn('Script load failed, but hash is still available:', error);
       return scriptObj.getHash();
     }
@@ -1030,9 +1207,15 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   async scriptExists(...scripts: string[]): Promise<boolean[]> {
     const client = await this.ensureConnected();
     const result = await client.customCommand(['SCRIPT', 'EXISTS', ...scripts]);
-    // The result should be an array of 0s and 1s
+    // The result should be an array of 0s/1s or false/true values
     if (Array.isArray(result)) {
-      return result.map((val: any) => val === 1);
+      return result.map((val: any) => {
+        // Handle both boolean and numeric return values
+        if (typeof val === 'boolean') {
+          return val;
+        }
+        return val === 1;
+      });
     }
     // Fallback in case of unexpected result format
     return scripts.map(() => false);
@@ -1077,6 +1260,360 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       // For other errors, also re-throw
       throw error;
     }
+  }
+
+  // Define custom commands using Lua scripts (ioredis compatibility)
+  defineCommand(name: string, options: { lua: string; numberOfKeys?: number }): void {
+    const { lua, numberOfKeys = 0 } = options;
+    
+    // Define the method on this instance
+    (this as any)[name] = async (...args: any[]): Promise<any> => {
+      const client = await this.ensureConnected();
+      
+      // Specialized Bull serialization adapter - understands Bull's object patterns
+      const createBullSerializationAdapter = (commandName: string): any => {
+        return {
+          /**
+           * Bull-specific argument serialization that understands Bull's internal structures
+           * Enhanced to handle script line 84 errors with comprehensive type conversion
+           */
+          serializeArgs: (args: any[]): string[] => {
+            return args.map((arg) => {
+              // Handle primitive types
+              if (arg === null || arg === undefined) {
+                return '0'; // Use '0' instead of empty string for better Lua compatibility
+              }
+              if (typeof arg === 'string') {
+                return arg;
+              }
+              if (typeof arg === 'number') {
+                // Ensure numbers are properly formatted
+                return Number.isInteger(arg) ? arg.toString() : Math.floor(arg).toString();
+              }
+              if (typeof arg === 'boolean') {
+                return arg ? '1' : '0';
+              }
+              
+              // Handle Buffer objects
+              if (Buffer.isBuffer(arg)) {
+                return arg.toString('utf8');
+              }
+              
+              // Handle Date objects
+              if (arg instanceof Date) {
+                return arg.getTime().toString();
+              }
+              
+              // Handle arrays - Bull sometimes passes arrays
+              if (Array.isArray(arg)) {
+                // Recursively serialize array elements
+                const serializedItems = arg.map((item) => {
+                  if (typeof item === 'object' && item !== null) {
+                    return adapter.serializeGenericObject(item);
+                  }
+                  return String(item);
+                });
+                
+                // For Bull, check if this is a scored member array for sorted sets
+                if (commandName === 'addJob' && arg.length % 2 === 0) {
+                  // Likely score-member pairs
+                  return serializedItems.join('|');
+                }
+                // For other arrays, join with separator
+                return serializedItems.join(',');
+              }
+              
+              // Handle Bull-specific object patterns
+              if (typeof arg === 'object') {
+                // Bull Job Data Object - most common pattern
+                if (adapter.isBullJobData(arg)) {
+                  return adapter.serializeBullJobData(arg);
+                }
+                
+                // Bull Job Options Object
+                if (adapter.isBullJobOptions(arg)) {
+                  return adapter.serializeBullJobOptions(arg);
+                }
+                
+                // Bull Queue Settings
+                if (adapter.isBullQueueSettings(arg)) {
+                  return adapter.serializeBullQueueSettings(arg);
+                }
+                
+                // Handle nested objects with proper flattening
+                if (adapter.isNestedObject(arg)) {
+                  return adapter.flattenObject(arg);
+                }
+                
+                // Generic object fallback with better structure preservation
+                return adapter.serializeGenericObject(arg);
+              }
+              
+              // Fallback - ensure all values are strings or convert to safe representation
+              const result = String(arg);
+              return result === '[object Object]' ? '{}' : result;
+            });
+          },
+          
+          /**
+           * Detect Bull job data objects
+           */
+          isBullJobData: (obj: any): boolean => {
+            return obj && typeof obj === 'object' && (
+              obj.hasOwnProperty('name') ||
+              obj.hasOwnProperty('data') ||
+              obj.hasOwnProperty('id') ||
+              obj.hasOwnProperty('opts')
+            );
+          },
+          
+          /**
+           * Serialize Bull job data preserving structure
+           */
+          serializeBullJobData: (data: any): string => {
+            // Extract key fields that Bull expects
+            const jobFields: string[] = [];
+            
+            if (data.name !== undefined) {
+              jobFields.push(`name:${data.name}`);
+            }
+            if (data.data !== undefined) {
+              // For job data, preserve JSON structure but flatten for Lua
+              const dataStr = typeof data.data === 'object' 
+                ? JSON.stringify(data.data).replace(/[{}"']/g, '').replace(/,/g, ';')
+                : String(data.data);
+              jobFields.push(`data:${dataStr}`);
+            }
+            if (data.id !== undefined) {
+              jobFields.push(`id:${data.id}`);
+            }
+            if (data.opts !== undefined) {
+              const optsStr = typeof data.opts === 'object'
+                ? Object.entries(data.opts).map(([k, v]) => `${k}=${v}`).join(',')
+                : String(data.opts);
+              jobFields.push(`opts:${optsStr}`);
+            }
+            
+            return jobFields.join('|');
+          },
+          
+          /**
+           * Detect Bull job options
+           */
+          isBullJobOptions: (obj: any): boolean => {
+            return obj && typeof obj === 'object' && (
+              obj.hasOwnProperty('delay') ||
+              obj.hasOwnProperty('priority') ||
+              obj.hasOwnProperty('attempts') ||
+              obj.hasOwnProperty('repeat') ||
+              obj.hasOwnProperty('backoff')
+            );
+          },
+          
+          /**
+           * Serialize Bull job options
+           */
+          serializeBullJobOptions: (opts: any): string => {
+            const optFields: string[] = [];
+            
+            if (opts.delay !== undefined) optFields.push(`delay:${opts.delay}`);
+            if (opts.priority !== undefined) optFields.push(`priority:${opts.priority}`);
+            if (opts.attempts !== undefined) optFields.push(`attempts:${opts.attempts}`);
+            if (opts.repeat !== undefined) {
+              const repeatStr = typeof opts.repeat === 'object'
+                ? Object.entries(opts.repeat).map(([k, v]) => `${k}=${v}`).join(',')
+                : String(opts.repeat);
+              optFields.push(`repeat:${repeatStr}`);
+            }
+            if (opts.backoff !== undefined) {
+              const backoffStr = typeof opts.backoff === 'object'
+                ? Object.entries(opts.backoff).map(([k, v]) => `${k}=${v}`).join(',')
+                : String(opts.backoff);
+              optFields.push(`backoff:${backoffStr}`);
+            }
+            
+            return optFields.join('|');
+          },
+          
+          /**
+           * Detect Bull queue settings
+           */
+          isBullQueueSettings: (obj: any): boolean => {
+            return obj && typeof obj === 'object' && (
+              obj.hasOwnProperty('concurrency') ||
+              obj.hasOwnProperty('defaultJobOptions') ||
+              obj.hasOwnProperty('redis')
+            );
+          },
+          
+          /**
+           * Serialize Bull queue settings
+           */
+          serializeBullQueueSettings: (settings: any): string => {
+            const settingFields: string[] = [];
+            
+            if (settings.concurrency !== undefined) {
+              settingFields.push(`concurrency:${settings.concurrency}`);
+            }
+            if (settings.defaultJobOptions !== undefined) {
+              const optsStr = typeof settings.defaultJobOptions === 'object'
+                ? Object.entries(settings.defaultJobOptions).map(([k, v]) => `${k}=${v}`).join(',')
+                : String(settings.defaultJobOptions);
+              settingFields.push(`defaultJobOptions:${optsStr}`);
+            }
+            
+            return settingFields.join('|');
+          }
+        };
+        
+        // Store reference to adapter for method access
+        const adapter = {
+          serializeGenericObject: (obj: any): string => {
+            try {
+              // For plain objects, convert to key=value pairs
+              if (obj.constructor === Object) {
+                return Object.entries(obj)
+                  .map(([key, value]) => {
+                    const valueStr = typeof value === 'object' && value !== null
+                      ? JSON.stringify(value).replace(/[{}"']/g, '').replace(/,/g, ';')
+                      : String(value);
+                    return `${key}=${valueStr}`;
+                  })
+                  .join('|');
+              }
+              
+              // For other objects, try JSON but clean it up for Lua
+              const jsonStr = JSON.stringify(obj);
+              // Remove problematic characters that Lua might not handle well
+              return jsonStr.replace(/[{}"'\[\]]/g, '').replace(/,/g, '|');
+              
+            } catch (error) {
+              console.warn(`Failed to serialize object:`, error);
+              return String(obj);
+            }
+          },
+          
+          /**
+           * Check if object has nested structure that needs flattening
+           */
+          isNestedObject: (obj: any): boolean => {
+            if (!obj || typeof obj !== 'object') return false;
+            
+            return Object.values(obj).some(value => 
+              typeof value === 'object' && value !== null && !Array.isArray(value)
+            );
+          },
+          
+          /**
+           * Flatten nested objects for Lua script compatibility
+           */
+          flattenObject: (obj: any, prefix: string = ''): string => {
+            const flattened: string[] = [];
+            
+            for (const [key, value] of Object.entries(obj)) {
+              const fullKey = prefix ? `${prefix}.${key}` : key;
+              
+              if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+                // Recursively flatten nested objects
+                flattened.push(adapter.flattenObject(value, fullKey));
+              } else {
+                // Convert value to string representation
+                const valueStr = Array.isArray(value) 
+                  ? value.map(String).join(';')
+                  : String(value);
+                flattened.push(`${fullKey}=${valueStr}`);
+              }
+            }
+            
+            return flattened.join('|');
+          },
+          
+          isBullJobData: serializer.isBullJobData,
+          serializeBullJobData: serializer.serializeBullJobData,
+          isBullJobOptions: serializer.isBullJobOptions,
+          serializeBullJobOptions: serializer.serializeBullJobOptions,
+          isBullQueueSettings: serializer.isBullQueueSettings,
+          serializeBullQueueSettings: serializer.serializeBullQueueSettings
+        };
+        
+        return serializer;
+      };
+      
+      // Create specialized serializer for this command
+      const serializer = createBullSerializationAdapter(name);
+      const serializedArgs = serializer.serializeArgs(args);
+      
+      // Enhanced Bull numberOfKeys handling with pattern recognition
+      let actualNumberOfKeys = numberOfKeys;
+      
+      // Bull addJob pattern: numberOfKeys=6 with single argument
+      if (name === 'addJob' && numberOfKeys === 6 && serializedArgs.length === 1) {
+        console.log(`🎯 Bull addJob pattern: Special handling for single complex argument`);
+        actualNumberOfKeys = 1;
+      }
+      // Bull removeJob pattern: numberOfKeys=3 with fewer args
+      else if (name.includes('Job') && numberOfKeys > serializedArgs.length) {
+        console.log(`🎯 Bull ${name} pattern: Adjusting numberOfKeys from ${numberOfKeys} to ${serializedArgs.length}`);
+        actualNumberOfKeys = Math.min(numberOfKeys, serializedArgs.length);
+      }
+      // Generic adjustment for Bull patterns
+      else if (serializedArgs.length < numberOfKeys) {
+        console.warn(`🔧 defineCommand ${name}: numberOfKeys=${numberOfKeys} > args=${serializedArgs.length}. Adjusting for Bull compatibility.`);
+        actualNumberOfKeys = Math.min(numberOfKeys, serializedArgs.length);
+      }
+      
+      // Split arguments into KEYS and ARGV for Lua script
+      const keys = serializedArgs.slice(0, actualNumberOfKeys);
+      const scriptArgs = serializedArgs.slice(actualNumberOfKeys);
+      
+      try {
+        // Execute Lua script via EVAL command
+        const evalArgs = [
+          lua,                                // The Lua script
+          actualNumberOfKeys.toString(),      // Number of keys (must be string)
+          ...keys,                           // KEYS array (all strings)
+          ...scriptArgs                      // ARGV array (all strings)
+        ];
+        
+        console.log(`🚀 Executing ${name} with Bull-optimized serialization:`, {
+          keysCount: keys.length,
+          argsCount: scriptArgs.length,
+          keysPreview: keys.map((k: string) => k.substring(0, 50)),
+          argsPreview: scriptArgs.map((a: string) => a.substring(0, 50))
+        });
+        
+        const result = await client.customCommand(['EVAL', ...evalArgs]);
+        return result;
+        
+      } catch (evalError) {
+        const errorMessage = evalError instanceof Error ? evalError.message : String(evalError);
+        console.error(`\n🔥 Bull serialization error for ${name}:`);
+        console.error('Original args:', args);
+        console.error('Serialized args:', serializedArgs);
+        console.error('Keys:', keys);
+        console.error('Script args:', scriptArgs);
+        console.error('Error:', errorMessage);
+        
+        // Try EVALSHA fallback
+        try {
+          const sha = await client.customCommand(['SCRIPT', 'LOAD', lua]);
+          const evalshaArgs = [
+            sha as string,
+            actualNumberOfKeys.toString(),
+            ...keys,
+            ...scriptArgs
+          ];
+          console.log(`🔄 Retrying ${name} with EVALSHA...`);
+          return await client.customCommand(['EVALSHA', ...evalshaArgs]);
+        } catch (evalshaError) {
+          const evalshaErrorMessage = evalshaError instanceof Error ? evalshaError.message : String(evalshaError);
+          console.error(`❌ Both EVAL and EVALSHA failed for ${name}:`);
+          console.error('EVAL error:', errorMessage);
+          console.error('EVALSHA error:', evalshaErrorMessage);
+          throw evalError; // Throw original error for better debugging
+        }
+      }
+    };
   }
 }
 

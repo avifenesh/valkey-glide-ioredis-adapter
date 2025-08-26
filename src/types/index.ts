@@ -270,6 +270,11 @@ export interface IRedisAdapter extends EventEmitter {
   connect(): Promise<void>;
   disconnect(): Promise<void>;
   ping(message?: string): Promise<string>;
+  info(section?: string): Promise<string>;
+  sendCommand(command: any): Promise<any>;
+  call(commandName: string, ...args: any[]): Promise<any>;
+  client(subcommand: string, ...args: any[]): Promise<any>;
+  duplicate(): Promise<IRedisAdapter>;
 
   // String commands
   set(key: RedisKey, value: RedisValue, ...args: any[]): Promise<string | null>;
@@ -332,6 +337,11 @@ export interface IRedisAdapter extends EventEmitter {
   lrem(key: RedisKey, count: number, element: RedisValue): Promise<number>;
   lpushx(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
   rpushx(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
+  
+  // Blocking list operations - critical for queue systems
+  blpop(timeout: number, ...keys: RedisKey[]): Promise<[string, string] | null>;
+  brpop(timeout: number, ...keys: RedisKey[]): Promise<[string, string] | null>;
+  brpoplpush(source: RedisKey, destination: RedisKey, timeout: number): Promise<string | null>;
 
   // Set commands
   sadd(key: RedisKey, ...members: RedisValue[]): Promise<number>;
@@ -394,6 +404,7 @@ export interface IRedisAdapter extends EventEmitter {
   scriptFlush(): Promise<string>;
   eval(script: string, numkeys: number, ...keysAndArgs: any[]): Promise<any>;
   evalsha(sha1: string, numkeys: number, ...keysAndArgs: any[]): Promise<any>;
+  defineCommand(name: string, options: { lua: string; numberOfKeys?: number }): void;
 
   // Event emitter methods (inherited from EventEmitter)
   on<K extends keyof RedisEvents>(event: K, listener: RedisEvents[K]): this;

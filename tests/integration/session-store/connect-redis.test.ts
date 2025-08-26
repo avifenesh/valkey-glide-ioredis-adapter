@@ -7,7 +7,7 @@
 
 import express = require('express');
 import session = require('express-session');
-import RedisStore = require('connect-redis');
+import {RedisStore} from 'connect-redis';
 import supertest = require('supertest');
 import { RedisAdapter } from '../../../src/adapters/RedisAdapter';
 import { testUtils } from '../../setup';
@@ -50,7 +50,7 @@ describe('Express Session Store Integration', () => {
     // Configure session store with our Redis adapter
     app.use(
       session({
-        store: new (RedisStore as any)({
+        store: new RedisStore({
           client: redisClient as any, // Type assertion for compatibility
           prefix: `${keyPrefix}sess:`,
           ttl: 3600, // 1 hour
@@ -274,13 +274,22 @@ describe('Express Session Store Integration', () => {
       // We'll verify the TTL is set correctly instead
       await request.get('/login');
       
-      // Wait a small amount of time
-      await testUtils.delay(100);
+      // Wait a small amount of time to ensure TTL starts counting
+      await testUtils.delay(500);
       
       const sessionKeys = await redisClient.keys(`${keyPrefix}sess:*`);
       if (sessionKeys[0]) {
         const ttl = await redisClient.ttl(sessionKeys[0]);
-        expect(ttl).toBeLessThan(3600); // Should be decreasing
+        // TTL should be set and should be <= 3600
+        expect(ttl).toBeGreaterThan(0);
+        expect(ttl).toBeLessThanOrEqual(3600);
+        
+        // If TTL is exactly 3600, wait a bit more to see it decrease
+        if (ttl === 3600) {
+          await testUtils.delay(1100); // Wait just over 1 second
+          const updatedTtl = await redisClient.ttl(sessionKeys[0]);
+          expect(updatedTtl).toBeLessThan(3600); // Should now be decreasing
+        }
       }
     });
   });
