@@ -6,6 +6,7 @@
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
+import { PortDiscovery, DiscoveredServer, ServerConfig, portUtils } from './utils/port-discovery';
 
 // Load test environment variables if they exist
 const envTestPath = path.join(process.cwd(), '.env.test');
@@ -13,28 +14,16 @@ if (fs.existsSync(envTestPath)) {
   dotenv.config({ path: envTestPath });
 }
 
-// Mock console methods for cleaner test output
-const originalConsole = { ...console };
-
-beforeAll(() => {
-  // Suppress console.log in tests unless explicitly needed
-  if (process.env.NODE_ENV === 'test') {
-    console.log = jest.fn();
-    console.warn = jest.fn();
-    console.error = jest.fn();
-  }
-});
-
-afterAll(() => {
-  // Restore console methods
-  Object.assign(console, originalConsole);
-});
-
 // Global test timeout - increased for real server operations
 jest.setTimeout(60000);
 
-// Mock process.env for consistent testing
+// Set test environment
 process.env.NODE_ENV = 'test';
+
+// Cache for discovered servers to avoid repeated discovery
+let discoveredServers: DiscoveredServer[] | null = null;
+let lastDiscoveryTime = 0;
+const DISCOVERY_CACHE_TTL = 30000; // 30 seconds
 
 // Global test utilities
 export const testUtils = {
@@ -45,49 +34,140 @@ export const testUtils = {
     Math.random().toString(36).substring(2, 2 + length),
   
   randomPort: (): number => 
-    Math.floor(Math.random() * (65535 - 1024)) + 1024,
+    PortDiscovery.generateRandomPort(),
     
-  // Get test server configuration
-  getStandaloneConfig: () => ({
-    host: process.env.VALKEY_STANDALONE_HOST || 'localhost',
-    port: parseInt(process.env.VALKEY_STANDALONE_PORT || '6379', 10)
-  }),
-  
-  getClusterConfig: () => [
-    { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_1 || '7000', 10) },
-    { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_2 || '7001', 10) },
-    { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_3 || '7002', 10) },
-    { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_4 || '7003', 10) },
-    { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_5 || '7004', 10) },
-    { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_6 || '7005', 10) }
-  ],
-  
-  // Check if test servers are available
-  async checkTestServers(): Promise<boolean> {
-    const config = this.getStandaloneConfig();
+  // Get test server configuration with dynamic discovery
+  async getStandaloneConfig(): Promise<ServerConfig> {
     try {
-      const net = await import('net');
-      const socket = new net.Socket();
+      // First try to find any existing Redis server
+      const result = await portUtils.findRedisServerOrPort();
       
-      return new Promise((resolve) => {
-        socket.setTimeout(1000);
-        socket.on('connect', () => {
-          socket.destroy();
-          resolve(true);
-        });
-        socket.on('timeout', () => {
-          socket.destroy();
-          resolve(false);
-        });
-        socket.on('error', () => {
-          socket.destroy();
-          resolve(false);
-        });
-        socket.connect(config.port, config.host);
-      });
-    } catch {
+      if (result.server) {
+        console.log(`🔍 Discovered Redis server at ${result.server.host}:${result.server.port} (${result.server.type} ${result.server.version || 'unknown version'})`);
+        return { host: result.server.host, port: result.server.port };
+      }
+      
+      // If no server found, check environment variables as fallback
+      if (process.env.VALKEY_STANDALONE_HOST && process.env.VALKEY_STANDALONE_PORT) {
+        const config = {
+          host: process.env.VALKEY_STANDALONE_HOST,
+          port: parseInt(process.env.VALKEY_STANDALONE_PORT, 10)
+        };
+        console.log(`📋 Using environment configuration: ${config.host}:${config.port}`);
+        return config;
+      }
+      
+      // Default to standard Redis port
+      console.log('📍 Using default Redis configuration: localhost:6379');
+      return { host: 'localhost', port: 6379 };
+      
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn('⚠️  Error during server discovery, using default:', errorMessage);
+      return { host: 'localhost', port: 6379 };
+    }
+  },
+  
+  async getClusterConfig(): Promise<ServerConfig[]> {
+    // Try environment variables first for cluster config
+    if (process.env.VALKEY_CLUSTER_PORT_1) {
+      return [
+        { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_1, 10) },
+        { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_2 || '7001', 10) },
+        { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_3 || '7002', 10) },
+        { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_4 || '7003', 10) },
+        { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_5 || '7004', 10) },
+        { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_6 || '7005', 10) }
+      ];
+    }
+    
+    // Generate dynamic cluster configuration
+    try {
+      const config = await portUtils.generateTestConfig(true);
+      return config.cluster || [];
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn('⚠️  Error generating cluster config, using defaults:', errorMessage);
+      return [
+        { host: 'localhost', port: 7000 },
+        { host: 'localhost', port: 7001 },
+        { host: 'localhost', port: 7002 },
+        { host: 'localhost', port: 7003 },
+        { host: 'localhost', port: 7004 },
+        { host: 'localhost', port: 7005 }
+      ];
+    }
+  },
+  
+  // Enhanced server discovery with caching
+  async discoverAvailableServers(forceRefresh = false): Promise<DiscoveredServer[]> {
+    const now = Date.now();
+    
+    if (!forceRefresh && discoveredServers && (now - lastDiscoveryTime) < DISCOVERY_CACHE_TTL) {
+      return discoveredServers;
+    }
+    
+    try {
+      discoveredServers = await PortDiscovery.discoverRedisServers();
+      lastDiscoveryTime = now;
+      return discoveredServers;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn('⚠️  Server discovery failed:', errorMessage);
+      return [];
+    }
+  },
+  
+  // Check if test servers are available with enhanced discovery
+  async checkTestServers(): Promise<boolean> {
+    try {
+      // Quick check for default Redis port first
+      if (await portUtils.isDefaultRedisAvailable()) {
+        return true;
+      }
+      
+      // Broader discovery if default port is not available
+      const servers = await this.discoverAvailableServers();
+      const responsiveServers = servers.filter(s => s.responsive);
+      
+      if (responsiveServers.length > 0) {
+        console.log(`🔍 Found ${responsiveServers.length} responsive Redis server(s)`);
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.warn('⚠️  Error checking test servers:', errorMessage);
       return false;
     }
+  },
+
+  // Validate Redis connection with dynamic configuration
+  async validateRedisConnection(config?: ServerConfig): Promise<boolean> {
+    try {
+      const targetConfig = config || await this.getStandaloneConfig();
+      const serverInfo = await PortDiscovery.validateRedisServer(targetConfig);
+      return serverInfo?.responsive ?? false;
+    } catch (error) {
+      return false;
+    }
+  },
+  
+  // Get or allocate a Redis server for testing
+  async getOrAllocateTestServer(): Promise<ServerConfig> {
+    return PortDiscovery.getOrAllocateRedisServer();
+  },
+  
+  // Check if any Redis server is available anywhere
+  async hasAnyRedisServer(): Promise<boolean> {
+    return PortDiscovery.hasAnyRedisServer();
+  },
+  
+  // Generate unique test configuration
+  async generateUniqueTestConfig(): Promise<ServerConfig> {
+    const availablePort = await PortDiscovery.findAvailablePort();
+    return { host: 'localhost', port: availablePort };
   }
 };
 
@@ -96,9 +176,14 @@ interface TestUtils {
   delay: (ms: number) => Promise<void>;
   randomString: (length?: number) => string;
   randomPort: () => number;
-  getStandaloneConfig: () => { host: string; port: number };
-  getClusterConfig: () => Array<{ host: string; port: number }>;
+  getStandaloneConfig: () => Promise<ServerConfig>;
+  getClusterConfig: () => Promise<ServerConfig[]>;
+  discoverAvailableServers: (forceRefresh?: boolean) => Promise<DiscoveredServer[]>;
   checkTestServers: () => Promise<boolean>;
+  validateRedisConnection: (config?: ServerConfig) => Promise<boolean>;
+  getOrAllocateTestServer: () => Promise<ServerConfig>;
+  hasAnyRedisServer: () => Promise<boolean>;
+  generateUniqueTestConfig: () => Promise<ServerConfig>;
 }
 
 // Make test utilities available globally
