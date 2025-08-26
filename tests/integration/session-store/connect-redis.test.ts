@@ -50,7 +50,7 @@ describe('Express Session Store Integration', () => {
     // Configure session store with our Redis adapter
     app.use(
       session({
-        store: new RedisStore({
+        store: new (RedisStore as any)({
           client: redisClient as any, // Type assertion for compatibility
           prefix: `${keyPrefix}sess:`,
           ttl: 3600, // 1 hour
@@ -70,9 +70,9 @@ describe('Express Session Store Integration', () => {
       req.session.userId = 'user123';
       req.session.username = 'testuser';
       req.session.loginTime = Date.now();
-      res.json({ 
-        message: 'Logged in successfully', 
-        sessionId: req.sessionID 
+      res.json({
+        message: 'Logged in successfully',
+        sessionId: req.sessionID,
       });
     });
 
@@ -80,11 +80,11 @@ describe('Express Session Store Integration', () => {
       if (!req.session.userId) {
         return res.status(401).json({ error: 'Not authenticated' });
       }
-      res.json({
+      return res.json({
         userId: req.session.userId,
         username: req.session.username,
         loginTime: req.session.loginTime,
-        sessionId: req.sessionID
+        sessionId: req.sessionID,
       });
     });
 
@@ -94,9 +94,9 @@ describe('Express Session Store Integration', () => {
       }
       req.session.lastUpdate = Date.now();
       req.session.updateCount = (req.session.updateCount || 0) + 1;
-      res.json({ 
+      return res.json({
         message: 'Profile updated',
-        updateCount: req.session.updateCount
+        updateCount: req.session.updateCount,
       });
     });
 
@@ -105,7 +105,7 @@ describe('Express Session Store Integration', () => {
         if (err) {
           return res.status(500).json({ error: 'Failed to logout' });
         }
-        res.json({ message: 'Logged out successfully' });
+        return res.json({ message: 'Logged out successfully' });
       });
     });
 
@@ -272,7 +272,7 @@ describe('Express Session Store Integration', () => {
     test('should clean up expired sessions', async () => {
       // This test would need a shorter TTL to be practical
       // We'll verify the TTL is set correctly instead
-      const loginResponse = await request.get('/login');
+      await request.get('/login');
       
       // Wait a small amount of time
       await testUtils.delay(100);

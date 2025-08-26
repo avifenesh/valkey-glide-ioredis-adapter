@@ -4,9 +4,21 @@
  */
 
 import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { testUtils } from '../setup';
 
 describe('Connection Management (ioredis compatibility)', () => {
   let redis: RedisAdapter;
+
+  beforeAll(async () => {
+    // Check if test servers are available
+    const serversAvailable = await testUtils.checkTestServers();
+    if (!serversAvailable) {
+      console.warn(
+        '⚠️  Test servers not available. Please run: ./scripts/start-test-servers.sh'
+      );
+      console.warn('   Skipping connection tests...');
+    }
+  });
 
   afterEach(async () => {
     if (redis) {
@@ -16,47 +28,82 @@ describe('Connection Management (ioredis compatibility)', () => {
 
   describe('Client creation patterns', () => {
     test('should create client with default options', async () => {
-      redis = new RedisAdapter();
+      const serversAvailable = await testUtils.checkTestServers();
+      if (!serversAvailable) {
+        pending('Test servers not available');
+        return;
+      }
+
+      const config = testUtils.getStandaloneConfig();
+      redis = new RedisAdapter(config);
       await redis.connect();
-      
+
       // Basic connectivity test
       const result = await redis.ping();
       expect(result).toBe('PONG');
     });
 
     test('should create client with port and host', async () => {
-      redis = new RedisAdapter(6379, 'localhost');
+      const serversAvailable = await testUtils.checkTestServers();
+      if (!serversAvailable) {
+        pending('Test servers not available');
+        return;
+      }
+
+      const config = testUtils.getStandaloneConfig();
+      redis = new RedisAdapter(config.port, config.host);
       await redis.connect();
-      
+
       const result = await redis.ping();
       expect(result).toBe('PONG');
     });
 
     test('should create client with options object', async () => {
+      const serversAvailable = await testUtils.checkTestServers();
+      if (!serversAvailable) {
+        pending('Test servers not available');
+        return;
+      }
+
+      const config = testUtils.getStandaloneConfig();
       redis = new RedisAdapter({
-        port: 6379,
-        host: 'localhost',
+        port: config.port,
+        host: config.host,
         retryDelayOnFailover: 100,
-        maxRetriesPerRequest: 3
+        maxRetriesPerRequest: 3,
       });
       await redis.connect();
-      
+
       const result = await redis.ping();
       expect(result).toBe('PONG');
     });
 
     test('should create client with redis:// URL', async () => {
-      redis = new RedisAdapter('redis://localhost:6379/0');
+      const serversAvailable = await testUtils.checkTestServers();
+      if (!serversAvailable) {
+        pending('Test servers not available');
+        return;
+      }
+
+      const config = testUtils.getStandaloneConfig();
+      redis = new RedisAdapter(`redis://${config.host}:${config.port}/0`);
       await redis.connect();
-      
+
       const result = await redis.ping();
       expect(result).toBe('PONG');
     });
 
     test('should handle database selection', async () => {
-      redis = new RedisAdapter({ port: 6379, host: 'localhost', db: 1 });
+      const serversAvailable = await testUtils.checkTestServers();
+      if (!serversAvailable) {
+        pending('Test servers not available');
+        return;
+      }
+
+      const config = testUtils.getStandaloneConfig();
+      redis = new RedisAdapter({ port: config.port, host: config.host, db: 1 });
       await redis.connect();
-      
+
       // Test that we're using the correct database
       await redis.set('dbtest', 'value');
       expect(await redis.get('dbtest')).toBe('value');
@@ -65,52 +112,80 @@ describe('Connection Management (ioredis compatibility)', () => {
 
   describe('Connection lifecycle', () => {
     test('should emit ready event when connected', async () => {
-      redis = new RedisAdapter();
-      
-      const readyPromise = new Promise<void>((resolve) => {
+      const serversAvailable = await testUtils.checkTestServers();
+      if (!serversAvailable) {
+        pending('Test servers not available');
+        return;
+      }
+
+      const config = testUtils.getStandaloneConfig();
+      redis = new RedisAdapter(config);
+
+      const readyPromise = new Promise<void>(resolve => {
         redis.on('ready', resolve);
       });
-      
+
       await redis.connect();
       await readyPromise;
-      
+
       expect(redis.status).toBe('ready');
     });
 
     test('should emit connect event', async () => {
-      redis = new RedisAdapter();
-      
-      const connectPromise = new Promise<void>((resolve) => {
+      const serversAvailable = await testUtils.checkTestServers();
+      if (!serversAvailable) {
+        pending('Test servers not available');
+        return;
+      }
+
+      const config = testUtils.getStandaloneConfig();
+      redis = new RedisAdapter(config);
+
+      const connectPromise = new Promise<void>(resolve => {
         redis.on('connect', resolve);
       });
-      
+
       await redis.connect();
       await connectPromise;
     });
 
     test('should emit end event when disconnected', async () => {
-      redis = new RedisAdapter();
+      const serversAvailable = await testUtils.checkTestServers();
+      if (!serversAvailable) {
+        pending('Test servers not available');
+        return;
+      }
+
+      const config = testUtils.getStandaloneConfig();
+      redis = new RedisAdapter(config);
       await redis.connect();
-      
-      const endPromise = new Promise<void>((resolve) => {
+
+      const endPromise = new Promise<void>(resolve => {
         redis.on('end', resolve);
       });
-      
+
       await redis.disconnect();
       await endPromise;
-      
+
       expect(redis.status).toBe('end');
     });
 
     test('should handle reconnection', async () => {
-      redis = new RedisAdapter({ retryDelayOnFailover: 10 });
+      const serversAvailable = await testUtils.checkTestServers();
+      if (!serversAvailable) {
+        pending('Test servers not available');
+        return;
+      }
+
+      const config = testUtils.getStandaloneConfig();
+      redis = new RedisAdapter({ ...config, retryDelayOnFailover: 10 });
       await redis.connect();
-      
+
       // Simulate connection loss and recovery
-      const reconnectPromise = new Promise<void>((resolve) => {
+      const reconnectPromise = new Promise<void>(resolve => {
         redis.on('ready', resolve);
       });
-      
+
       // Force reconnection simulation
       redis.disconnect();
       await redis.connect();
@@ -121,29 +196,36 @@ describe('Connection Management (ioredis compatibility)', () => {
   describe('Error handling', () => {
     test('should emit error events', async () => {
       redis = new RedisAdapter({ port: 9999 }); // Non-existent port
-      
-      const errorPromise = new Promise<Error>((resolve) => {
+
+      const errorPromise = new Promise<Error>(resolve => {
         redis.on('error', resolve);
       });
-      
+
       try {
         await redis.connect();
       } catch (error) {
         // Expected to fail
       }
-      
+
       const error = await errorPromise;
       expect(error).toBeInstanceOf(Error);
     });
 
     test('should handle command errors gracefully', async () => {
-      redis = new RedisAdapter();
+      const serversAvailable = await testUtils.checkTestServers();
+      if (!serversAvailable) {
+        pending('Test servers not available');
+        return;
+      }
+
+      const config = testUtils.getStandaloneConfig();
+      redis = new RedisAdapter(config);
       await redis.connect();
-      
+
       // Try to increment a non-numeric value
       await redis.set('text', 'not_a_number');
       await expect(redis.incr('text')).rejects.toThrow();
-      
+
       // Connection should still be usable
       expect(await redis.ping()).toBe('PONG');
     });
@@ -153,9 +235,46 @@ describe('Connection Management (ioredis compatibility)', () => {
 describe('Pipeline Operations (ioredis compatibility)', () => {
   let redis: RedisAdapter;
 
+  beforeAll(async () => {
+    // Check if test servers are available
+    const serversAvailable = await testUtils.checkTestServers();
+    if (!serversAvailable) {
+      console.warn(
+        '⚠️  Test servers not available. Please run: ./scripts/start-test-servers.sh'
+      );
+      console.warn('   Skipping pipeline tests...');
+    }
+  });
+
   beforeEach(async () => {
-    redis = new RedisAdapter();
+    // Skip tests if servers are not available
+    const serversAvailable = await testUtils.checkTestServers();
+    if (!serversAvailable) {
+      pending('Test servers not available');
+      return;
+    }
+
+    // Use test server configuration
+    const config = testUtils.getStandaloneConfig();
+    redis = new RedisAdapter(config);
     await redis.connect();
+
+    // Clean up any existing test data
+    try {
+      await redis.del(
+        'key1',
+        'key2',
+        'key3',
+        'string_key',
+        'hash_key',
+        'list_key',
+        'number',
+        'text',
+        'watched_key'
+      );
+    } catch {
+      // Ignore cleanup errors
+    }
   });
 
   afterEach(async () => {
@@ -167,56 +286,56 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
   describe('Basic pipeline operations', () => {
     test('should execute multiple commands in pipeline', async () => {
       const pipeline = redis.pipeline();
-      
+
       pipeline.set('key1', 'value1');
       pipeline.set('key2', 'value2');
       pipeline.get('key1');
       pipeline.get('key2');
-      
+
       const results = await pipeline.exec();
-      
+
       // ioredis returns [[error, result], [error, result], ...]
       expect(results).toEqual([
         [null, 'OK'],
         [null, 'OK'],
         [null, 'value1'],
-        [null, 'value2']
+        [null, 'value2'],
       ]);
     });
 
     test('should handle mixed command types in pipeline', async () => {
       const pipeline = redis.pipeline();
-      
+
       pipeline.set('string_key', 'string_value');
       pipeline.hset('hash_key', 'field', 'hash_value');
       pipeline.lpush('list_key', 'list_value');
       pipeline.get('string_key');
       pipeline.hget('hash_key', 'field');
       pipeline.lpop('list_key');
-      
+
       const results = await pipeline.exec();
-      
+
       expect(results).toEqual([
-        [null, 'OK'],        // set
-        [null, 1],           // hset
-        [null, 1],           // lpush
+        [null, 'OK'], // set
+        [null, 1], // hset
+        [null, 1], // lpush
         [null, 'string_value'], // get
-        [null, 'hash_value'],   // hget
-        [null, 'list_value']    // lpop
+        [null, 'hash_value'], // hget
+        [null, 'list_value'], // lpop
       ]);
     });
 
     test('should handle errors in pipeline', async () => {
       const pipeline = redis.pipeline();
-      
+
       pipeline.set('number', '10');
-      pipeline.incr('number');    // Should succeed
+      pipeline.incr('number'); // Should succeed
       pipeline.set('text', 'abc');
-      pipeline.incr('text');      // Should fail
-      pipeline.get('number');     // Should succeed
-      
+      pipeline.incr('text'); // Should fail
+      pipeline.get('number'); // Should succeed
+
       const results = await pipeline.exec();
-      
+
       expect(results[0]).toEqual([null, 'OK']);
       expect(results[1]).toEqual([null, 11]);
       expect(results[2]).toEqual([null, 'OK']);
@@ -225,16 +344,17 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     });
 
     test('pipeline should be chainable', async () => {
-      const results = await redis.pipeline()
+      const results = await redis
+        .pipeline()
         .set('key1', 'value1')
         .set('key2', 'value2')
         .mget('key1', 'key2')
         .exec();
-      
+
       expect(results).toEqual([
         [null, 'OK'],
         [null, 'OK'],
-        [null, ['value1', 'value2']]
+        [null, ['value1', 'value2']],
       ]);
     });
   });
@@ -242,19 +362,21 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
   describe('Pipeline performance characteristics', () => {
     test('should batch commands efficiently', async () => {
       const pipeline = redis.pipeline();
-      
+
       // Add many commands
       for (let i = 0; i < 100; i++) {
         pipeline.set(`key${i}`, `value${i}`);
       }
-      
+
       const startTime = Date.now();
       const results = await pipeline.exec();
       const endTime = Date.now();
-      
+
       expect(results).toHaveLength(100);
-      expect(results.every(([error, result]) => error === null && result === 'OK')).toBe(true);
-      
+      expect(
+        results.every(([error, result]) => error === null && result === 'OK')
+      ).toBe(true);
+
       // Pipeline should be faster than individual commands
       // This is a rough performance check
       expect(endTime - startTime).toBeLessThan(1000);
@@ -270,57 +392,58 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
   describe('Pipeline with transactions', () => {
     test('should support atomic transactions', async () => {
       const multi = redis.multi();
-      
+
       multi.set('counter', '0');
       multi.incr('counter');
       multi.incr('counter');
       multi.get('counter');
-      
+
       const results = await multi.exec();
-      
+
       expect(results).toEqual([
         [null, 'OK'],
         [null, 1],
         [null, 2],
-        [null, '2']
+        [null, '2'],
       ]);
     });
 
     test('should handle transaction rollback on error', async () => {
       await redis.set('existing_string', 'text_value');
-      
+
       const multi = redis.multi();
       multi.incr('existing_string'); // This will cause transaction to fail
       multi.set('should_not_be_set', 'value');
-      
+
       const results = await multi.exec();
-      
+
       // Transaction should be aborted, results should indicate failure
       expect(results).toBeNull(); // Or handle according to ioredis behavior
-      
+
       // Verify no changes were made
       expect(await redis.exists('should_not_be_set')).toBe(0);
     });
 
     test('should support WATCH for optimistic locking', async () => {
       await redis.set('watched_key', '10');
-      
+
       // Start watching
       await redis.watch('watched_key');
-      
+
       // Simulate concurrent modification
-      const otherClient = new RedisAdapter();
+      const config = testUtils.getStandaloneConfig();
+      const otherClient = new RedisAdapter(config);
       await otherClient.connect();
       await otherClient.set('watched_key', '20');
       await otherClient.disconnect();
-      
+
       // Transaction should fail due to watched key modification
       const multi = redis.multi();
       multi.incr('watched_key');
-      
+
       const results = await multi.exec();
       expect(results).toBeNull(); // Transaction aborted
-      
+
       // Verify original value from other client
       expect(await redis.get('watched_key')).toBe('20');
     });
@@ -329,15 +452,15 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
   describe('Pipeline error recovery', () => {
     test('should continue processing after command error', async () => {
       const pipeline = redis.pipeline();
-      
+
       pipeline.set('good1', 'value1');
       pipeline.incr('non_numeric_key'); // Will error
       pipeline.set('good2', 'value2');
       pipeline.get('good1');
       pipeline.get('good2');
-      
+
       const results = await pipeline.exec();
-      
+
       expect(results[0]).toEqual([null, 'OK']);
       expect(results[1][0]).toBeInstanceOf(Error);
       expect(results[2]).toEqual([null, 'OK']);
@@ -347,16 +470,16 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
 
     test('should handle pipeline abort', async () => {
       const pipeline = redis.pipeline();
-      
+
       pipeline.set('key1', 'value1');
       pipeline.set('key2', 'value2');
-      
+
       // Abort before execution
       pipeline.discard();
-      
+
       const results = await pipeline.exec();
       expect(results).toEqual([]); // No commands executed
-      
+
       // Verify no keys were set
       expect(await redis.exists('key1')).toBe(0);
       expect(await redis.exists('key2')).toBe(0);
@@ -367,25 +490,27 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     test('should handle very large pipelines', async () => {
       const pipeline = redis.pipeline();
       const commandCount = 1000;
-      
+
       for (let i = 0; i < commandCount; i++) {
         pipeline.set(`large_key_${i}`, `large_value_${i}`);
       }
-      
+
       const results = await pipeline.exec();
       expect(results).toHaveLength(commandCount);
-      expect(results.every(([error, result]) => error === null && result === 'OK')).toBe(true);
+      expect(
+        results.every(([error, result]) => error === null && result === 'OK')
+      ).toBe(true);
     });
 
     test('should handle commands with large payloads', async () => {
       const largeValue = 'x'.repeat(100000); // 100KB value
-      
+
       const pipeline = redis.pipeline();
       pipeline.set('large_key', largeValue);
       pipeline.get('large_key');
-      
+
       const results = await pipeline.exec();
-      
+
       expect(results[0]).toEqual([null, 'OK']);
       expect(results[1]).toEqual([null, largeValue]);
     });

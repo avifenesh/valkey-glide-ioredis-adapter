@@ -83,11 +83,14 @@ describe('Socket.IO Redis Adapter Integration', () => {
     try {
       const adapter1 = createAdapter(redisClient1 as any, redisClient1 as any);
       const adapter2 = createAdapter(redisClient2 as any, redisClient2 as any);
-      
+
       io1.adapter(adapter1);
       io2.adapter(adapter2);
-    } catch (error) {
-      console.warn('⚠️  Could not setup Redis adapters, falling back to default:', error.message);
+    } catch (error: any) {
+      console.warn(
+        '⚠️  Could not setup Redis adapters, falling back to default:',
+        error.message
+      );
       // Tests will run but won't test cross-instance functionality
     }
 
@@ -177,8 +180,8 @@ describe('Socket.IO Redis Adapter Integration', () => {
   describe('Basic Socket.IO Functionality', () => {
     test('should connect and communicate with single instance', async () => {
       const client = Client(`http://localhost:${port1}`);
-      
-      await new Promise<void>((resolve) => {
+
+      await new Promise<void>(resolve => {
         client.on('connect', () => {
           expect(client.connected).toBe(true);
           resolve();
@@ -191,30 +194,30 @@ describe('Socket.IO Redis Adapter Integration', () => {
     test('should handle room joining and broadcasting', async () => {
       const client1 = Client(`http://localhost:${port1}`);
       const client2 = Client(`http://localhost:${port1}`);
-      
+
       const room = 'test-room-' + testUtils.randomString();
       let messagesReceived = 0;
 
       await Promise.all([
-        new Promise<void>((resolve) => client1.on('connect', resolve)),
-        new Promise<void>((resolve) => client2.on('connect', resolve))
+        new Promise<void>(resolve => client1.on('connect', resolve)),
+        new Promise<void>(resolve => client2.on('connect', resolve)),
       ]);
 
       // Both clients join the same room
       await Promise.all([
-        new Promise<void>((resolve) => {
+        new Promise<void>(resolve => {
           client1.emit('join-room', room);
           client1.on('joined-room', resolve);
         }),
-        new Promise<void>((resolve) => {
+        new Promise<void>(resolve => {
           client2.emit('join-room', room);
           client2.on('joined-room', resolve);
-        })
+        }),
       ]);
 
       // Setup message listener
-      const messagePromise = new Promise<void>((resolve) => {
-        client2.on('room-message', (message) => {
+      const messagePromise = new Promise<void>(resolve => {
+        client2.on('room-message', (message: string) => {
           expect(message).toBe('Hello room!');
           messagesReceived++;
           resolve();
@@ -224,7 +227,7 @@ describe('Socket.IO Redis Adapter Integration', () => {
       // Client 1 broadcasts to room
       client1.emit('broadcast-to-room', {
         room: room,
-        message: 'Hello room!'
+        message: 'Hello room!',
       });
 
       await messagePromise;
@@ -239,33 +242,37 @@ describe('Socket.IO Redis Adapter Integration', () => {
     test('should broadcast messages across different Socket.IO instances', async () => {
       const client1 = Client(`http://localhost:${port1}`);
       const client2 = Client(`http://localhost:${port2}`);
-      
+
       const room = 'cross-instance-room-' + testUtils.randomString();
 
       await Promise.all([
-        new Promise<void>((resolve) => client1.on('connect', resolve)),
-        new Promise<void>((resolve) => client2.on('connect', resolve))
+        new Promise<void>(resolve => client1.on('connect', resolve)),
+        new Promise<void>(resolve => client2.on('connect', resolve)),
       ]);
 
       // Both clients join the same room on different instances
       await Promise.all([
-        new Promise<void>((resolve) => {
+        new Promise<void>(resolve => {
           client1.emit('join-room', room);
           client1.on('joined-room', resolve);
         }),
-        new Promise<void>((resolve) => {
+        new Promise<void>(resolve => {
           client2.emit('join-room', room);
           client2.on('joined-room', resolve);
-        })
+        }),
       ]);
 
       // Setup cross-instance message test
       const crossInstancePromise = new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
-          reject(new Error('Cross-instance message not received (Redis adapter may not be working)'));
+          reject(
+            new Error(
+              'Cross-instance message not received (Redis adapter may not be working)'
+            )
+          );
         }, 2000);
 
-        client2.on('room-message', (message) => {
+        client2.on('room-message', (message: string) => {
           clearTimeout(timeout);
           expect(message).toBe('Cross-instance hello!');
           resolve();
@@ -275,14 +282,17 @@ describe('Socket.IO Redis Adapter Integration', () => {
       // Client 1 (instance 1) broadcasts to room
       client1.emit('broadcast-to-room', {
         room: room,
-        message: 'Cross-instance hello!'
+        message: 'Cross-instance hello!',
       });
 
       try {
         await crossInstancePromise;
         console.log('✅ Cross-instance communication working!');
       } catch (error) {
-        console.warn('⚠️  Cross-instance test failed:', error.message);
+        console.warn(
+          '⚠️  Cross-instance test failed:',
+          (error as Error).message
+        );
         console.warn('   This may indicate Redis adapter compatibility issues');
         // Don't fail the test, just warn - adapter compatibility is complex
       }
@@ -303,18 +313,18 @@ describe('Socket.IO Redis Adapter Integration', () => {
 
       // Join multiple rooms
       await Promise.all([
-        new Promise<void>((resolve) => {
+        (new Promise<void>(resolve => {
           client.emit('join-room', room1);
-          client.on('joined-room', (room) => {
+          client.on('joined-room', (room: string) => {
             if (room === room1) resolve();
           });
         }),
-        new Promise<void>((resolve) => {
-          client.emit('join-room', room2);
-          client.on('joined-room', (room) => {
-            if (room === room2) resolve();
-          });
-        })
+          new Promise<void>(resolve => {
+            client.emit('join-room', room2);
+            client.on('joined-room', (room: string) => {
+              if (room === room2) resolve();
+            });
+          }));
       ]);
 
       // Leave one room

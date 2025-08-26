@@ -63,12 +63,13 @@ describe('Message Queue Systems Integration', () => {
 
     beforeEach(() => {
       // Create Bull queue with our Redis adapter
+      const config = testUtils.getStandaloneConfig();
       queue = new Queue('test-bull-queue', {
         redis: {
-          port: redisClient.options.port,
-          host: redisClient.options.host,
+          port: config.port,
+          host: config.host,
           keyPrefix: keyPrefix + 'bull:',
-        }
+        },
       });
 
       // Setup job processor
@@ -83,9 +84,9 @@ describe('Message Queue Systems Integration', () => {
     });
 
     test('should create and process simple jobs', async () => {
-      const jobData = { 
-        message: 'Hello Bull!', 
-        timestamp: Date.now() 
+      const jobData = {
+        message: 'Hello Bull!',
+        timestamp: Date.now(),
       };
 
       // Add job to queue
@@ -93,8 +94,8 @@ describe('Message Queue Systems Integration', () => {
       expect(job.id).toBeDefined();
 
       // Wait for job to be processed
-      await new Promise<void>((resolve) => {
-        queue.on('completed', (completedJob) => {
+      await new Promise<void>(resolve => {
+        queue.on('completed', completedJob => {
           if (completedJob.id === job.id) {
             resolve();
           }
@@ -103,7 +104,7 @@ describe('Message Queue Systems Integration', () => {
 
       expect(processor).toHaveBeenCalledWith(
         expect.objectContaining({
-          data: jobData
+          data: jobData,
         })
       );
     });
@@ -112,12 +113,16 @@ describe('Message Queue Systems Integration', () => {
       const delayMs = 200;
       const startTime = Date.now();
 
-      const job = await queue.add('delayed-job', { message: 'delayed' }, {
-        delay: delayMs
-      });
+      const job = await queue.add(
+        'delayed-job',
+        { message: 'delayed' },
+        {
+          delay: delayMs,
+        }
+      );
 
-      await new Promise<void>((resolve) => {
-        queue.on('completed', (completedJob) => {
+      await new Promise<void>(resolve => {
+        queue.on('completed', completedJob => {
           if (completedJob.id === job.id) {
             const endTime = Date.now();
             expect(endTime - startTime).toBeGreaterThanOrEqual(delayMs);
@@ -131,7 +136,7 @@ describe('Message Queue Systems Integration', () => {
       const processedJobs: any[] = [];
 
       // Create processor that records order
-      queue.process(async (job) => {
+      queue.process(async job => {
         processedJobs.push(job.data);
         return { processed: true };
       });
@@ -142,7 +147,7 @@ describe('Message Queue Systems Integration', () => {
       await queue.add('medium', { priority: 'medium' }, { priority: 5 });
 
       // Wait for all jobs to complete
-      await new Promise<void>((resolve) => {
+      await new Promise<void>(resolve => {
         let completedCount = 0;
         queue.on('completed', () => {
           completedCount++;
@@ -160,7 +165,7 @@ describe('Message Queue Systems Integration', () => {
       let attemptCount = 0;
 
       // Create failing processor
-      queue.process(async (job) => {
+      queue.process(async _job => {
         attemptCount++;
         if (attemptCount < 3) {
           throw new Error('Simulated failure');
@@ -168,16 +173,20 @@ describe('Message Queue Systems Integration', () => {
         return { processed: true, attempts: attemptCount };
       });
 
-      const job = await queue.add('failing-job', { willFail: true }, {
-        attempts: 3,
-        backoff: {
-          type: 'fixed',
-          delay: 100
+      const job = await queue.add(
+        'failing-job',
+        { willFail: true },
+        {
+          attempts: 3,
+          backoff: {
+            type: 'fixed',
+            delay: 100,
+          },
         }
-      });
+      );
 
-      await new Promise<void>((resolve) => {
-        queue.on('completed', (completedJob) => {
+      await new Promise<void>(resolve => {
+        queue.on('completed', completedJob => {
           if (completedJob.id === job.id) {
             expect(attemptCount).toBe(3);
             resolve();
@@ -197,7 +206,9 @@ describe('Message Queue Systems Integration', () => {
       const active = await queue.getActive();
       const completed = await queue.getCompleted();
 
-      expect(waiting.length + active.length + completed.length).toBeGreaterThan(0);
+      expect(waiting.length + active.length + completed.length).toBeGreaterThan(
+        0
+      );
     });
   });
 
@@ -206,14 +217,15 @@ describe('Message Queue Systems Integration', () => {
 
     beforeEach(() => {
       // Create Bee-queue with our Redis configuration
+      const config = testUtils.getStandaloneConfig();
       queue = new BeeQueue('test-bee-queue', {
         redis: {
-          port: redisClient.options.port,
-          host: redisClient.options.host,
+          port: config.port,
+          host: config.host,
         },
         prefix: keyPrefix + 'bee:',
         removeOnSuccess: false, // Keep jobs for testing
-        removeOnFailure: false
+        removeOnFailure: false,
       });
     });
 
@@ -227,8 +239,8 @@ describe('Message Queue Systems Integration', () => {
       const processedJobs: any[] = [];
 
       // Setup processor
-      queue.process(async (job) => {
-        processedJobs.push(job.data);
+      queue.process(async _job => {
+        processedJobs.push(_job.data);
         return { processed: true, timestamp: Date.now() };
       });
 
@@ -246,7 +258,7 @@ describe('Message Queue Systems Integration', () => {
       expect(job.id).toBeDefined();
 
       // Wait for processing
-      await new Promise<void>((resolve) => {
+      await new Promise<void>(resolve => {
         queue.on('succeeded', (job, result) => {
           if (job.data.id === jobData.id) {
             expect(result.processed).toBe(true);
@@ -261,7 +273,7 @@ describe('Message Queue Systems Integration', () => {
     test('should handle job delays with Bee-queue', async () => {
       let processedAt: number;
 
-      queue.process(async (job) => {
+      queue.process(async _job => {
         processedAt = Date.now();
         return { processed: true };
       });
@@ -281,7 +293,7 @@ describe('Message Queue Systems Integration', () => {
       });
 
       // Wait for job to be processed
-      await new Promise<void>((resolve) => {
+      await new Promise<void>(resolve => {
         queue.on('succeeded', () => {
           expect(processedAt - startTime).toBeGreaterThanOrEqual(delayMs);
           resolve();
@@ -292,7 +304,7 @@ describe('Message Queue Systems Integration', () => {
     test('should handle job failures with Bee-queue', async () => {
       let attemptCount = 0;
 
-      queue.process(async (job) => {
+      queue.process(async _job => {
         attemptCount++;
         throw new Error('Bee job failed');
       });
@@ -307,8 +319,8 @@ describe('Message Queue Systems Integration', () => {
       });
 
       // Wait for failure
-      await new Promise<void>((resolve) => {
-        queue.on('failed', (job, err) => {
+      await new Promise<void>(resolve => {
+        queue.on('failed', (_job, err) => {
           expect(err.message).toBe('Bee job failed');
           expect(attemptCount).toBe(1);
           resolve();
@@ -319,7 +331,7 @@ describe('Message Queue Systems Integration', () => {
     test('should provide health check capabilities', async () => {
       // Add a test job
       const job = queue.createJob({ health: 'check' });
-      
+
       await new Promise<void>((resolve, reject) => {
         job.save((err: any) => {
           if (err) reject(err);
@@ -329,9 +341,8 @@ describe('Message Queue Systems Integration', () => {
 
       // Check queue health
       const health = await new Promise<any>((resolve, reject) => {
-        queue.checkHealth((err: any, counts: any) => {
-          if (err) reject(err);
-          else resolve(counts);
+        queue.checkHealth((counts: any) => {
+          resolve(counts);
         });
       });
 
@@ -349,21 +360,22 @@ describe('Message Queue Systems Integration', () => {
       const jobs: any[] = [];
 
       // Test Bull queue performance
+      const config = testUtils.getStandaloneConfig();
       const bullQueue = new Queue('perf-test-bull', {
         redis: {
-          port: redisClient.options.port,
-          host: redisClient.options.host,
+          port: config.port,
+          host: config.host,
           keyPrefix: keyPrefix + 'perf:bull:',
-        }
+        },
       });
 
       const startTime = Date.now();
 
       // Create multiple jobs rapidly
       for (let i = 0; i < jobCount; i++) {
-        const job = await bullQueue.add('perf-job', { 
-          index: i, 
-          timestamp: Date.now() 
+        const job = await bullQueue.add('perf-job', {
+          index: i,
+          timestamp: Date.now(),
         });
         jobs.push(job);
       }
@@ -380,20 +392,21 @@ describe('Message Queue Systems Integration', () => {
     });
 
     test('should handle concurrent queue operations', async () => {
+      const config = testUtils.getStandaloneConfig();
       const queue1 = new Queue('concurrent-1', {
         redis: {
-          port: redisClient.options.port,
-          host: redisClient.options.host,
+          port: config.port,
+          host: config.host,
           keyPrefix: keyPrefix + 'concurrent:1:',
-        }
+        },
       });
 
       const queue2 = new Queue('concurrent-2', {
         redis: {
-          port: redisClient.options.port,
-          host: redisClient.options.host,
+          port: config.port,
+          host: config.host,
           keyPrefix: keyPrefix + 'concurrent:2:',
-        }
+        },
       });
 
       // Add jobs to both queues concurrently
