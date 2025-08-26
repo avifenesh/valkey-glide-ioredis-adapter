@@ -1,0 +1,107 @@
+{
+  "name": "@valkey/valkey-glide-ioredis-adapter",
+  "version": "0.1.0",
+  "description": "ioredis compatibility adapter for Valkey GLIDE",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist/**",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:ci": "jest --ci --coverage --watchAll=false",
+    "lint": "eslint src tests --ext .ts",
+    "lint:fix": "eslint src tests --ext .ts --fix",
+    "format": "prettier --write src tests",
+    "format:check": "prettier --check src tests",
+    "clean": "rimraf dist",
+    "prepublishOnly": "npm run clean && npm run build && npm run test",
+    "dev": "concurrently \"npm run build:watch\" \"npm run test:watch\""
+  },
+  "keywords": [
+    "redis",
+    "valkey",
+    "ioredis",
+    "adapter",
+    "glide",
+    "database",
+    "migration",
+    "compatibility",
+    "typescript"
+  ],
+  "author": "Valkey GLIDE Maintainers",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/valkey-io/valkey-glide.git",
+    "directory": "ioredis-adapter"
+  },
+  "bugs": {
+    "url": "https://github.com/valkey-io/valkey-glide/issues"
+  },
+  "homepage": "https://valkey.io/valkey-glide/",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@valkey/valkey-glide": "2.0.1",
+    "events": "^3.3.0"
+  },
+  "devDependencies": {
+    "@socket.io/redis-adapter": "^8.3.0",
+    "@types/express": "^5.0.3",
+    "@types/jest": "^29.5.14",
+    "@types/node": "24.3.0",
+    "@types/supertest": "^6.0.3",
+    "@typescript-eslint/eslint-plugin": "8.41.0",
+    "@typescript-eslint/parser": "8.41.0",
+    "bee-queue": "^1.7.1",
+    "bull": "^4.16.5",
+    "bullmq": "^5.58.2",
+    "concurrently": "9.2.1",
+    "connect-redis": "^9.0.0",
+    "dotenv": "^17.2.1",
+    "eslint": "^8.57.1",
+    "eslint-config-prettier": "^8.10.2",
+    "eslint-plugin-prettier": "5.5.4",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.0.1",
+    "express-session": "^1.18.2",
+    "ioredis": "^5.7.0",
+    "jest": "30.0.5",
+    "nest-redis": "^1.4.1",
+    "prettier": "3.6.2",
+    "rate-limit-redis": "^4.2.2",
+    "rimraf": "6.0.1",
+    "socket.io": "^4.8.1",
+    "supertest": "^7.1.4",
+    "ts-jest": "^29.4.1",
+    "typescript": "^5.9.2"
+  },
+  "peerDependencies": {
+    "ioredis": "^5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "ioredis": {
+      "optional": true
+    }
+  }
+}

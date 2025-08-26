@@ -1,0 +1,300 @@
+/**
+ * Type definitions for ioredis adapter
+ */
+
+import { EventEmitter } from 'events';
+
+// Basic types
+export type RedisValue = string | number | Buffer;
+export type RedisKey = string | Buffer;
+
+// Connection options (ioredis compatible)
+export interface RedisOptions {
+  port?: number;
+  host?: string;
+  username?: string;
+  password?: string;
+  db?: number;
+  retryDelayOnFailover?: number;
+  maxRetriesPerRequest?: number;
+  connectTimeout?: number;
+  commandTimeout?: number;
+  family?: number;
+  keepAlive?: boolean;
+  enableReadyCheck?: boolean;
+  maxLoadingTimeout?: number;
+  keyPrefix?: string;
+}
+
+// Connection status
+export type ConnectionStatus = 'connecting' | 'connected' | 'ready' | 'disconnecting' | 'disconnected' | 'reconnecting' | 'end' | 'error';
+
+// Pipeline and Multi interfaces
+export interface Pipeline {
+  // String commands
+  set(key: RedisKey, value: RedisValue, ...args: any[]): Pipeline;
+  get(key: RedisKey): Pipeline;
+  mget(...keys: RedisKey[]): Pipeline;
+  mget(keys: RedisKey[]): Pipeline;
+  mset(...args: any[]): Pipeline;
+  mset(hash: Record<string, RedisValue>): Pipeline;
+  incr(key: RedisKey): Pipeline;
+  decr(key: RedisKey): Pipeline;
+  incrby(key: RedisKey, increment: number): Pipeline;
+  decrby(key: RedisKey, decrement: number): Pipeline;
+  incrbyfloat(key: RedisKey, increment: number): Pipeline;
+  append(key: RedisKey, value: RedisValue): Pipeline;
+  strlen(key: RedisKey): Pipeline;
+  getrange(key: RedisKey, start: number, end: number): Pipeline;
+  setrange(key: RedisKey, offset: number, value: RedisValue): Pipeline;
+  setex(key: RedisKey, seconds: number, value: RedisValue): Pipeline;
+  setnx(key: RedisKey, value: RedisValue): Pipeline;
+  psetex(key: RedisKey, milliseconds: number, value: RedisValue): Pipeline;
+
+  // Hash commands
+  hset(key: RedisKey, ...args: any[]): Pipeline;
+  hset(key: RedisKey, hash: Record<string, RedisValue>): Pipeline;
+  hget(key: RedisKey, field: string): Pipeline;
+  hmset(key: RedisKey, ...args: any[]): Pipeline;
+  hmset(key: RedisKey, hash: Record<string, RedisValue>): Pipeline;
+  hmget(key: RedisKey, ...fields: string[]): Pipeline;
+  hmget(key: RedisKey, fields: string[]): Pipeline;
+  hgetall(key: RedisKey): Pipeline;
+  hdel(key: RedisKey, ...fields: string[]): Pipeline;
+  hexists(key: RedisKey, field: string): Pipeline;
+  hkeys(key: RedisKey): Pipeline;
+  hvals(key: RedisKey): Pipeline;
+  hlen(key: RedisKey): Pipeline;
+  hincrby(key: RedisKey, field: string, increment: number): Pipeline;
+  hincrbyfloat(key: RedisKey, field: string, increment: number): Pipeline;
+  hsetnx(key: RedisKey, field: string, value: RedisValue): Pipeline;
+
+  // List commands
+  lpush(key: RedisKey, ...elements: RedisValue[]): Pipeline;
+  lpush(key: RedisKey, elements: RedisValue[]): Pipeline;
+  rpush(key: RedisKey, ...elements: RedisValue[]): Pipeline;
+  rpush(key: RedisKey, elements: RedisValue[]): Pipeline;
+  lpop(key: RedisKey, count?: number): Pipeline;
+  rpop(key: RedisKey, count?: number): Pipeline;
+  lrange(key: RedisKey, start: number, stop: number): Pipeline;
+  llen(key: RedisKey): Pipeline;
+  lindex(key: RedisKey, index: number): Pipeline;
+  lset(key: RedisKey, index: number, element: RedisValue): Pipeline;
+  ltrim(key: RedisKey, start: number, stop: number): Pipeline;
+  lrem(key: RedisKey, count: number, element: RedisValue): Pipeline;
+  lpushx(key: RedisKey, ...elements: RedisValue[]): Pipeline;
+  rpushx(key: RedisKey, ...elements: RedisValue[]): Pipeline;
+
+  // Key commands
+  del(...keys: RedisKey[]): Pipeline;
+  exists(...keys: RedisKey[]): Pipeline;
+  expire(key: RedisKey, seconds: number): Pipeline;
+  ttl(key: RedisKey): Pipeline;
+  type(key: RedisKey): Pipeline;
+
+  // Control
+  exec(): Promise<Array<[Error | null, any]>>;
+  discard(): void;
+}
+
+export interface Multi {
+  // String commands
+  set(key: RedisKey, value: RedisValue, ...args: any[]): Multi;
+  get(key: RedisKey): Multi;
+  mget(...keys: RedisKey[]): Multi;
+  mget(keys: RedisKey[]): Multi;
+  mset(...args: any[]): Multi;
+  mset(hash: Record<string, RedisValue>): Multi;
+  incr(key: RedisKey): Multi;
+  decr(key: RedisKey): Multi;
+  incrby(key: RedisKey, increment: number): Multi;
+  decrby(key: RedisKey, decrement: number): Multi;
+  incrbyfloat(key: RedisKey, increment: number): Multi;
+  append(key: RedisKey, value: RedisValue): Multi;
+  strlen(key: RedisKey): Multi;
+  getrange(key: RedisKey, start: number, end: number): Multi;
+  setrange(key: RedisKey, offset: number, value: RedisValue): Multi;
+  setex(key: RedisKey, seconds: number, value: RedisValue): Multi;
+  setnx(key: RedisKey, value: RedisValue): Multi;
+  psetex(key: RedisKey, milliseconds: number, value: RedisValue): Multi;
+
+  // Hash commands
+  hset(key: RedisKey, ...args: any[]): Multi;
+  hset(key: RedisKey, hash: Record<string, RedisValue>): Multi;
+  hget(key: RedisKey, field: string): Multi;
+  hmset(key: RedisKey, ...args: any[]): Multi;
+  hmset(key: RedisKey, hash: Record<string, RedisValue>): Multi;
+  hmget(key: RedisKey, ...fields: string[]): Multi;
+  hmget(key: RedisKey, fields: string[]): Multi;
+  hgetall(key: RedisKey): Multi;
+  hdel(key: RedisKey, ...fields: string[]): Multi;
+  hexists(key: RedisKey, field: string): Multi;
+  hkeys(key: RedisKey): Multi;
+  hvals(key: RedisKey): Multi;
+  hlen(key: RedisKey): Multi;
+  hincrby(key: RedisKey, field: string, increment: number): Multi;
+  hincrbyfloat(key: RedisKey, field: string, increment: number): Multi;
+  hsetnx(key: RedisKey, field: string, value: RedisValue): Multi;
+
+  // List commands
+  lpush(key: RedisKey, ...elements: RedisValue[]): Multi;
+  lpush(key: RedisKey, elements: RedisValue[]): Multi;
+  rpush(key: RedisKey, ...elements: RedisValue[]): Multi;
+  rpush(key: RedisKey, elements: RedisValue[]): Multi;
+  lpop(key: RedisKey, count?: number): Multi;
+  rpop(key: RedisKey, count?: number): Multi;
+  lrange(key: RedisKey, start: number, stop: number): Multi;
+  llen(key: RedisKey): Multi;
+  lindex(key: RedisKey, index: number): Multi;
+  lset(key: RedisKey, index: number, element: RedisValue): Multi;
+  ltrim(key: RedisKey, start: number, stop: number): Multi;
+  lrem(key: RedisKey, count: number, element: RedisValue): Multi;
+  lpushx(key: RedisKey, ...elements: RedisValue[]): Multi;
+  rpushx(key: RedisKey, ...elements: RedisValue[]): Multi;
+
+  // Key commands
+  del(...keys: RedisKey[]): Multi;
+  exists(...keys: RedisKey[]): Multi;
+  expire(key: RedisKey, seconds: number): Multi;
+  ttl(key: RedisKey): Multi;
+  type(key: RedisKey): Multi;
+
+  // Multi-specific methods
+  watch(...keys: RedisKey[]): Promise<string>;
+  unwatch(): Promise<string>;
+  
+  // Override exec to allow null return (when transaction is discarded)
+  exec(): Promise<Array<[Error | null, any]> | null>;
+  discard(): void;
+}
+
+// Cluster node definition
+export interface ClusterNode {
+  host: string;
+  port: number;
+}
+
+export interface ClusterOptions {
+  enableReadyCheck?: boolean;
+  redisOptions?: RedisOptions;
+  maxRedirections?: number;
+  retryDelayOnFailover?: number;
+  retryDelayOnClusterDown?: number;
+  retryDelayOnTimeout?: number;
+  slotsRefreshTimeout?: number;
+  slotsRefreshInterval?: number;
+}
+
+// Events interface
+export interface RedisEvents {
+  'connect': () => void;
+  'ready': () => void;
+  'error': (error: Error) => void;
+  'close': () => void;
+  'reconnecting': () => void;
+  'end': () => void;
+  'wait': () => void;
+  'message': (channel: string, message: string) => void;
+  'messageBuffer': (channel: Buffer, message: Buffer) => void;
+  'pmessage': (pattern: string, channel: string, message: string) => void;
+  'pmessageBuffer': (pattern: Buffer, channel: Buffer, message: Buffer) => void;
+  'subscribe': (channel: string, count: number) => void;
+  'unsubscribe': (channel: string, count: number) => void;
+  'psubscribe': (pattern: string, count: number) => void;
+  'punsubscribe': (pattern: string, count: number) => void;
+}
+
+// Main interfaces
+export interface IRedisAdapter extends EventEmitter {
+  readonly status: ConnectionStatus;
+  
+  // Connection management
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  ping(message?: string): Promise<string>;
+
+  // String commands
+  set(key: RedisKey, value: RedisValue, ...args: any[]): Promise<string | null>;
+  get(key: RedisKey): Promise<string | null>;
+  mget(...keys: RedisKey[]): Promise<(string | null)[]>;
+  mget(keys: RedisKey[]): Promise<(string | null)[]>;
+  mset(...args: any[]): Promise<string>;
+  mset(hash: Record<string, RedisValue>): Promise<string>;
+  incr(key: RedisKey): Promise<number>;
+  decr(key: RedisKey): Promise<number>;
+  incrby(key: RedisKey, increment: number): Promise<number>;
+  decrby(key: RedisKey, decrement: number): Promise<number>;
+  incrbyfloat(key: RedisKey, increment: number): Promise<number>;
+  append(key: RedisKey, value: RedisValue): Promise<number>;
+  strlen(key: RedisKey): Promise<number>;
+  getrange(key: RedisKey, start: number, end: number): Promise<string>;
+  setrange(key: RedisKey, offset: number, value: RedisValue): Promise<number>;
+  setex(key: RedisKey, seconds: number, value: RedisValue): Promise<string>;
+  setnx(key: RedisKey, value: RedisValue): Promise<number>;
+  psetex(key: RedisKey, milliseconds: number, value: RedisValue): Promise<string>;
+
+  // Hash commands
+  hset(key: RedisKey, ...args: any[]): Promise<number>;
+  hset(key: RedisKey, hash: Record<string, RedisValue>): Promise<number>;
+  hget(key: RedisKey, field: string): Promise<string | null>;
+  hmset(key: RedisKey, ...args: any[]): Promise<string>;
+  hmset(key: RedisKey, hash: Record<string, RedisValue>): Promise<string>;
+  hmget(key: RedisKey, ...fields: string[]): Promise<(string | null)[]>;
+  hmget(key: RedisKey, fields: string[]): Promise<(string | null)[]>;
+  hgetall(key: RedisKey): Promise<Record<string, string>>;
+  hdel(key: RedisKey, ...fields: string[]): Promise<number>;
+  hexists(key: RedisKey, field: string): Promise<number>;
+  hkeys(key: RedisKey): Promise<string[]>;
+  hvals(key: RedisKey): Promise<string[]>;
+  hlen(key: RedisKey): Promise<number>;
+  hincrby(key: RedisKey, field: string, increment: number): Promise<number>;
+  hincrbyfloat(key: RedisKey, field: string, increment: number): Promise<number>;
+  hsetnx(key: RedisKey, field: string, value: RedisValue): Promise<number>;
+
+  // List commands
+  lpush(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
+  lpush(key: RedisKey, elements: RedisValue[]): Promise<number>;
+  rpush(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
+  rpush(key: RedisKey, elements: RedisValue[]): Promise<number>;
+  lpop(key: RedisKey, count?: number): Promise<string | string[] | null>;
+  rpop(key: RedisKey, count?: number): Promise<string | string[] | null>;
+  lrange(key: RedisKey, start: number, stop: number): Promise<string[]>;
+  llen(key: RedisKey): Promise<number>;
+  lindex(key: RedisKey, index: number): Promise<string | null>;
+  lset(key: RedisKey, index: number, element: RedisValue): Promise<string>;
+  ltrim(key: RedisKey, start: number, stop: number): Promise<string>;
+  lrem(key: RedisKey, count: number, element: RedisValue): Promise<number>;
+  lpushx(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
+  rpushx(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
+
+  // Key commands
+  del(...keys: RedisKey[]): Promise<number>;
+  exists(...keys: RedisKey[]): Promise<number>;
+  expire(key: RedisKey, seconds: number): Promise<number>;
+  ttl(key: RedisKey): Promise<number>;
+  type(key: RedisKey): Promise<string>;
+  keys(pattern?: string): Promise<string[]>;
+
+  // Generic command execution
+  call(command: string, ...args: (string | number | Buffer)[]): Promise<any>;
+
+  // Pipeline and transactions
+  pipeline(): Pipeline;
+  multi(): Multi;
+
+  // Pub/Sub
+  publish(channel: string, message: RedisValue): Promise<number>;
+  subscribe(...channels: string[]): Promise<number>;
+  unsubscribe(...channels: string[]): Promise<number>;
+  psubscribe(...patterns: string[]): Promise<number>;
+  punsubscribe(...patterns: string[]): Promise<number>;
+
+  // Event emitter methods (inherited from EventEmitter)
+  on<K extends keyof RedisEvents>(event: K, listener: RedisEvents[K]): this;
+  emit<K extends keyof RedisEvents>(event: K, ...args: Parameters<RedisEvents[K]>): boolean;
+}
+
+export interface IClusterAdapter extends IRedisAdapter {
+  nodes(): ClusterNode[];
+  // Cluster-specific methods would be added here
+}
