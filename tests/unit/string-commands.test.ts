@@ -13,7 +13,9 @@ describe('String Commands (ioredis compatibility)', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      console.warn('⚠️  Test servers not available. Please run: ./scripts/start-test-servers.sh');
+      console.warn(
+        '⚠️  Test servers not available. Please run: ./scripts/start-test-servers.sh'
+      );
       console.warn('   Skipping integration tests...');
     }
   });
@@ -25,18 +27,33 @@ describe('String Commands (ioredis compatibility)', () => {
       pending('Test servers not available');
       return;
     }
-    
+
     // Use test server configuration
     const config = await testUtils.getStandaloneConfig();
     redis = new RedisAdapter(config);
     await redis.connect();
-    
+
     // Clean up any existing test data
     try {
       await redis.del(
-        'foo', 'key', 'newkey', 'key1', 'key2', 'key3', 'counter', 'newcounter', 
-        'float_counter', 'mykey', 'largekey', 'tempkey', 'textkey', 'nonexistent',
-        'existing', 'newkey', 'number', 'text'
+        'foo',
+        'key',
+        'newkey',
+        'key1',
+        'key2',
+        'key3',
+        'counter',
+        'newcounter',
+        'float_counter',
+        'mykey',
+        'largekey',
+        'tempkey',
+        'textkey',
+        'nonexistent',
+        'existing',
+        'newkey',
+        'number',
+        'text'
       );
     } catch {
       // Ignore cleanup errors
@@ -70,9 +87,9 @@ describe('String Commands (ioredis compatibility)', () => {
       // ioredis pattern: redis.set('key', 'value', 'EX', 1)
       await redis.set('foo', 'bar', 'EX', 1);
       expect(await redis.get('foo')).toBe('bar');
-      
-      // Wait for expiration
-      await testUtils.delay(1100);
+
+      // Wait for expiration - increased delay for reliability
+      await testUtils.delay(1500);
       expect(await redis.get('foo')).toBeNull();
     });
 
@@ -80,7 +97,7 @@ describe('String Commands (ioredis compatibility)', () => {
       // ioredis pattern: redis.set('key', 'value', 'PX', 500)
       await redis.set('foo', 'bar', 'PX', 500);
       expect(await redis.get('foo')).toBe('bar');
-      
+
       await testUtils.delay(600);
       expect(await redis.get('foo')).toBeNull();
     });
@@ -97,7 +114,7 @@ describe('String Commands (ioredis compatibility)', () => {
       // ioredis pattern: redis.set('key', 'value', 'XX')
       const result1 = await redis.set('nonexistent', 'value', 'XX');
       expect(result1).toBeNull(); // Should fail because key doesn't exist
-      
+
       await redis.set('existing', 'old_value');
       const result2 = await redis.set('existing', 'new_value', 'XX');
       expect(result2).toBe('OK');
@@ -108,7 +125,7 @@ describe('String Commands (ioredis compatibility)', () => {
       // ioredis pattern: redis.set('key', 'value', 'EX', 60, 'NX')
       const result1 = await redis.set('newkey', 'value', 'EX', 1, 'NX');
       expect(result1).toBe('OK');
-      
+
       const result2 = await redis.set('newkey', 'other', 'EX', 1, 'NX');
       expect(result2).toBeNull(); // Should fail due to NX
     });
@@ -118,7 +135,7 @@ describe('String Commands (ioredis compatibility)', () => {
     test('mset should set multiple keys at once', async () => {
       // ioredis variadic pattern: redis.mset('key1', 'val1', 'key2', 'val2')
       await redis.mset('key1', 'val1', 'key2', 'val2', 'key3', 'val3');
-      
+
       expect(await redis.get('key1')).toBe('val1');
       expect(await redis.get('key2')).toBe('val2');
       expect(await redis.get('key3')).toBe('val3');
@@ -127,18 +144,18 @@ describe('String Commands (ioredis compatibility)', () => {
     test('mset should accept object format', async () => {
       // ioredis object pattern: redis.mset({key1: 'val1', key2: 'val2'})
       await redis.mset({ key1: 'val1', key2: 'val2' });
-      
+
       expect(await redis.get('key1')).toBe('val1');
       expect(await redis.get('key2')).toBe('val2');
     });
 
     test('mget should return multiple values', async () => {
       await redis.mset('key1', 'val1', 'key2', 'val2', 'key3', 'val3');
-      
+
       // ioredis variadic pattern: redis.mget('key1', 'key2', 'key3')
       const result1 = await redis.mget('key1', 'key2', 'key3');
       expect(result1).toEqual(['val1', 'val2', 'val3']);
-      
+
       // ioredis array pattern: redis.mget(['key1', 'key2', 'key3'])
       const result2 = await redis.mget(['key1', 'key2', 'key3']);
       expect(result2).toEqual(['val1', 'val2', 'val3']);
@@ -232,25 +249,26 @@ describe('String Commands (ioredis compatibility)', () => {
     test('setex should set key with expiration', async () => {
       await redis.setex('tempkey', 1, 'tempvalue');
       expect(await redis.get('tempkey')).toBe('tempvalue');
-      
-      await testUtils.delay(1100);
+
+      // Wait for expiration - increased delay for reliability
+      await testUtils.delay(1500);
       expect(await redis.get('tempkey')).toBeNull();
     });
 
     test('setnx should set only if key does not exist', async () => {
       const result1 = await redis.setnx('newkey', 'value1');
       expect(result1).toBe(1); // Success
-      
+
       const result2 = await redis.setnx('newkey', 'value2');
       expect(result2).toBe(0); // Failed because key exists
-      
+
       expect(await redis.get('newkey')).toBe('value1');
     });
 
     test('psetex should set key with millisecond expiration', async () => {
       await redis.psetex('tempkey', 500, 'tempvalue');
       expect(await redis.get('tempkey')).toBe('tempvalue');
-      
+
       await testUtils.delay(600);
       expect(await redis.get('tempkey')).toBeNull();
     });

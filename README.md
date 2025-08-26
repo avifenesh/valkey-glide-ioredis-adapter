@@ -18,15 +18,15 @@ This adapter aims to provide ioredis-compatible APIs built on valkey-glide, pote
 
 ### 🚧 **Library Compatibility Status**
 
-| Category | Libraries | Status |
-|----------|-----------|--------|
-| **Basic Operations** | String, Hash, List commands | ✅ Working |
-| **Connection & Pipeline** | Basic pipeline operations | ✅ Working |
-| **Job Queues** | BullMQ integration | 🔄 Partial (some test failures) |
-| **Session Stores** | connect-redis, express-session | ✅ Working |
-| **Rate Limiting** | express-rate-limit | ✅ Working |
-| **Real-time Apps** | Socket.IO Redis adapter | ✅ Working |
-| **Pub/Sub** | Basic pub/sub operations | ✅ Working |
+| Category                  | Libraries                      | Status             | Notes                                       |
+| ------------------------- | ------------------------------ | ------------------ | ------------------------------------------- |
+| **Basic Operations**      | String, Hash, List commands    | ✅ **Working**     | 254/272 unit tests passing (~93%)           |
+| **Connection & Pipeline** | Basic pipeline operations      | ✅ **Working**     | Pipeline and transaction support functional |
+| **Job Queues**            | BullMQ integration             | ❌ **Not Working** | Lua script compatibility issues             |
+| **Session Stores**        | connect-redis, express-session | ✅ **Working**     | Session storage functional                  |
+| **Rate Limiting**         | express-rate-limit             | ✅ **Working**     | Rate limiting functional                    |
+| **Real-time Apps**        | Socket.IO Redis adapter        | ✅ **Working**     | Real-time communication functional          |
+| **Pub/Sub**               | Basic pub/sub operations       | ✅ **Working**     | Publish/subscribe functional                |
 
 ## Installation
 
@@ -63,7 +63,7 @@ import { RedisAdapter } from './dist/index.js'; // local build
 const redis = new RedisAdapter({
   port: 6379,
   host: 'localhost',
-  password: 'your-password'
+  password: 'your-password',
 });
 
 await redis.connect();
@@ -75,13 +75,13 @@ await redis.set('typescript-key', 'works-great');
 ```javascript
 // ioredis-style connection patterns
 const redis = new RedisAdapter(); // localhost:6379
-const redis = new RedisAdapter(6380, 'redis-server'); // specific host:port  
+const redis = new RedisAdapter(6380, 'redis-server'); // specific host:port
 const redis = new RedisAdapter('redis://user:pass@host:port/db'); // URL
 const redis = new RedisAdapter({
   port: 6379,
   host: 'localhost',
   password: 'secret',
-  db: 0
+  db: 0,
 });
 ```
 
@@ -105,7 +105,7 @@ console.log(results); // [[null, 'OK'], [null, 'OK'], [null, 'value1'], [null, '
 // Publisher
 await redis.publish('news', 'Breaking news!');
 
-// Subscriber  
+// Subscriber
 redis.subscribe('news');
 redis.on('message', (channel, message) => {
   console.log(`Received ${message} from ${channel}`);
@@ -115,8 +115,9 @@ redis.on('message', (channel, message) => {
 ## Supported Commands
 
 ### Implemented Commands
+
 - **String Operations**: `GET`, `SET`, `MGET`, `MSET`, `INCR`, `DECR`, `APPEND`, etc.
-- **Hash Operations**: `HGET`, `HSET`, `HMGET`, `HMSET`, `HGETALL`, `HDEL`, etc.  
+- **Hash Operations**: `HGET`, `HSET`, `HMGET`, `HMSET`, `HGETALL`, `HDEL`, etc.
 - **List Operations**: `LPUSH`, `RPUSH`, `LPOP`, `RPOP`, `LRANGE`, `LLEN`, etc.
 - **Key Management**: `DEL`, `EXISTS`, `EXPIRE`, `TTL`, `TYPE`, etc.
 - **Set Operations**: `SADD`, `SREM`, `SMEMBERS`, `SCARD`, etc.
@@ -124,6 +125,7 @@ redis.on('message', (channel, message) => {
 - **Pub/Sub Operations**: `PUBLISH`, `SUBSCRIBE`, `PSUBSCRIBE`, etc.
 
 ### Advanced Features
+
 - **Pipeline Operations**: Batched command execution
 - **Transaction Support**: Basic `MULTI`/`EXEC` operations
 - **Connection Events**: Event emitter compatibility
@@ -132,6 +134,7 @@ redis.on('message', (channel, message) => {
 ## Development Guide
 
 ### 1. Build the Project
+
 ```bash
 git clone https://github.com/valkey-io/valkey-glide.git
 cd valkey-glide/ioredis-adapter
@@ -140,6 +143,7 @@ npm run build
 ```
 
 ### 2. Try the Adapter
+
 ```javascript
 // Import from built files
 const { RedisAdapter } = require('./dist/index.js');
@@ -147,14 +151,17 @@ const redis = new RedisAdapter();
 ```
 
 ### 3. Test Your Use Case
+
 The adapter aims for ioredis compatibility, but test thoroughly as some features may have issues.
 
 ### 4. Report Issues
+
 If you encounter problems, please report them in the GitHub issues.
 
 ## Usage Examples
 
 ### Basic Redis Operations
+
 ```javascript
 const { RedisAdapter } = require('./dist/index.js');
 
@@ -175,6 +182,7 @@ const tasks = await redis.lrange('tasks', 0, -1);
 ```
 
 ### With Express Session (Experimental)
+
 ```javascript
 const express = require('express');
 const session = require('express-session');
@@ -184,12 +192,14 @@ const { RedisAdapter } = require('./dist/index.js');
 const app = express();
 const redisClient = new RedisAdapter();
 
-app.use(session({
-  store: new RedisStore({ client: redisClient }),
-  secret: 'your-secret',
-  resave: false,
-  saveUninitialized: false
-}));
+app.use(
+  session({
+    store: new RedisStore({ client: redisClient }),
+    secret: 'your-secret',
+    resave: false,
+    saveUninitialized: false,
+  })
+);
 ```
 
 ## Testing
@@ -197,12 +207,14 @@ app.use(session({
 The project includes unit and integration tests to validate functionality:
 
 ### Current Test Status
-- **Unit Tests**: Basic Redis commands and pipeline operations
-- **Integration Tests**: Partial coverage of popular libraries
-- **Status**: ~188 passing tests, ~16 failing tests
-- **Coverage**: ~41% code coverage
+
+- **Unit Tests**: 8 passed, 6 failed (8/14 test suites passing)
+- **Individual Tests**: ~254 passed, ~18 failed (93% pass rate for unit tests)
+- **Integration Tests**: Mixed results - most libraries working except BullMQ
+- **Known Issues**: BullMQ Lua script compatibility requires further development
 
 ### Running Tests
+
 ```bash
 # Run all tests
 npm test
@@ -217,18 +229,18 @@ npm test tests/integration/session-store/
 
 ## Development Status
 
-| Component | Status | Notes |
-|-----------|--------|---------|
-| String Commands | ✅ Working | Basic operations implemented |
-| Hash Commands | ✅ Working | Most hash operations working |
-| List Commands | ✅ Working | Core list operations implemented |
-| Key Management | ✅ Working | Basic key operations |
-| Pipeline Operations | ✅ Working | Using valkey-glide Batch |
-| Connection Management | ✅ Working | Basic connection handling |
-| Pub/Sub | ✅ Working | Basic pub/sub functionality |
-| Transaction Support | 🔄 Partial | Basic multi/exec support |
-| BullMQ Integration | ⚠️ Issues | Some serialization problems |
-| Script Support | ✅ Working | Lua script execution |
+| Component             | Status     | Notes                            |
+| --------------------- | ---------- | -------------------------------- |
+| String Commands       | ✅ Working | Basic operations implemented     |
+| Hash Commands         | ✅ Working | Most hash operations working     |
+| List Commands         | ✅ Working | Core list operations implemented |
+| Key Management        | ✅ Working | Basic key operations             |
+| Pipeline Operations   | ✅ Working | Using valkey-glide Batch         |
+| Connection Management | ✅ Working | Basic connection handling        |
+| Pub/Sub               | ✅ Working | Basic pub/sub functionality      |
+| Transaction Support   | 🔄 Partial | Basic multi/exec support         |
+| BullMQ Integration    | ⚠️ Issues  | Some serialization problems      |
+| Script Support        | ✅ Working | Lua script execution             |
 
 ## Performance
 
@@ -238,7 +250,7 @@ The adapter is built on valkey-glide which uses a Rust core for performance. How
 - **Overhead analysis**: Not yet quantified
 - **Optimization status**: Basic implementation, not yet optimized
 
-*Performance testing and optimization are planned for future releases.*
+_Performance testing and optimization are planned for future releases._
 
 ## Contributing
 
@@ -258,7 +270,7 @@ npm test
 
 ```bash
 npm test                # Run all tests
-npm run test:watch      # Run tests in watch mode  
+npm run test:watch      # Run tests in watch mode
 npm run test:coverage   # Run tests with coverage
 npm run test:ci         # Run tests without watch mode
 ```
