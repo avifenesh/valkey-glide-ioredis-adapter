@@ -58,26 +58,26 @@ describe('Caching, Analytics & E-commerce Integration', () => {
     test('should implement basic cache-aside pattern', async () => {
       const userId = 'user123';
       const cacheKey = `user:${userId}`;
-      
+
       // Simulate cache miss
       let cachedUser = await redisClient.get(cacheKey);
       expect(cachedUser).toBeNull();
-      
+
       // Simulate database fetch and cache set
       const userData = {
         id: userId,
         name: 'John Doe',
         email: 'john@example.com',
-        lastLogin: Date.now()
+        lastLogin: Date.now(),
       };
-      
+
       await redisClient.setex(cacheKey, 3600, JSON.stringify(userData));
-      
+
       // Simulate cache hit
       cachedUser = await redisClient.get(cacheKey);
       expect(cachedUser).toBeDefined();
       expect(JSON.parse(cachedUser!)).toEqual(userData);
-      
+
       // Verify TTL is set
       const ttl = await redisClient.ttl(cacheKey);
       expect(ttl).toBeGreaterThan(0);
@@ -89,25 +89,38 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       const cacheKeys = [
         `product:${productId}`,
         `product:${productId}:reviews`,
-        `product:${productId}:related`
+        `product:${productId}:related`,
       ];
 
       // Set multiple related cache entries
       await Promise.all([
-        redisClient.set(cacheKeys[0], JSON.stringify({ id: productId, name: 'Widget' })),
-        redisClient.set(cacheKeys[1], JSON.stringify([{ rating: 5, comment: 'Great!' }])),
-        redisClient.set(cacheKeys[2], JSON.stringify(['related1', 'related2']))
+        redisClient.set(
+          cacheKeys[0]!,
+          JSON.stringify({ id: productId, name: 'Widget' })
+        ),
+        redisClient.set(
+          cacheKeys[1]!,
+          JSON.stringify([{ rating: 5, comment: 'Great!' }])
+        ),
+        redisClient.set(
+          cacheKeys[2]!,
+          JSON.stringify(['related1', 'related2'])
+        ),
       ]);
 
       // Verify all are cached
-      const cached = await Promise.all(cacheKeys.map(key => redisClient.get(key)));
+      const cached = await Promise.all(
+        cacheKeys.map(key => redisClient.get(key))
+      );
       expect(cached.every(c => c !== null)).toBe(true);
 
       // Invalidate all related caches
       await redisClient.del(...cacheKeys);
 
       // Verify all are removed
-      const afterDeletion = await Promise.all(cacheKeys.map(key => redisClient.get(key)));
+      const afterDeletion = await Promise.all(
+        cacheKeys.map(key => redisClient.get(key))
+      );
       expect(afterDeletion.every(c => c === null)).toBe(true);
     });
 
@@ -117,14 +130,14 @@ describe('Caching, Analytics & E-commerce Integration', () => {
         theme: 'dark',
         language: 'en',
         notifications: true,
-        version: '1.2.3'
+        version: '1.2.3',
       };
 
       // Write-through: update both cache and "database" simultaneously
       const pipeline = redisClient.pipeline();
       pipeline.set(configKey, JSON.stringify(configData));
       pipeline.expire(configKey, 7200); // 2 hours
-      
+
       // Simulate additional database operations
       pipeline.set(`${configKey}:backup`, JSON.stringify(configData));
       pipeline.set(`${configKey}:timestamp`, Date.now().toString());
@@ -141,26 +154,37 @@ describe('Caching, Analytics & E-commerce Integration', () => {
     test('should handle cache stampede prevention', async () => {
       const expensiveDataKey = 'expensive:calculation';
       const lockKey = `${expensiveDataKey}:lock`;
-      
+
       // Simulate multiple concurrent requests
       const concurrentRequests = Array.from({ length: 5 }, async (_, index) => {
         // Try to acquire lock
-        const lockAcquired = await redisClient.setnx(lockKey, `worker-${index}`);
-        
+        const lockAcquired = await redisClient.setnx(
+          lockKey,
+          `worker-${index}`
+        );
+
         if (lockAcquired) {
           // Only one worker should get the lock
           await redisClient.expire(lockKey, 10); // 10 second lock
-          
+
           // Simulate expensive calculation
           await testUtils.delay(100);
-          const result = { calculated: true, worker: `worker-${index}`, timestamp: Date.now() };
-          
+          const result = {
+            calculated: true,
+            worker: `worker-${index}`,
+            timestamp: Date.now(),
+          };
+
           // Cache the result
-          await redisClient.setex(expensiveDataKey, 300, JSON.stringify(result));
-          
+          await redisClient.setex(
+            expensiveDataKey,
+            300,
+            JSON.stringify(result)
+          );
+
           // Release lock
           await redisClient.del(lockKey);
-          
+
           return result;
         } else {
           // Wait for the calculation to complete
@@ -178,7 +202,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       });
 
       const results = await Promise.all(concurrentRequests);
-      
+
       // All should get the same result
       const firstResult = results[0];
       expect(results.every(r => r.worker === firstResult.worker)).toBe(true);
@@ -189,7 +213,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
     test('should track page views with counters', async () => {
       const pages = ['/home', '/products', '/about', '/contact'];
       const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-      
+
       // Simulate page view tracking
       for (const page of pages) {
         const viewCount = Math.floor(Math.random() * 100) + 1;
@@ -199,41 +223,45 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       }
 
       // Get analytics data
-      const analytics = {};
+      const analytics: Record<string, number> = {};
       for (const page of pages) {
         const views = await redisClient.get(`pageviews:${today}:${page}`);
         analytics[page] = parseInt(views || '0');
       }
 
       expect(Object.keys(analytics)).toHaveLength(4);
-      expect(Object.values(analytics).every(v => typeof v === 'number' && v > 0)).toBe(true);
+      expect(
+        Object.values(analytics).every(v => typeof v === 'number' && v > 0)
+      ).toBe(true);
     });
 
     test('should implement real-time event aggregation', async () => {
       const eventTypes = ['login', 'purchase', 'signup', 'click'];
       const timeWindow = Math.floor(Date.now() / 1000 / 60); // Current minute
-      
+
       // Track events in real-time
-      const eventPromises = eventTypes.map(async (eventType) => {
+      const eventPromises = eventTypes.map(async eventType => {
         const count = Math.floor(Math.random() * 50) + 1;
         const key = `events:${timeWindow}:${eventType}`;
-        
+
         // Use pipeline for efficiency
         const pipeline = redisClient.pipeline();
         for (let i = 0; i < count; i++) {
           pipeline.incr(key);
         }
         pipeline.expire(key, 3600); // Expire after 1 hour
-        
+
         await pipeline.exec();
         return { eventType, count };
       });
 
       const eventResults = await Promise.all(eventPromises);
-      
+
       // Verify all events were tracked
       for (const { eventType, count } of eventResults) {
-        const storedCount = await redisClient.get(`events:${timeWindow}:${eventType}`);
+        const storedCount = await redisClient.get(
+          `events:${timeWindow}:${eventType}`
+        );
         expect(parseInt(storedCount!)).toBe(count);
       }
     });
@@ -242,25 +270,33 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       const userId = 'user789';
       const activities = [
         { action: 'login', timestamp: Date.now() },
-        { action: 'view_product', productId: 'prod123', timestamp: Date.now() + 1000 },
-        { action: 'add_to_cart', productId: 'prod123', timestamp: Date.now() + 2000 },
-        { action: 'checkout', total: 99.99, timestamp: Date.now() + 3000 }
+        {
+          action: 'view_product',
+          productId: 'prod123',
+          timestamp: Date.now() + 1000,
+        },
+        {
+          action: 'add_to_cart',
+          productId: 'prod123',
+          timestamp: Date.now() + 2000,
+        },
+        { action: 'checkout', total: 99.99, timestamp: Date.now() + 3000 },
       ];
 
       // Store user activity timeline
       const activityKey = `user:${userId}:activity`;
-      
+
       for (const activity of activities) {
         await redisClient.lpush(activityKey, JSON.stringify(activity));
       }
-      
+
       // Set expiration for the activity log
       await redisClient.expire(activityKey, 86400); // 24 hours
-      
+
       // Retrieve recent activities
       const recentActivities = await redisClient.lrange(activityKey, 0, 9); // Last 10 activities
       expect(recentActivities).toHaveLength(4);
-      
+
       const parsedActivities = recentActivities.map(a => JSON.parse(a));
       expect(parsedActivities[0].action).toBe('checkout'); // Most recent first
       expect(parsedActivities[3].action).toBe('login'); // Oldest last
@@ -273,17 +309,21 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       const products = [
         { id: 'prod1', name: 'Widget A', price: 29.99, quantity: 2 },
         { id: 'prod2', name: 'Widget B', price: 49.99, quantity: 1 },
-        { id: 'prod3', name: 'Widget C', price: 19.99, quantity: 3 }
+        { id: 'prod3', name: 'Widget C', price: 19.99, quantity: 3 },
       ];
 
       // Add products to cart using hash
       for (const product of products) {
-        await redisClient.hset(cartId, product.id, JSON.stringify({
-          name: product.name,
-          price: product.price,
-          quantity: product.quantity,
-          subtotal: product.price * product.quantity
-        }));
+        await redisClient.hset(
+          cartId,
+          product.id,
+          JSON.stringify({
+            name: product.name,
+            price: product.price,
+            quantity: product.quantity,
+            subtotal: product.price * product.quantity,
+          })
+        );
       }
 
       // Set cart expiration (30 days)
@@ -295,7 +335,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
 
       // Calculate total
       let total = 0;
-      for (const [productId, productData] of Object.entries(cart)) {
+      for (const [_productId, productData] of Object.entries(cart)) {
         const product = JSON.parse(productData);
         total += product.subtotal;
         expect(product.name).toBeDefined();
@@ -310,11 +350,15 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       const productId = 'prod456';
 
       // Add product to cart
-      await redisClient.hset(cartId, productId, JSON.stringify({
-        name: 'Test Product',
-        price: 25.00,
-        quantity: 1
-      }));
+      await redisClient.hset(
+        cartId,
+        productId,
+        JSON.stringify({
+          name: 'Test Product',
+          price: 25.0,
+          quantity: 1,
+        })
+      );
 
       // Update quantity
       const currentProduct = await redisClient.hget(cartId, productId);
@@ -342,23 +386,30 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       const abandonmentKey = `cart:abandoned:${userId}`;
 
       // Create cart with items
-      await redisClient.hset(cartKey, 'item1', JSON.stringify({
-        name: 'Abandoned Item',
-        price: 99.99,
-        quantity: 1
-      }));
+      await redisClient.hset(
+        cartKey,
+        'item1',
+        JSON.stringify({
+          name: 'Abandoned Item',
+          price: 99.99,
+          quantity: 1,
+        })
+      );
 
       // Simulate cart abandonment (copy cart to abandoned carts)
       const cartItems = await redisClient.hgetall(cartKey);
-      
+
       if (Object.keys(cartItems).length > 0) {
         // Store abandoned cart for marketing purposes
-        await redisClient.set(abandonmentKey, JSON.stringify({
-          items: cartItems,
-          abandonedAt: Date.now(),
-          userId: userId
-        }));
-        
+        await redisClient.set(
+          abandonmentKey,
+          JSON.stringify({
+            items: cartItems,
+            abandonedAt: Date.now(),
+            userId: userId,
+          })
+        );
+
         // Set longer expiration for abandoned cart tracking
         await redisClient.expire(abandonmentKey, 7 * 24 * 3600); // 7 days
       }
@@ -366,7 +417,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       // Verify abandoned cart is tracked
       const abandonedCart = await redisClient.get(abandonmentKey);
       expect(abandonedCart).toBeDefined();
-      
+
       const parsed = JSON.parse(abandonedCart!);
       expect(parsed.userId).toBe(userId);
       expect(parsed.items.item1).toBeDefined();
@@ -377,28 +428,47 @@ describe('Caching, Analytics & E-commerce Integration', () => {
     test('should implement notification queues', async () => {
       const userId = 'user123';
       const notificationQueue = `notifications:${userId}`;
-      
+
       const notifications = [
-        { type: 'order_shipped', orderId: 'order456', message: 'Your order has been shipped!' },
-        { type: 'promotion', message: '20% off your next purchase!', expiresAt: Date.now() + 86400000 },
-        { type: 'friend_request', fromUser: 'friend789', message: 'New friend request' }
+        {
+          type: 'order_shipped',
+          orderId: 'order456',
+          message: 'Your order has been shipped!',
+        },
+        {
+          type: 'promotion',
+          message: '20% off your next purchase!',
+          expiresAt: Date.now() + 86400000,
+        },
+        {
+          type: 'friend_request',
+          fromUser: 'friend789',
+          message: 'New friend request',
+        },
       ];
 
       // Add notifications to queue
       for (const notification of notifications) {
-        await redisClient.lpush(notificationQueue, JSON.stringify({
-          ...notification,
-          id: testUtils.randomString(),
-          createdAt: Date.now(),
-          read: false
-        }));
+        await redisClient.lpush(
+          notificationQueue,
+          JSON.stringify({
+            ...notification,
+            id: testUtils.randomString(),
+            createdAt: Date.now(),
+            read: false,
+          })
+        );
       }
 
       // Set expiration for notification queue
       await redisClient.expire(notificationQueue, 30 * 24 * 3600); // 30 days
 
       // Get unread notifications
-      const unreadNotifications = await redisClient.lrange(notificationQueue, 0, -1);
+      const unreadNotifications = await redisClient.lrange(
+        notificationQueue,
+        0,
+        -1
+      );
       expect(unreadNotifications).toHaveLength(3);
 
       // Mark notification as read (update specific notification)
@@ -408,13 +478,22 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       // Update the list (in production, you might use a more efficient method)
       await redisClient.del(notificationQueue);
       for (const notification of notificationList.reverse()) {
-        await redisClient.lpush(notificationQueue, JSON.stringify(notification));
+        await redisClient.lpush(
+          notificationQueue,
+          JSON.stringify(notification)
+        );
       }
 
       // Verify update
-      const updatedNotifications = await redisClient.lrange(notificationQueue, 0, -1);
-      const firstNotification = JSON.parse(updatedNotifications[0]);
-      expect(firstNotification.read).toBe(true);
+      const updatedNotifications = await redisClient.lrange(
+        notificationQueue,
+        0,
+        -1
+      );
+      if (updatedNotifications.length > 0) {
+        const firstNotification = JSON.parse(updatedNotifications[0]);
+        expect(firstNotification.read).toBe(true);
+      }
     });
 
     test('should track online users', async () => {
@@ -423,7 +502,11 @@ describe('Caching, Analytics & E-commerce Integration', () => {
 
       // Simulate users coming online
       for (const user of users) {
-        await redisClient.setex(`user:${user}:lastseen`, 300, Date.now().toString()); // 5 min expiry
+        await redisClient.setex(
+          `user:${user}:lastseen`,
+          300,
+          Date.now().toString()
+        ); // 5 min expiry
         await redisClient.sadd(onlineUsersKey, user);
       }
 

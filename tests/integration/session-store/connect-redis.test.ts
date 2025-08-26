@@ -48,20 +48,22 @@ describe('Express Session Store Integration', () => {
     app = express();
 
     // Configure session store with our Redis adapter
-    app.use(session({
-      store: new (RedisStore(session))({
-        client: redisClient as any, // Type assertion for compatibility
-        prefix: `${keyPrefix}sess:`,
-        ttl: 3600, // 1 hour
-      }),
-      secret: 'test-secret-key',
-      resave: false,
-      saveUninitialized: false,
-      cookie: {
-        secure: false, // Set to true in production with HTTPS
-        maxAge: 3600000, // 1 hour in milliseconds
-      },
-    }));
+    app.use(
+      session({
+        store: new RedisStore({
+          client: redisClient as any, // Type assertion for compatibility
+          prefix: `${keyPrefix}sess:`,
+          ttl: 3600, // 1 hour
+        }),
+        secret: 'test-secret-key',
+        resave: false,
+        saveUninitialized: false,
+        cookie: {
+          secure: false, // Set to true in production with HTTPS
+          maxAge: 3600000, // 1 hour in milliseconds
+        },
+      })
+    );
 
     // Test routes
     app.get('/login', (req: any, res: express.Response) => {

@@ -19,47 +19,125 @@ Complete API reference for the ioredis adapter for valkey-glide.
 
 ## RedisAdapter Class
 
-The main adapter class that provides ioredis-compatible API using valkey-glide as the underlying client.
+The main adapter class that provides ioredis-compatible API.
 
 ### Constructor
 
-```typescript
-new RedisAdapter(options?: RedisOptions)
-new RedisAdapter(port?: number, host?: string, options?: RedisOptions)
-new RedisAdapter(url: string, options?: RedisOptions)
+```
+new RedisAdapter()
+new RedisAdapter(port: number, host?: string)
+new RedisAdapter(options: RedisOptions)
+new RedisAdapter(url: string)
 ```
 
-#### Parameters
-
-- `options` - Redis connection options
-- `port` - Redis server port (default: 6379)
-- `host` - Redis server host (default: 'localhost')
-- `url` - Redis connection URL
-
-#### Example
+### Connection Options
 
 ```typescript
+interface RedisOptions {
+  port?: number;
+  host?: string;
+  username?: string;
+  password?: string;
+  db?: number;
+  keyPrefix?: string;
+  connectTimeout?: number;
+  commandTimeout?: number;
+  retryDelayOnFailover?: number;
+  maxRetriesPerRequest?: number;
+}
+```
+
+### Methods
+
+#### Connection Management
+- `connect(): Promise<void>` - Establish connection
+- `disconnect(): Promise<void>` - Close connection
+- `ping(message?: string): Promise<string>` - Ping server
+
+#### String Commands
+- `set(key, value, ...args): Promise<string | null>`
+- `get(key): Promise<string | null>`
+- `mget(...keys): Promise<(string | null)[]>`
+- `mset(...args): Promise<string>`
+- `incr(key): Promise<number>`
+- `decr(key): Promise<number>`
+- `del(...keys): Promise<number>`
+
+#### Hash Commands
+- `hset(key, field, value): Promise<number>`
+- `hget(key, field): Promise<string | null>`
+- `hmset(key, hash): Promise<string>`
+- `hmget(key, ...fields): Promise<(string | null)[]>`
+- `hgetall(key): Promise<Record<string, string>>`
+- `hdel(key, ...fields): Promise<number>`
+
+#### List Commands
+- `lpush(key, ...elements): Promise<number>`
+- `rpush(key, ...elements): Promise<number>`
+- `lpop(key): Promise<string | null>`
+- `rpop(key): Promise<string | null>`
+- `lrange(key, start, stop): Promise<string[]>`
+- `llen(key): Promise<number>`
+
+#### Key Commands
+- `exists(...keys): Promise<number>`
+- `expire(key, seconds): Promise<number>`
+- `ttl(key): Promise<number>`
+- `type(key): Promise<string>`
+- `keys(pattern?: string): Promise<string[]>`
+
+#### Pipeline Operations
+- `pipeline(): Pipeline` - Create pipeline
+- `multi(): Multi` - Create transaction
+
+#### Pub/Sub
+- `publish(channel, message): Promise<number>`
+- `subscribe(...channels): Promise<number>`
+- `unsubscribe(...channels): Promise<number>`
+
+#### Generic Commands
+- `call(command, ...args): Promise<any>` - Execute arbitrary Redis command
+
+### Events
+
+The adapter extends EventEmitter and supports these events:
+
+- `connect` - Connection established
+- `ready` - Client ready for commands
+- `error` - Connection or command error
+- `close` - Connection closed
+- `reconnecting` - Attempting to reconnect
+- `end` - Connection ended
+
+### Example Usage
+
+```
 import { RedisAdapter } from '@valkey/valkey-glide-ioredis-adapter';
 
-// Basic connection
-const redis = new RedisAdapter();
-
-// With specific port and host
-const redis = new RedisAdapter(6380, 'redis-server');
-
-// With options
 const redis = new RedisAdapter({
-  port: 6379,
   host: 'localhost',
-  password: 'secret',
-  db: 0,
-  connectTimeout: 10000,
-  lazyConnect: true
+  port: 6379,
+  password: 'secret'
 });
 
-// With URL
-const redis = new RedisAdapter('redis://user:pass@localhost:6379/0');
+// Connect
+await redis.connect();
+
+// Basic operations
+await redis.set('key', 'value');
+const value = await redis.get('key');
+
+// Pipeline
+const pipeline = redis.pipeline();
+pipeline.set('key1', 'value1');
+pipeline.get('key1');
+const results = await pipeline.exec();
+
+// Cleanup
+await redis.disconnect();
 ```
+
+For complete examples with real-world libraries, see the [README](README.md).
 
 ## Connection Management
 
@@ -67,13 +145,13 @@ const redis = new RedisAdapter('redis://user:pass@localhost:6379/0');
 
 Manually connect to Redis server.
 
-```typescript
+```
 await redis.connect(): Promise<void>
 ```
 
 #### Example
 
-```typescript
+```
 const redis = new RedisAdapter({ lazyConnect: true });
 await redis.connect();
 console.log('Connected to Redis');
@@ -83,13 +161,13 @@ console.log('Connected to Redis');
 
 Disconnect from Redis server.
 
-```typescript
+```
 await redis.disconnect(): Promise<void>
 ```
 
 #### Example
 
-```typescript
+```
 await redis.disconnect();
 console.log('Disconnected from Redis');
 ```
@@ -98,7 +176,7 @@ console.log('Disconnected from Redis');
 
 Test connection to Redis server.
 
-```typescript
+```
 await redis.ping(message?: string): Promise<string>
 ```
 
@@ -108,7 +186,7 @@ await redis.ping(message?: string): Promise<string>
 
 #### Example
 
-```typescript
+```
 const pong = await redis.ping();
 console.log(pong); // 'PONG'
 
@@ -122,7 +200,7 @@ console.log(echo); // 'Hello Redis'
 
 Get the value of a key.
 
-```typescript
+```
 await redis.get(key: string): Promise<string | null>
 ```
 
@@ -132,7 +210,7 @@ await redis.get(key: string): Promise<string | null>
 
 #### Example
 
-```typescript
+```
 await redis.set('mykey', 'Hello World');
 const value = await redis.get('mykey');
 console.log(value); // 'Hello World'
@@ -145,7 +223,7 @@ console.log(missing); // null
 
 Set the value of a key.
 
-```typescript
+```
 await redis.set(key: string, value: string | number | Buffer, ...args: any[]): Promise<string>
 ```
 
@@ -157,7 +235,7 @@ await redis.set(key: string, value: string | number | Buffer, ...args: any[]): P
 
 #### Example
 
-```typescript
+```
 // Basic set
 await redis.set('key', 'value');
 
@@ -181,7 +259,7 @@ await redis.set('key', 'value', { nx: true });
 
 Get values of multiple keys.
 
-```typescript
+```
 await redis.mget(...keys: string[]): Promise<(string | null)[]>
 await redis.mget(keys: string[]): Promise<(string | null)[]>
 ```
@@ -192,7 +270,7 @@ await redis.mget(keys: string[]): Promise<(string | null)[]>
 
 #### Example
 
-```typescript
+```
 await redis.set('key1', 'value1');
 await redis.set('key2', 'value2');
 
@@ -208,7 +286,7 @@ console.log(values2); // ['value1', 'value2']
 
 Set multiple key-value pairs.
 
-```typescript
+```
 await redis.mset(...args: (string | number)[]): Promise<string>
 await redis.mset(object: Record<string, string | number>): Promise<string>
 ```
@@ -220,7 +298,7 @@ await redis.mset(object: Record<string, string | number>): Promise<string>
 
 #### Example
 
-```typescript
+```
 // Argument syntax
 await redis.mset('key1', 'value1', 'key2', 'value2');
 
@@ -236,7 +314,7 @@ await redis.mset({
 
 Increment or decrement a numeric value.
 
-```typescript
+```
 await redis.incr(key: string): Promise<number>
 await redis.decr(key: string): Promise<number>
 await redis.incrby(key: string, increment: number): Promise<number>
@@ -246,7 +324,7 @@ await redis.incrbyfloat(key: string, increment: number): Promise<string>
 
 #### Example
 
-```typescript
+```
 await redis.set('counter', '10');
 
 const result1 = await redis.incr('counter');
@@ -265,7 +343,7 @@ console.log(result3); // '18.5'
 
 Get or set hash field values.
 
-```typescript
+```
 await redis.hget(key: string, field: string): Promise<string | null>
 await redis.hset(key: string, field: string, value: string | number): Promise<number>
 await redis.hset(key: string, object: Record<string, string | number>): Promise<number>
@@ -273,7 +351,7 @@ await redis.hset(key: string, object: Record<string, string | number>): Promise<
 
 #### Example
 
-```typescript
+```
 // Set single field
 await redis.hset('user:1', 'name', 'John Doe');
 await redis.hset('user:1', 'age', 30);
@@ -293,7 +371,7 @@ console.log(name); // 'John Doe'
 
 Get or set multiple hash fields.
 
-```typescript
+```
 await redis.hmget(key: string, ...fields: string[]): Promise<(string | null)[]>
 await redis.hmset(key: string, ...args: (string | number)[]): Promise<string>
 await redis.hmset(key: string, object: Record<string, string | number>): Promise<string>
@@ -301,7 +379,7 @@ await redis.hmset(key: string, object: Record<string, string | number>): Promise
 
 #### Example
 
-```typescript
+```
 // Set multiple fields
 await redis.hmset('user:2', 'name', 'Jane Doe', 'age', 25);
 await redis.hmset('user:2', { email: 'jane@example.com' });
@@ -315,13 +393,13 @@ console.log(values); // ['Jane Doe', '25', 'jane@example.com']
 
 Get all fields and values of a hash.
 
-```typescript
+```
 await redis.hgetall(key: string): Promise<Record<string, string>>
 ```
 
 #### Example
 
-```typescript
+```
 const user = await redis.hgetall('user:1');
 console.log(user);
 // {
@@ -338,14 +416,14 @@ console.log(user);
 
 Add elements to the beginning or end of a list.
 
-```typescript
+```
 await redis.lpush(key: string, ...values: (string | number)[]): Promise<number>
 await redis.rpush(key: string, ...values: (string | number)[]): Promise<number>
 ```
 
 #### Example
 
-```typescript
+```
 // Add to beginning
 await redis.lpush('mylist', 'first', 'second');
 
@@ -359,14 +437,14 @@ await redis.rpush('mylist', 'third', 'fourth');
 
 Remove and return elements from the beginning or end of a list.
 
-```typescript
+```
 await redis.lpop(key: string, count?: number): Promise<string | string[] | null>
 await redis.rpop(key: string, count?: number): Promise<string | string[] | null>
 ```
 
 #### Example
 
-```typescript
+```
 const first = await redis.lpop('mylist');
 console.log(first); // 'second'
 
@@ -382,13 +460,13 @@ console.log(multiple); // ['first', 'third'] or just 'first' if only one element
 
 Get a range of elements from a list.
 
-```typescript
+```
 await redis.lrange(key: string, start: number, stop: number): Promise<string[]>
 ```
 
 #### Example
 
-```typescript
+```
 await redis.rpush('numbers', '1', '2', '3', '4', '5');
 
 const all = await redis.lrange('numbers', 0, -1);
@@ -404,13 +482,13 @@ console.log(subset); // ['2', '3', '4']
 
 Create a pipeline for batching commands.
 
-```typescript
+```
 redis.pipeline(): Pipeline
 ```
 
 #### Example
 
-```typescript
+```
 const pipeline = redis.pipeline();
 
 pipeline.set('key1', 'value1');
@@ -434,13 +512,13 @@ console.log(results);
 
 Create a transaction block.
 
-```typescript
+```
 redis.multi(): Multi
 ```
 
 #### Example
 
-```typescript
+```
 const multi = redis.multi();
 
 multi.set('key1', 'value1');
@@ -462,14 +540,14 @@ console.log(results);
 
 Subscribe to channels.
 
-```typescript
+```
 await redis.subscribe(...channels: string[]): Promise<void>
 await redis.unsubscribe(...channels: string[]): Promise<void>
 ```
 
 #### Example
 
-```typescript
+```
 // Subscribe to channels
 await redis.subscribe('news', 'updates');
 
@@ -486,14 +564,14 @@ await redis.unsubscribe('news');
 
 Subscribe to channel patterns.
 
-```typescript
+```
 await redis.psubscribe(...patterns: string[]): Promise<void>
 await redis.punsubscribe(...patterns: string[]): Promise<void>
 ```
 
 #### Example
 
-```typescript
+```
 // Subscribe to patterns
 await redis.psubscribe('news:*', 'alerts:*');
 
@@ -510,13 +588,13 @@ await redis.punsubscribe('news:*');
 
 Publish a message to a channel.
 
-```typescript
+```
 await redis.publish(channel: string, message: string): Promise<number>
 ```
 
 #### Example
 
-```typescript
+```
 const subscribers = await redis.publish('news', 'Breaking news!');
 console.log(`Message sent to ${subscribers} subscribers`);
 ```
@@ -527,7 +605,7 @@ The adapter emits the same events as ioredis for full compatibility.
 
 ### Connection Events
 
-```typescript
+```
 redis.on('connect', () => {
   console.log('Connected to Redis');
 });
@@ -555,7 +633,7 @@ redis.on('end', () => {
 
 ### Pub/Sub Events
 
-```typescript
+```
 redis.on('subscribe', (channel, count) => {
   console.log(`Subscribed to ${channel}, total: ${count}`);
 });
@@ -587,7 +665,7 @@ The adapter provides ioredis-compatible error handling.
 
 ### Error Types
 
-```typescript
+```
 import { RedisAdapter, ReplyError } from '@valkey/valkey-glide-ioredis-adapter';
 
 try {
@@ -603,7 +681,7 @@ try {
 
 ### Error Events
 
-```typescript
+```
 redis.on('error', (error) => {
   console.error('Redis error:', error.message);
   
@@ -620,7 +698,7 @@ redis.on('error', (error) => {
 
 ### Connection Reuse
 
-```typescript
+```
 // Good: Reuse connection
 const redis = new RedisAdapter();
 await redis.set('key1', 'value1');
@@ -633,7 +711,7 @@ const redis2 = new RedisAdapter();
 
 ### Pipeline for Batch Operations
 
-```typescript
+```
 // Good: Use pipeline for multiple commands
 const pipeline = redis.pipeline();
 for (let i = 0; i < 1000; i++) {
@@ -649,7 +727,7 @@ for (let i = 0; i < 1000; i++) {
 
 ### Proper Connection Management
 
-```typescript
+```
 // Application startup
 const redis = new RedisAdapter({
   retryDelayOnFailover: 100,
@@ -668,7 +746,7 @@ process.on('SIGTERM', async () => {
 
 The adapter is designed for drop-in compatibility. Simply replace your ioredis imports:
 
-```typescript
+```
 // Before
 import Redis from 'ioredis';
 const redis = new Redis();
