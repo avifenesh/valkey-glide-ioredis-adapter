@@ -34,7 +34,7 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       redis = new RedisAdapter(config);
       await redis.connect();
 
@@ -50,7 +50,7 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       redis = new RedisAdapter(config.port, config.host);
       await redis.connect();
 
@@ -65,7 +65,7 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       redis = new RedisAdapter({
         port: config.port,
         host: config.host,
@@ -85,7 +85,7 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       redis = new RedisAdapter(`redis://${config.host}:${config.port}/0`);
       await redis.connect();
 
@@ -100,7 +100,7 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       redis = new RedisAdapter({ port: config.port, host: config.host, db: 1 });
       await redis.connect();
 
@@ -118,7 +118,7 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       redis = new RedisAdapter(config);
 
       const readyPromise = new Promise<void>(resolve => {
@@ -138,7 +138,7 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       redis = new RedisAdapter(config);
 
       const connectPromise = new Promise<void>(resolve => {
@@ -156,7 +156,7 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       redis = new RedisAdapter(config);
       await redis.connect();
 
@@ -177,7 +177,7 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       redis = new RedisAdapter({ ...config, retryDelayOnFailover: 10 });
       await redis.connect();
 
@@ -218,7 +218,7 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       redis = new RedisAdapter(config);
       await redis.connect();
 
@@ -255,7 +255,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     }
 
     // Use test server configuration
-    const config = testUtils.getStandaloneConfig();
+    const config = await testUtils.getStandaloneConfig();
     redis = new RedisAdapter(config);
     await redis.connect();
 
@@ -270,7 +270,10 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
         'list_key',
         'number',
         'text',
-        'watched_key'
+        'watched_key',
+        'non_numeric_key',
+        'good1',
+        'good2'
       );
     } catch {
       // Ignore cleanup errors
@@ -432,7 +435,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       await redis.watch('watched_key');
 
       // Simulate concurrent modification
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       const otherClient = new RedisAdapter(config);
       await otherClient.connect();
       await otherClient.set('watched_key', '20');
@@ -452,6 +455,9 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
 
   describe('Pipeline error recovery', () => {
     test('should continue processing after command error', async () => {
+      // Setup: Create a key with string value that can't be incremented
+      await redis.set('non_numeric_key', 'not_a_number');
+      
       const pipeline = redis.pipeline();
 
       pipeline.set('good1', 'value1');

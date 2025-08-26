@@ -244,7 +244,7 @@ describe('Express Session Store Integration', () => {
   describe('Redis Integration', () => {
     test('should store session data with correct TTL', async () => {
       // Create session
-      const loginResponse = await request.get('/login');
+      await request.get('/login');
       
       // Check session exists in Redis with TTL
       const sessionKeys = await redisClient.keys(`${keyPrefix}sess:*`);

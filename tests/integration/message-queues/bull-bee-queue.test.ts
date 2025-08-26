@@ -61,9 +61,9 @@ describe('Message Queue Systems Integration', () => {
     let queue: Queue.Queue;
     let processor: any;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       // Create Bull queue with our Redis adapter
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       queue = new Queue('test-bull-queue', {
         redis: {
           port: config.port,
@@ -215,9 +215,9 @@ describe('Message Queue Systems Integration', () => {
   describe('Bee-Queue Integration', () => {
     let queue: BeeQueue;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       // Create Bee-queue with our Redis configuration
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       queue = new BeeQueue('test-bee-queue', {
         redis: {
           port: config.port,
@@ -340,7 +340,7 @@ describe('Message Queue Systems Integration', () => {
       });
 
       // Check queue health
-      const health = await new Promise<any>((resolve, reject) => {
+      const health = await new Promise<any>((resolve) => {
         queue.checkHealth((counts: any) => {
           resolve(counts);
         });
@@ -360,7 +360,7 @@ describe('Message Queue Systems Integration', () => {
       const jobs: any[] = [];
 
       // Test Bull queue performance
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       const bullQueue = new Queue('perf-test-bull', {
         redis: {
           port: config.port,
@@ -392,7 +392,7 @@ describe('Message Queue Systems Integration', () => {
     });
 
     test('should handle concurrent queue operations', async () => {
-      const config = testUtils.getStandaloneConfig();
+      const config = await testUtils.getStandaloneConfig();
       const queue1 = new Queue('concurrent-1', {
         redis: {
           port: config.port,

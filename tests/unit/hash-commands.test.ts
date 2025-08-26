@@ -29,13 +29,13 @@ describe('Hash Commands (ioredis compatibility)', () => {
     }
 
     // Use test server configuration
-    const config = testUtils.getStandaloneConfig();
+    const config = await testUtils.getStandaloneConfig();
     redis = new RedisAdapter(config);
     await redis.connect();
 
     // Clean up any existing test data
     try {
-      await redis.del('myhash', 'nonexistenthash', 'testhash', 'largehash');
+      await redis.del('myhash', 'nonexistenthash', 'testhash', 'largehash', 'newhash', 'emptyhash');
     } catch {
       // Ignore cleanup errors
     }

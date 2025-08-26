@@ -33,19 +33,22 @@ describe('Rate Limiting Integration', () => {
     }
 
     // Use test server configuration
-    const config = testUtils.getStandaloneConfig();
+    const config = await testUtils.getStandaloneConfig();
     redisAdapter = new RedisAdapter(config);
     await redisAdapter.connect();
 
     // Create Express app with rate limiting
     app = express();
+    
+    // Trust proxy to handle X-Forwarded-For headers
+    app.set('trust proxy', true);
 
     // Configure rate limiter with our Redis adapter
     const limiter = rateLimit({
       windowMs: 1000, // 1 second window
       max: 3, // Limit each IP to 3 requests per windowMs
-      standardHeaders: true,
-      legacyHeaders: false,
+      standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+      legacyHeaders: false, // Disable the `X-RateLimit-*` headers
       store: new RedisStore({
         // Use our adapter instance
         sendCommand: (...args: string[]) => {
@@ -88,18 +91,18 @@ describe('Rate Limiting Integration', () => {
       // First request should succeed
       const response1 = await request.get('/api/test');
       expect(response1.status).toBe(200);
-      expect(response1.headers['x-ratelimit-limit']).toBe('3');
-      expect(response1.headers['x-ratelimit-remaining']).toBe('2');
+      expect(response1.headers['ratelimit-limit']).toBe('3');
+      expect(response1.headers['ratelimit-remaining']).toBe('2');
 
       // Second request should succeed
       const response2 = await request.get('/api/test');
       expect(response2.status).toBe(200);
-      expect(response2.headers['x-ratelimit-remaining']).toBe('1');
+      expect(response2.headers['ratelimit-remaining']).toBe('1');
 
       // Third request should succeed
       const response3 = await request.get('/api/test');
       expect(response3.status).toBe(200);
-      expect(response3.headers['x-ratelimit-remaining']).toBe('0');
+      expect(response3.headers['ratelimit-remaining']).toBe('0');
     });
 
     test('should block requests over limit', async () => {
@@ -111,7 +114,7 @@ describe('Rate Limiting Integration', () => {
       // Fourth request should be rate limited
       const response = await request.get('/api/test');
       expect(response.status).toBe(429);
-      expect(response.headers['x-ratelimit-remaining']).toBe('0');
+      expect(response.headers['ratelimit-remaining']).toBe('0');
     });
 
     test('should not affect unlimited endpoints', async () => {
@@ -145,29 +148,27 @@ describe('Rate Limiting Integration', () => {
       // Should be able to make requests again
       const resetResponse = await request.get('/api/test');
       expect(resetResponse.status).toBe(200);
-      expect(resetResponse.headers['x-ratelimit-remaining']).toBe('2');
+      expect(resetResponse.headers['ratelimit-remaining']).toBe('2');
     });
   });
 
   describe('Multiple IPs', () => {
     test('should track rate limits per IP independently', async () => {
-      // Simulate different IPs by setting X-Forwarded-For header
-      const ip1Requests = request.set('X-Forwarded-For', '192.168.1.1');
-      const ip2Requests = request.set('X-Forwarded-For', '192.168.1.2');
+      // Use up limit for default IP
+      await request.get('/api/test');
+      await request.get('/api/test');
+      await request.get('/api/test');
 
-      // Use up limit for IP1
-      await ip1Requests.get('/api/test');
-      await ip1Requests.get('/api/test');
-      await ip1Requests.get('/api/test');
+      // Default IP should be blocked
+      const defaultBlocked = await request.get('/api/test');
+      expect(defaultBlocked.status).toBe(429);
 
-      // IP1 should be blocked
-      const ip1Blocked = await ip1Requests.get('/api/test');
-      expect(ip1Blocked.status).toBe(429);
-
-      // IP2 should still work
-      const ip2Success = await ip2Requests.get('/api/test');
+      // Different IP should still work
+      const ip2Success = await request
+        .get('/api/test')
+        .set('X-Forwarded-For', '192.168.1.2');
       expect(ip2Success.status).toBe(200);
-      expect(ip2Success.headers['x-ratelimit-remaining']).toBe('2');
+      expect(ip2Success.headers['ratelimit-remaining']).toBe('2');
     });
   });
 
@@ -197,7 +198,7 @@ describe('Rate Limiting Integration', () => {
       // Keys should be cleaned up (or at least not affect new requests)
       const response = await request.get('/api/test');
       expect(response.status).toBe(200);
-      expect(response.headers['x-ratelimit-remaining']).toBe('2');
+      expect(response.headers['ratelimit-remaining']).toBe('2');
     });
   });
 });

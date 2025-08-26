@@ -10,7 +10,6 @@ import { testUtils } from '../../setup';
 
 describe('Caching, Analytics & E-commerce Integration', () => {
   let redisClient: RedisAdapter;
-  const keyPrefix = 'TEST:cache:';
 
   beforeAll(async () => {
     // Check if test servers are available
@@ -30,20 +29,27 @@ describe('Caching, Analytics & E-commerce Integration', () => {
     }
 
     // Setup Redis client
-    const config = testUtils.getStandaloneConfig();
-    redisClient = new RedisAdapter({
-      ...config,
-      keyPrefix: keyPrefix
-    });
+    const config = await testUtils.getStandaloneConfig();
+    redisClient = new RedisAdapter(config);
     
     await redisClient.connect();
+    
+    // Clean up any existing test data at the start
+    try {
+      const allKeys = await redisClient.keys('*');
+      if (allKeys.length > 0) {
+        await redisClient.del(...allKeys);
+      }
+    } catch {
+      // Ignore cleanup errors
+    }
   });
 
   afterEach(async () => {
     if (redisClient) {
       try {
-        // Clean up test data
-        const keys = await redisClient.keys(`${keyPrefix}*`);
+        // Clean up all test data
+        const keys = await redisClient.keys('*');
         if (keys.length > 0) {
           await redisClient.del(...keys);
         }
@@ -342,7 +348,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
         expect(product.price).toBeGreaterThan(0);
       }
 
-      expect(total).toBeCloseTo(169.95, 2); // 2*29.99 + 1*49.99 + 3*19.99
+      expect(total).toBeCloseTo(169.94, 2); // 2*29.99 + 1*49.99 + 3*19.99 = 59.98 + 49.99 + 59.97
     });
 
     test('should handle cart modifications', async () => {
@@ -491,7 +497,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
         -1
       );
       if (updatedNotifications.length > 0) {
-        const firstNotification = JSON.parse(updatedNotifications[0]);
+        const firstNotification = JSON.parse(updatedNotifications[0] || '{}');
         expect(firstNotification.read).toBe(true);
       }
     });

@@ -16,7 +16,7 @@ describe('Debug Hash Operations', () => {
       return;
     }
 
-    const config = testUtils.getStandaloneConfig();
+    const config = await testUtils.getStandaloneConfig();
     adapter = new RedisAdapter(config);
     await adapter.connect();
   });

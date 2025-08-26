@@ -360,9 +360,21 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const converted: Record<string, string> = {};
     
     if (result) {
-      for (const [field, value] of Object.entries(result)) {
-        converted[ParameterTranslator.convertGlideString(field) || ''] = 
-          ParameterTranslator.convertGlideString(value) || '';
+      // Valkey GLIDE returns an array of {field, value} objects
+      if (Array.isArray(result)) {
+        for (const item of result) {
+          if (item && typeof item === 'object' && 'field' in item && 'value' in item) {
+            const field = ParameterTranslator.convertGlideString(item.field) || '';
+            const value = ParameterTranslator.convertGlideString(item.value) || '';
+            converted[field] = value;
+          }
+        }
+      } else {
+        // Fallback for other possible formats
+        for (const [field, value] of Object.entries(result)) {
+          converted[ParameterTranslator.convertGlideString(field) || ''] = 
+            ParameterTranslator.convertGlideString(value) || '';
+        }
       }
     }
     
@@ -526,6 +538,240 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedElements = elements.map(el => ParameterTranslator.normalizeValue(el));
     return await client.rpushx(normalizedKey, normalizedElements);
+  }
+
+  // Set commands
+  async sadd(key: RedisKey, ...members: RedisValue[]): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedMembers = members.map(member => ParameterTranslator.normalizeValue(member));
+    return await client.sadd(normalizedKey, normalizedMembers);
+  }
+
+  async srem(key: RedisKey, ...members: RedisValue[]): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedMembers = members.map(member => ParameterTranslator.normalizeValue(member));
+    return await client.srem(normalizedKey, normalizedMembers);
+  }
+
+  async smembers(key: RedisKey): Promise<string[]> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const result = await client.smembers(normalizedKey);
+    if (result instanceof Set) {
+      return Array.from(result).map(item => ParameterTranslator.convertGlideString(item) || '');
+    }
+    const converted = ParameterTranslator.convertGlideStringArray(result);
+    return converted ? converted.filter((val): val is string => val !== null) : [];
+  }
+
+  async scard(key: RedisKey): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    return await client.scard(normalizedKey);
+  }
+
+  async sismember(key: RedisKey, member: RedisValue): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedMember = ParameterTranslator.normalizeValue(member);
+    const result = await client.sismember(normalizedKey, normalizedMember);
+    return result ? 1 : 0;
+  }
+
+  async spop(key: RedisKey, count?: number): Promise<string | string[] | null> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    if (count !== undefined) {
+      const result = await client.spopCount(normalizedKey, count);
+      if (result === null) return null;
+      if (result instanceof Set) {
+        return Array.from(result).map(item => ParameterTranslator.convertGlideString(item) || '');
+      }
+      const converted = ParameterTranslator.convertGlideStringArray(result);
+      return converted ? converted.filter((val): val is string => val !== null) : [];
+    } else {
+      const result = await client.spop(normalizedKey);
+      return ParameterTranslator.convertGlideString(result);
+    }
+  }
+
+  async srandmember(key: RedisKey, count?: number): Promise<string | string[] | null> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    if (count !== undefined) {
+      const result = await client.srandmemberCount(normalizedKey, count);
+      if (result === null) return null;
+      const converted = ParameterTranslator.convertGlideStringArray(result);
+      return converted ? converted.filter((val): val is string => val !== null) : [];
+    } else {
+      const result = await client.srandmember(normalizedKey);
+      return ParameterTranslator.convertGlideString(result);
+    }
+  }
+
+  async sunion(...keys: RedisKey[]): Promise<string[]> {
+    const client = await this.ensureConnected();
+    const normalizedKeys = keys.map(key => ParameterTranslator.normalizeKey(key));
+    const result = await client.sunion(normalizedKeys);
+    if (result instanceof Set) {
+      return Array.from(result).map(item => ParameterTranslator.convertGlideString(item) || '');
+    }
+    const converted = ParameterTranslator.convertGlideStringArray(result);
+    return converted ? converted.filter((val): val is string => val !== null) : [];
+  }
+
+  async sinter(...keys: RedisKey[]): Promise<string[]> {
+    const client = await this.ensureConnected();
+    const normalizedKeys = keys.map(key => ParameterTranslator.normalizeKey(key));
+    const result = await client.sinter(normalizedKeys);
+    if (result instanceof Set) {
+      return Array.from(result).map(item => ParameterTranslator.convertGlideString(item) || '');
+    }
+    const converted = ParameterTranslator.convertGlideStringArray(result);
+    return converted ? converted.filter((val): val is string => val !== null) : [];
+  }
+
+  async sdiff(...keys: RedisKey[]): Promise<string[]> {
+    const client = await this.ensureConnected();
+    const normalizedKeys = keys.map(key => ParameterTranslator.normalizeKey(key));
+    const result = await client.sdiff(normalizedKeys);
+    if (result instanceof Set) {
+      return Array.from(result).map(item => ParameterTranslator.convertGlideString(item) || '');
+    }
+    const converted = ParameterTranslator.convertGlideStringArray(result);
+    return converted ? converted.filter((val): val is string => val !== null) : [];
+  }
+
+  async sunionstore(destination: RedisKey, ...keys: RedisKey[]): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedDestination = ParameterTranslator.normalizeKey(destination);
+    const normalizedKeys = keys.map(key => ParameterTranslator.normalizeKey(key));
+    return await client.sunionstore(normalizedDestination, normalizedKeys);
+  }
+
+  async sinterstore(destination: RedisKey, ...keys: RedisKey[]): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedDestination = ParameterTranslator.normalizeKey(destination);
+    const normalizedKeys = keys.map(key => ParameterTranslator.normalizeKey(key));
+    return await client.sinterstore(normalizedDestination, normalizedKeys);
+  }
+
+  async sdiffstore(destination: RedisKey, ...keys: RedisKey[]): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedDestination = ParameterTranslator.normalizeKey(destination);
+    const normalizedKeys = keys.map(key => ParameterTranslator.normalizeKey(key));
+    return await client.sdiffstore(normalizedDestination, normalizedKeys);
+  }
+
+  // Sorted Set commands
+  async zadd(key: RedisKey, ...scoreMembers: (number | string)[]): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    // Parse score-member pairs: [score, member, score, member, ...]
+    const members = [];
+    for (let i = 0; i < scoreMembers.length; i += 2) {
+      if (i + 1 < scoreMembers.length && scoreMembers[i + 1] !== undefined) {
+        const member = scoreMembers[i + 1];
+        members.push({
+          element: ParameterTranslator.normalizeValue(member!),
+          score: Number(scoreMembers[i])
+        });
+      }
+    }
+    
+    return await client.zadd(normalizedKey, members);
+  }
+
+  async zrem(key: RedisKey, ...members: RedisValue[]): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedMembers = members.map(member => ParameterTranslator.normalizeValue(member));
+    return await client.zrem(normalizedKey, normalizedMembers);
+  }
+
+  async zrange(key: RedisKey, start: number, stop: number, _options?: any): Promise<string[]> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    // Handle ioredis-style options - note: withScores not supported in current Valkey GLIDE API
+    const result = await client.zrange(normalizedKey, { start, end: stop });
+    const converted = ParameterTranslator.convertGlideStringArray(result);
+    return converted ? converted.filter((val): val is string => val !== null) : [];
+  }
+
+  async zrevrange(key: RedisKey, start: number, stop: number, _options?: any): Promise<string[]> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    // Use zrange with reverse option since zrevrange doesn't exist in Valkey GLIDE
+    const result = await client.zrange(normalizedKey, { start, end: stop }, { reverse: true });
+    const converted = ParameterTranslator.convertGlideStringArray(result);
+    return converted ? converted.filter((val): val is string => val !== null) : [];
+  }
+
+  async zscore(key: RedisKey, member: RedisValue): Promise<string | null> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedMember = ParameterTranslator.normalizeValue(member);
+    const result = await client.zscore(normalizedKey, normalizedMember);
+    return result !== null ? result.toString() : null;
+  }
+
+  async zcard(key: RedisKey): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    return await client.zcard(normalizedKey);
+  }
+
+  async zrank(key: RedisKey, member: RedisValue): Promise<number | null> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedMember = ParameterTranslator.normalizeValue(member);
+    const result = await client.zrank(normalizedKey, normalizedMember);
+    return result !== null ? result : null;
+  }
+
+  async zrevrank(key: RedisKey, member: RedisValue): Promise<number | null> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedMember = ParameterTranslator.normalizeValue(member);
+    const result = await client.zrevrank(normalizedKey, normalizedMember);
+    return result !== null ? result : null;
+  }
+
+  async zincrby(key: RedisKey, increment: number, member: RedisValue): Promise<string> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedMember = ParameterTranslator.normalizeValue(member);
+    const result = await client.zincrby(normalizedKey, increment, normalizedMember);
+    return result.toString();
+  }
+
+  async zcount(_key: RedisKey, _min: number | string, _max: number | string): Promise<number> {
+    // TODO: Fix boundary type compatibility with Valkey GLIDE
+    // const client = await this.ensureConnected();
+    // const normalizedKey = ParameterTranslator.normalizeKey(key);
+    // return await client.zcount(normalizedKey, minBound, maxBound);
+    throw new Error('zcount temporarily unavailable - boundary type compatibility issue');
+  }
+
+  async zremrangebyrank(key: RedisKey, start: number, stop: number): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    return await client.zremRangeByRank(normalizedKey, start, stop);
+  }
+
+  async zremrangebyscore(_key: RedisKey, _min: number | string, _max: number | string): Promise<number> {
+    // TODO: Fix boundary type compatibility with Valkey GLIDE
+    // const client = await this.ensureConnected();
+    // const normalizedKey = ParameterTranslator.normalizeKey(key);
+    // return await client.zremRangeByScore(normalizedKey, minBound, maxBound);
+    throw new Error('zremrangebyscore temporarily unavailable - boundary type compatibility issue');
   }
 
   // Key commands
@@ -1051,6 +1297,133 @@ class PipelineAdapter implements Pipeline {
     return this;
   }
 
+  // Set commands
+  sadd(key: RedisKey, ...members: RedisValue[]): Pipeline {
+    this.commands.push({ method: 'sadd', args: [key, ...members] });
+    return this;
+  }
+
+  srem(key: RedisKey, ...members: RedisValue[]): Pipeline {
+    this.commands.push({ method: 'srem', args: [key, ...members] });
+    return this;
+  }
+
+  smembers(key: RedisKey): Pipeline {
+    this.commands.push({ method: 'smembers', args: [key] });
+    return this;
+  }
+
+  scard(key: RedisKey): Pipeline {
+    this.commands.push({ method: 'scard', args: [key] });
+    return this;
+  }
+
+  sismember(key: RedisKey, member: RedisValue): Pipeline {
+    this.commands.push({ method: 'sismember', args: [key, member] });
+    return this;
+  }
+
+  spop(key: RedisKey, count?: number): Pipeline {
+    this.commands.push({ method: 'spop', args: count !== undefined ? [key, count] : [key] });
+    return this;
+  }
+
+  srandmember(key: RedisKey, count?: number): Pipeline {
+    this.commands.push({ method: 'srandmember', args: count !== undefined ? [key, count] : [key] });
+    return this;
+  }
+
+  sunion(...keys: RedisKey[]): Pipeline {
+    this.commands.push({ method: 'sunion', args: keys });
+    return this;
+  }
+
+  sinter(...keys: RedisKey[]): Pipeline {
+    this.commands.push({ method: 'sinter', args: keys });
+    return this;
+  }
+
+  sdiff(...keys: RedisKey[]): Pipeline {
+    this.commands.push({ method: 'sdiff', args: keys });
+    return this;
+  }
+
+  sunionstore(destination: RedisKey, ...keys: RedisKey[]): Pipeline {
+    this.commands.push({ method: 'sunionstore', args: [destination, ...keys] });
+    return this;
+  }
+
+  sinterstore(destination: RedisKey, ...keys: RedisKey[]): Pipeline {
+    this.commands.push({ method: 'sinterstore', args: [destination, ...keys] });
+    return this;
+  }
+
+  sdiffstore(destination: RedisKey, ...keys: RedisKey[]): Pipeline {
+    this.commands.push({ method: 'sdiffstore', args: [destination, ...keys] });
+    return this;
+  }
+
+  // Sorted Set commands
+  zadd(key: RedisKey, ...scoreMembers: (number | string)[]): Pipeline {
+    this.commands.push({ method: 'zadd', args: [key, ...scoreMembers] });
+    return this;
+  }
+
+  zrem(key: RedisKey, ...members: RedisValue[]): Pipeline {
+    this.commands.push({ method: 'zrem', args: [key, ...members] });
+    return this;
+  }
+
+  zrange(key: RedisKey, start: number, stop: number, options?: any): Pipeline {
+    this.commands.push({ method: 'zrange', args: [key, start, stop, options] });
+    return this;
+  }
+
+  zrevrange(key: RedisKey, start: number, stop: number, options?: any): Pipeline {
+    this.commands.push({ method: 'zrevrange', args: [key, start, stop, options] });
+    return this;
+  }
+
+  zscore(key: RedisKey, member: RedisValue): Pipeline {
+    this.commands.push({ method: 'zscore', args: [key, member] });
+    return this;
+  }
+
+  zcard(key: RedisKey): Pipeline {
+    this.commands.push({ method: 'zcard', args: [key] });
+    return this;
+  }
+
+  zrank(key: RedisKey, member: RedisValue): Pipeline {
+    this.commands.push({ method: 'zrank', args: [key, member] });
+    return this;
+  }
+
+  zrevrank(key: RedisKey, member: RedisValue): Pipeline {
+    this.commands.push({ method: 'zrevrank', args: [key, member] });
+    return this;
+  }
+
+  zincrby(key: RedisKey, increment: number, member: RedisValue): Pipeline {
+    this.commands.push({ method: 'zincrby', args: [key, increment, member] });
+    return this;
+  }
+
+  zcount(key: RedisKey, min: number | string, max: number | string): Pipeline {
+    this.commands.push({ method: 'zcount', args: [key, min, max] });
+    return this;
+  }
+
+  zremrangebyrank(key: RedisKey, start: number, stop: number): Pipeline {
+    this.commands.push({ method: 'zremrangebyrank', args: [key, start, stop] });
+    return this;
+  }
+
+  zremrangebyscore(key: RedisKey, min: number | string, max: number | string): Pipeline {
+    this.commands.push({ method: 'zremrangebyscore', args: [key, min, max] });
+    return this;
+  }
+
   // Key commands
   del(...keys: RedisKey[]): Pipeline {
     this.commands.push({ method: 'del', args: keys });
@@ -1111,8 +1484,12 @@ class PipelineAdapter implements Pipeline {
       if (results) {
         for (let i = 0; i < results.length; i++) {
           const result = results[i];
-          if (result instanceof Error) {
-            formattedResults.push([result, null]);
+          
+          // When raiseOnError = false, errors are returned in the response array
+          // Check for various error types that might be returned
+          if (result instanceof Error || 
+              (result && typeof result === 'object' && 'message' in result && result.name && result.name.includes('Error'))) {
+            formattedResults.push([result as Error, null]);
           } else {
             formattedResults.push([null, result]);
           }
@@ -1293,6 +1670,120 @@ class PipelineAdapter implements Pipeline {
         const rpushxElements = args.slice(1).map(el => ParameterTranslator.normalizeValue(el));
         batch.rpushx(ParameterTranslator.normalizeKey(args[0]), rpushxElements);
         break;
+      // Set commands
+      case 'sadd':
+        const saddMembers = args.slice(1).map(member => ParameterTranslator.normalizeValue(member));
+        batch.sadd(ParameterTranslator.normalizeKey(args[0]), saddMembers);
+        break;
+      case 'srem':
+        const sremMembers = args.slice(1).map(member => ParameterTranslator.normalizeValue(member));
+        batch.srem(ParameterTranslator.normalizeKey(args[0]), sremMembers);
+        break;
+      case 'smembers':
+        batch.smembers(ParameterTranslator.normalizeKey(args[0]));
+        break;
+      case 'scard':
+        batch.scard(ParameterTranslator.normalizeKey(args[0]));
+        break;
+      case 'sismember':
+        batch.sismember(ParameterTranslator.normalizeKey(args[0]), ParameterTranslator.normalizeValue(args[1]));
+        break;
+      case 'spop':
+        if (args.length > 1) {
+          batch.spopCount(ParameterTranslator.normalizeKey(args[0]), args[1]);
+        } else {
+          batch.spop(ParameterTranslator.normalizeKey(args[0]));
+        }
+        break;
+      case 'srandmember':
+        if (args.length > 1) {
+          batch.srandmemberCount(ParameterTranslator.normalizeKey(args[0]), args[1]);
+        } else {
+          batch.srandmember(ParameterTranslator.normalizeKey(args[0]));
+        }
+        break;
+      case 'sunion':
+        const sunionKeys = args.map(key => ParameterTranslator.normalizeKey(key));
+        batch.sunion(sunionKeys);
+        break;
+      case 'sinter':
+        const sinterKeys = args.map(key => ParameterTranslator.normalizeKey(key));
+        batch.sinter(sinterKeys);
+        break;
+      case 'sdiff':
+        const sdiffKeys = args.map(key => ParameterTranslator.normalizeKey(key));
+        batch.sdiff(sdiffKeys);
+        break;
+      case 'sunionstore':
+        const sunionDestination = ParameterTranslator.normalizeKey(args[0]);
+        const sunionStoreKeys = args.slice(1).map(key => ParameterTranslator.normalizeKey(key));
+        batch.sunionstore(sunionDestination, sunionStoreKeys);
+        break;
+      case 'sinterstore':
+        const sinterDestination = ParameterTranslator.normalizeKey(args[0]);
+        const sinterStoreKeys = args.slice(1).map(key => ParameterTranslator.normalizeKey(key));
+        batch.sinterstore(sinterDestination, sinterStoreKeys);
+        break;
+      case 'sdiffstore':
+        const sdiffDestination = ParameterTranslator.normalizeKey(args[0]);
+        const sdiffStoreKeys = args.slice(1).map(key => ParameterTranslator.normalizeKey(key));
+        batch.sdiffstore(sdiffDestination, sdiffStoreKeys);
+        break;
+      // Sorted Set commands
+      case 'zadd':
+        const zaddKey = ParameterTranslator.normalizeKey(args[0]);
+        const zaddMembers = [];
+        for (let i = 1; i < args.length; i += 2) {
+          if (i + 1 < args.length && args[i + 1] !== undefined) {
+            const member = args[i + 1];
+            zaddMembers.push({
+              element: ParameterTranslator.normalizeValue(member),
+              score: Number(args[i])
+            });
+          }
+        }
+        batch.zadd(zaddKey, zaddMembers);
+        break;
+      case 'zrem':
+        const zremKey = ParameterTranslator.normalizeKey(args[0]);
+        const zremMembers = args.slice(1).map(member => ParameterTranslator.normalizeValue(member));
+        batch.zrem(zremKey, zremMembers);
+        break;
+      case 'zrange':
+        const zrangeKey = ParameterTranslator.normalizeKey(args[0]);
+        batch.zrange(zrangeKey, { start: args[1], end: args[2] });
+        break;
+      case 'zrevrange':
+        const zrevrangeKey = ParameterTranslator.normalizeKey(args[0]);
+        batch.zrange(zrevrangeKey, { start: args[1], end: args[2] }, true); // reverse: true
+        break;
+      case 'zscore':
+        batch.zscore(ParameterTranslator.normalizeKey(args[0]), ParameterTranslator.normalizeValue(args[1]));
+        break;
+      case 'zcard':
+        batch.zcard(ParameterTranslator.normalizeKey(args[0]));
+        break;
+      case 'zrank':
+        batch.zrank(ParameterTranslator.normalizeKey(args[0]), ParameterTranslator.normalizeValue(args[1]));
+        break;
+      case 'zrevrank':
+        batch.zrevrank(ParameterTranslator.normalizeKey(args[0]), ParameterTranslator.normalizeValue(args[1]));
+        break;
+      case 'zincrby':
+        batch.zincrby(ParameterTranslator.normalizeKey(args[0]), args[1], ParameterTranslator.normalizeValue(args[2]));
+        break;
+      case 'zcount':
+        // TODO: Fix boundary type compatibility 
+        throw new Error('zcount in pipeline temporarily unavailable');
+        break;
+      case 'zremrangebyrank':
+        batch.zremRangeByRank(ParameterTranslator.normalizeKey(args[0]), args[1], args[2]);
+        break;
+      case 'zremrangebyscore':
+        // TODO: Fix boundary type compatibility
+        throw new Error('zremrangebyscore in pipeline temporarily unavailable');
+        break;
+      // Key commands
       // Key commands
       case 'del':
         const delKeys = ParameterTranslator.translateDelArgs(args);
@@ -1307,6 +1798,9 @@ class PipelineAdapter implements Pipeline {
         break;
       case 'ttl':
         batch.ttl(ParameterTranslator.normalizeKey(args[0]));
+        break;
+      case 'type':
+        batch.type(ParameterTranslator.normalizeKey(args[0]));
         break;
       // Pub/Sub commands
       case 'publish':
@@ -1398,6 +1892,35 @@ class MultiAdapter implements Multi {
   lpushx(key: RedisKey, ...elements: RedisValue[]): Multi { this.commands.push({ method: 'lpushx', args: [key, ...elements] }); return this; }
   rpushx(key: RedisKey, ...elements: RedisValue[]): Multi { this.commands.push({ method: 'rpushx', args: [key, ...elements] }); return this; }
 
+  // Set commands
+  sadd(key: RedisKey, ...members: RedisValue[]): Multi { this.commands.push({ method: 'sadd', args: [key, ...members] }); return this; }
+  srem(key: RedisKey, ...members: RedisValue[]): Multi { this.commands.push({ method: 'srem', args: [key, ...members] }); return this; }
+  smembers(key: RedisKey): Multi { this.commands.push({ method: 'smembers', args: [key] }); return this; }
+  scard(key: RedisKey): Multi { this.commands.push({ method: 'scard', args: [key] }); return this; }
+  sismember(key: RedisKey, member: RedisValue): Multi { this.commands.push({ method: 'sismember', args: [key, member] }); return this; }
+  spop(key: RedisKey, count?: number): Multi { this.commands.push({ method: 'spop', args: count !== undefined ? [key, count] : [key] }); return this; }
+  srandmember(key: RedisKey, count?: number): Multi { this.commands.push({ method: 'srandmember', args: count !== undefined ? [key, count] : [key] }); return this; }
+  sunion(...keys: RedisKey[]): Multi { this.commands.push({ method: 'sunion', args: keys }); return this; }
+  sinter(...keys: RedisKey[]): Multi { this.commands.push({ method: 'sinter', args: keys }); return this; }
+  sdiff(...keys: RedisKey[]): Multi { this.commands.push({ method: 'sdiff', args: keys }); return this; }
+  sunionstore(destination: RedisKey, ...keys: RedisKey[]): Multi { this.commands.push({ method: 'sunionstore', args: [destination, ...keys] }); return this; }
+  sinterstore(destination: RedisKey, ...keys: RedisKey[]): Multi { this.commands.push({ method: 'sinterstore', args: [destination, ...keys] }); return this; }
+  sdiffstore(destination: RedisKey, ...keys: RedisKey[]): Multi { this.commands.push({ method: 'sdiffstore', args: [destination, ...keys] }); return this; }
+
+  // Sorted Set commands
+  zadd(key: RedisKey, ...scoreMembers: (number | string)[]): Multi { this.commands.push({ method: 'zadd', args: [key, ...scoreMembers] }); return this; }
+  zrem(key: RedisKey, ...members: RedisValue[]): Multi { this.commands.push({ method: 'zrem', args: [key, ...members] }); return this; }
+  zrange(key: RedisKey, start: number, stop: number, options?: any): Multi { this.commands.push({ method: 'zrange', args: [key, start, stop, options] }); return this; }
+  zrevrange(key: RedisKey, start: number, stop: number, options?: any): Multi { this.commands.push({ method: 'zrevrange', args: [key, start, stop, options] }); return this; }
+  zscore(key: RedisKey, member: RedisValue): Multi { this.commands.push({ method: 'zscore', args: [key, member] }); return this; }
+  zcard(key: RedisKey): Multi { this.commands.push({ method: 'zcard', args: [key] }); return this; }
+  zrank(key: RedisKey, member: RedisValue): Multi { this.commands.push({ method: 'zrank', args: [key, member] }); return this; }
+  zrevrank(key: RedisKey, member: RedisValue): Multi { this.commands.push({ method: 'zrevrank', args: [key, member] }); return this; }
+  zincrby(key: RedisKey, increment: number, member: RedisValue): Multi { this.commands.push({ method: 'zincrby', args: [key, increment, member] }); return this; }
+  zcount(key: RedisKey, min: number | string, max: number | string): Multi { this.commands.push({ method: 'zcount', args: [key, min, max] }); return this; }
+  zremrangebyrank(key: RedisKey, start: number, stop: number): Multi { this.commands.push({ method: 'zremrangebyrank', args: [key, start, stop] }); return this; }
+  zremrangebyscore(key: RedisKey, min: number | string, max: number | string): Multi { this.commands.push({ method: 'zremrangebyscore', args: [key, min, max] }); return this; }
+
   // Key commands
   del(...keys: RedisKey[]): Multi { this.commands.push({ method: 'del', args: keys }); return this; }
   exists(...keys: RedisKey[]): Multi { this.commands.push({ method: 'exists', args: keys }); return this; }
@@ -1439,6 +1962,18 @@ class MultiAdapter implements Multi {
 
     try {
       const client = await (this.redis as any).ensureConnected();
+      
+      // Pre-validate commands that could cause transaction failure
+      // This mimics Redis MULTI/EXEC behavior where invalid commands
+      // cause the entire transaction to be discarded
+      for (const cmd of this.commands) {
+        const validationError = await this.validateCommand(cmd.method, cmd.args);
+        if (validationError) {
+          // Return null immediately - transaction is aborted
+          return null;
+        }
+      }
+      
       const batch = new Batch(true); // Atomic batch for transactions
 
       // Add all commands to the batch
@@ -1488,6 +2023,39 @@ class MultiAdapter implements Multi {
       this.commands = [];
       // Clear watched keys on the parent adapter as well
       (this.redis as any).watchedKeys.clear();
+    }
+  }
+
+  /**
+   * Pre-validate commands that could cause transaction failure
+   * Returns error string if command would fail, null if command is valid
+   */
+  private async validateCommand(method: string, args: any[]): Promise<string | null> {
+    try {
+      const client = await (this.redis as any).ensureConnected();
+      
+      // Check for common command validation issues
+      if (method === 'incr' || method === 'decr' || method === 'incrby' || method === 'decrby' || method === 'incrbyfloat') {
+        const key = args[0];
+        if (key) {
+          // Check if the key exists and contains a non-numeric value
+          const value = await client.get(ParameterTranslator.normalizeKey(key));
+          if (value !== null) {
+            // Try to parse as number
+            const numValue = Number(value);
+            if (isNaN(numValue)) {
+              return `value is not an integer or out of range`;
+            }
+          }
+        }
+      }
+      
+      // Add more validation rules as needed for other commands
+      
+      return null; // Command is valid
+    } catch (error) {
+      // If validation itself fails, assume command would fail
+      return error instanceof Error ? error.message : 'validation error';
     }
   }
 

@@ -26,7 +26,7 @@ describe('Simple Adapter Integration Test', () => {
       return;
     }
 
-    const config = testUtils.getStandaloneConfig();
+    const config = await testUtils.getStandaloneConfig();
     adapter = new RedisAdapter(config);
     await adapter.connect();
   });
@@ -34,8 +34,11 @@ describe('Simple Adapter Integration Test', () => {
   afterEach(async () => {
     if (adapter) {
       try {
-        // Clean up test data
-        await adapter.del('test:*');
+        // Clean up test data - find all test keys first, then delete them
+        const testKeys = await adapter.keys('test:*');
+        if (testKeys.length > 0) {
+          await adapter.del(...testKeys);
+        }
       } catch {
         // Ignore cleanup errors
       }

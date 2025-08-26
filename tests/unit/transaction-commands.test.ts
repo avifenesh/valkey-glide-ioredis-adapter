@@ -12,7 +12,7 @@ describe('Transaction Commands', () => {
       return;
     }
 
-    const config = testUtils.getStandaloneConfig();
+    const config = await testUtils.getStandaloneConfig();
     redis = new RedisAdapter(config);
     await redis.connect();
   });

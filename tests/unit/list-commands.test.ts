@@ -27,7 +27,7 @@ describe('List Commands (ioredis compatibility)', () => {
     }
     
     // Use test server configuration
-    const config = testUtils.getStandaloneConfig();
+    const config = await testUtils.getStandaloneConfig();
     redis = new RedisAdapter(config);
     await redis.connect();
     

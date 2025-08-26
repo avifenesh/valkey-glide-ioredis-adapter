@@ -361,7 +361,7 @@ describe('Socket.IO Redis Adapter Integration', () => {
       await new Promise<void>((resolve) => client.on('connect', resolve));
 
       const disconnectPromise = new Promise<void>((resolve) => {
-        client.on('disconnect', resolve);
+        client.on('disconnect', (_reason) => resolve());
       });
 
       client.disconnect();

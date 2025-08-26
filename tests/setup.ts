@@ -25,6 +25,12 @@ let discoveredServers: DiscoveredServer[] | null = null;
 let lastDiscoveryTime = 0;
 const DISCOVERY_CACHE_TTL = 30000; // 30 seconds
 
+// Cache for standalone config to avoid repeated discovery logs
+let cachedStandaloneConfig: ServerConfig | null = null;
+let lastStandaloneConfigTime = 0;
+const STANDALONE_CONFIG_CACHE_TTL = 30000; // 30 seconds
+let hasLoggedDiscovery = false; // Flag to prevent repeated discovery logs
+
 // Global test utilities
 export const testUtils = {
   delay: (ms: number): Promise<void> => 
@@ -38,33 +44,54 @@ export const testUtils = {
     
   // Get test server configuration with dynamic discovery
   async getStandaloneConfig(): Promise<ServerConfig> {
+    const now = Date.now();
+    
+    // Return cached config if still valid
+    if (cachedStandaloneConfig && (now - lastStandaloneConfigTime) < STANDALONE_CONFIG_CACHE_TTL) {
+      return cachedStandaloneConfig;
+    }
+    
     try {
       // First try to find any existing Redis server
       const result = await portUtils.findRedisServerOrPort();
       
-      if (result.server) {
-        console.log(`🔍 Discovered Redis server at ${result.server.host}:${result.server.port} (${result.server.type} ${result.server.version || 'unknown version'})`);
-        return { host: result.server.host, port: result.server.port };
-      }
+      let config: ServerConfig;
       
-      // If no server found, check environment variables as fallback
-      if (process.env.VALKEY_STANDALONE_HOST && process.env.VALKEY_STANDALONE_PORT) {
-        const config = {
+      if (result.server) {
+        if (!hasLoggedDiscovery) {
+          console.log(`🔍 Discovered Redis server at ${result.server.host}:${result.server.port} (${result.server.type} ${result.server.version || 'unknown version'})`);
+          hasLoggedDiscovery = true;
+        }
+        config = { host: result.server.host, port: result.server.port };
+      } else if (process.env.VALKEY_STANDALONE_HOST && process.env.VALKEY_STANDALONE_PORT) {
+        // If no server found, check environment variables as fallback
+        config = {
           host: process.env.VALKEY_STANDALONE_HOST,
           port: parseInt(process.env.VALKEY_STANDALONE_PORT, 10)
         };
         console.log(`📋 Using environment configuration: ${config.host}:${config.port}`);
-        return config;
+      } else {
+        // Default to standard Redis port
+        console.log('📍 Using default Redis configuration: localhost:6379');
+        config = { host: 'localhost', port: 6379 };
       }
       
-      // Default to standard Redis port
-      console.log('📍 Using default Redis configuration: localhost:6379');
-      return { host: 'localhost', port: 6379 };
+      // Cache the result
+      cachedStandaloneConfig = config;
+      lastStandaloneConfigTime = now;
+      
+      return config;
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.warn('⚠️  Error during server discovery, using default:', errorMessage);
-      return { host: 'localhost', port: 6379 };
+      const defaultConfig = { host: 'localhost', port: 6379 };
+      
+      // Cache the default config too
+      cachedStandaloneConfig = defaultConfig;
+      lastStandaloneConfigTime = now;
+      
+      return defaultConfig;
     }
   },
   

@@ -85,6 +85,35 @@ export interface Pipeline {
   lpushx(key: RedisKey, ...elements: RedisValue[]): Pipeline;
   rpushx(key: RedisKey, ...elements: RedisValue[]): Pipeline;
 
+  // Set commands
+  sadd(key: RedisKey, ...members: RedisValue[]): Pipeline;
+  srem(key: RedisKey, ...members: RedisValue[]): Pipeline;
+  smembers(key: RedisKey): Pipeline;
+  scard(key: RedisKey): Pipeline;
+  sismember(key: RedisKey, member: RedisValue): Pipeline;
+  spop(key: RedisKey, count?: number): Pipeline;
+  srandmember(key: RedisKey, count?: number): Pipeline;
+  sunion(...keys: RedisKey[]): Pipeline;
+  sinter(...keys: RedisKey[]): Pipeline;
+  sdiff(...keys: RedisKey[]): Pipeline;
+  sunionstore(destination: RedisKey, ...keys: RedisKey[]): Pipeline;
+  sinterstore(destination: RedisKey, ...keys: RedisKey[]): Pipeline;
+  sdiffstore(destination: RedisKey, ...keys: RedisKey[]): Pipeline;
+
+  // Sorted Set commands
+  zadd(key: RedisKey, ...scoreMembers: (number | string)[]): Pipeline;
+  zrem(key: RedisKey, ...members: RedisValue[]): Pipeline;
+  zrange(key: RedisKey, start: number, stop: number, options?: any): Pipeline;
+  zrevrange(key: RedisKey, start: number, stop: number, options?: any): Pipeline;
+  zscore(key: RedisKey, member: RedisValue): Pipeline;
+  zcard(key: RedisKey): Pipeline;
+  zrank(key: RedisKey, member: RedisValue): Pipeline;
+  zrevrank(key: RedisKey, member: RedisValue): Pipeline;
+  zincrby(key: RedisKey, increment: number, member: RedisValue): Pipeline;
+  zcount(key: RedisKey, min: number | string, max: number | string): Pipeline;
+  zremrangebyrank(key: RedisKey, start: number, stop: number): Pipeline;
+  zremrangebyscore(key: RedisKey, min: number | string, max: number | string): Pipeline;
+
   // Key commands
   del(...keys: RedisKey[]): Pipeline;
   exists(...keys: RedisKey[]): Pipeline;
@@ -151,6 +180,35 @@ export interface Multi {
   lrem(key: RedisKey, count: number, element: RedisValue): Multi;
   lpushx(key: RedisKey, ...elements: RedisValue[]): Multi;
   rpushx(key: RedisKey, ...elements: RedisValue[]): Multi;
+
+  // Set commands
+  sadd(key: RedisKey, ...members: RedisValue[]): Multi;
+  srem(key: RedisKey, ...members: RedisValue[]): Multi;
+  smembers(key: RedisKey): Multi;
+  scard(key: RedisKey): Multi;
+  sismember(key: RedisKey, member: RedisValue): Multi;
+  spop(key: RedisKey, count?: number): Multi;
+  srandmember(key: RedisKey, count?: number): Multi;
+  sunion(...keys: RedisKey[]): Multi;
+  sinter(...keys: RedisKey[]): Multi;
+  sdiff(...keys: RedisKey[]): Multi;
+  sunionstore(destination: RedisKey, ...keys: RedisKey[]): Multi;
+  sinterstore(destination: RedisKey, ...keys: RedisKey[]): Multi;
+  sdiffstore(destination: RedisKey, ...keys: RedisKey[]): Multi;
+
+  // Sorted Set commands
+  zadd(key: RedisKey, ...scoreMembers: (number | string)[]): Multi;
+  zrem(key: RedisKey, ...members: RedisValue[]): Multi;
+  zrange(key: RedisKey, start: number, stop: number, options?: any): Multi;
+  zrevrange(key: RedisKey, start: number, stop: number, options?: any): Multi;
+  zscore(key: RedisKey, member: RedisValue): Multi;
+  zcard(key: RedisKey): Multi;
+  zrank(key: RedisKey, member: RedisValue): Multi;
+  zrevrank(key: RedisKey, member: RedisValue): Multi;
+  zincrby(key: RedisKey, increment: number, member: RedisValue): Multi;
+  zcount(key: RedisKey, min: number | string, max: number | string): Multi;
+  zremrangebyrank(key: RedisKey, start: number, stop: number): Multi;
+  zremrangebyscore(key: RedisKey, min: number | string, max: number | string): Multi;
 
   // Key commands
   del(...keys: RedisKey[]): Multi;
@@ -274,6 +332,35 @@ export interface IRedisAdapter extends EventEmitter {
   lrem(key: RedisKey, count: number, element: RedisValue): Promise<number>;
   lpushx(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
   rpushx(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
+
+  // Set commands
+  sadd(key: RedisKey, ...members: RedisValue[]): Promise<number>;
+  srem(key: RedisKey, ...members: RedisValue[]): Promise<number>;
+  smembers(key: RedisKey): Promise<string[]>;
+  scard(key: RedisKey): Promise<number>;
+  sismember(key: RedisKey, member: RedisValue): Promise<number>;
+  spop(key: RedisKey, count?: number): Promise<string | string[] | null>;
+  srandmember(key: RedisKey, count?: number): Promise<string | string[] | null>;
+  sunion(...keys: RedisKey[]): Promise<string[]>;
+  sinter(...keys: RedisKey[]): Promise<string[]>;
+  sdiff(...keys: RedisKey[]): Promise<string[]>;
+  sunionstore(destination: RedisKey, ...keys: RedisKey[]): Promise<number>;
+  sinterstore(destination: RedisKey, ...keys: RedisKey[]): Promise<number>;
+  sdiffstore(destination: RedisKey, ...keys: RedisKey[]): Promise<number>;
+
+  // Sorted Set commands
+  zadd(key: RedisKey, ...scoreMembers: (number | string)[]): Promise<number>;
+  zrem(key: RedisKey, ...members: RedisValue[]): Promise<number>;
+  zrange(key: RedisKey, start: number, stop: number, options?: any): Promise<string[]>;
+  zrevrange(key: RedisKey, start: number, stop: number, options?: any): Promise<string[]>;
+  zscore(key: RedisKey, member: RedisValue): Promise<string | null>;
+  zcard(key: RedisKey): Promise<number>;
+  zrank(key: RedisKey, member: RedisValue): Promise<number | null>;
+  zrevrank(key: RedisKey, member: RedisValue): Promise<number | null>;
+  zincrby(key: RedisKey, increment: number, member: RedisValue): Promise<string>;
+  zcount(key: RedisKey, min: number | string, max: number | string): Promise<number>;
+  zremrangebyrank(key: RedisKey, start: number, stop: number): Promise<number>;
+  zremrangebyscore(key: RedisKey, min: number | string, max: number | string): Promise<number>;
 
   // Key commands
   del(...keys: RedisKey[]): Promise<number>;
