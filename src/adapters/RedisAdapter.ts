@@ -5,6 +5,7 @@
 
 import { Batch, GlideClient, Script, TimeUnit } from '@valkey/valkey-glide';
 import { EventEmitter } from 'events';
+import { pack as msgpack } from 'msgpackr';
 import {
   ConnectionStatus,
   IRedisAdapter,
@@ -1232,19 +1233,40 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     
     // Convert keys and arguments to appropriate format
     const keys = keysAndArgs.slice(0, numkeys).map(String);
-    const args = keysAndArgs.slice(numkeys).map(String);
+    const rawArgs = keysAndArgs.slice(numkeys);
     
-    // Execute the script using customCommand with EVAL
-    const commandArgs = [script, numkeys.toString(), ...keys, ...args];
-    return await client.customCommand(['EVAL', ...commandArgs]);
+    // Convert Buffer objects to GlideString format (keep as Buffer for binary data)
+    // Valkey Glide expects GlideString which can be string or Buffer
+    const args = rawArgs.map(arg => {
+      if (Buffer.isBuffer(arg)) {
+        // Keep Buffer objects as-is since GlideString supports Buffer
+        return arg;
+      }
+      // Convert other types to string
+      return String(arg);
+    });
+    
+    // Debug: Log the arguments being passed
+    console.log(`🔍 EVAL script hash: ${script.substring(0, 50)}...`);
+    console.log(`🔍 EVAL numkeys: ${numkeys}`);
+    console.log(`🔍 EVAL keys:`, keys);
+    console.log(`🔍 EVAL args:`, args.map((arg, i) => {
+      if (Buffer.isBuffer(arg)) {
+        return `[${i}]: Buffer(${arg.length} bytes) - first 20 bytes: ${Array.from(arg.slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join(' ')}`;
+      }
+      return `[${i}]: ${typeof arg} - ${arg}`;
+    }));
+    
+    // Use Valkey Glide's Script object for proper Lua script execution
+    const scriptObj = new Script(script);
+    return await client.invokeScript(scriptObj, { keys, args });
   }
 
   async evalsha(sha1: string, numkeys: number, ...keysAndArgs: any[]): Promise<any> {
     const client = await this.ensureConnected();
     
-    // Convert keys and arguments to appropriate format
-    const keys = keysAndArgs.slice(0, numkeys).map(String);
-    const args = keysAndArgs.slice(numkeys).map(String);
+    const keys = keysAndArgs.slice(0, numkeys);
+    const args = keysAndArgs.slice(numkeys);
     
     try {
       // Try direct EVALSHA first
@@ -1266,9 +1288,186 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   defineCommand(name: string, options: { lua: string; numberOfKeys?: number }): void {
     const { lua, numberOfKeys = 0 } = options;
     
+    // MessagePack handling removed - BullMQ handles encoding internally
+    
     // Define the method on this instance
     (this as any)[name] = async (...args: any[]): Promise<any> => {
       const client = await this.ensureConnected();
+
+      // Simplified pass-through for Lua scripts: honor numberOfKeys and preserve Buffers
+      {
+        const numkeys = Number(numberOfKeys) || 0;
+        const keys = args.slice(0, numkeys);
+        const argv = args.slice(numkeys);
+
+        const toGlideString = (v: any): string | Buffer => {
+          if (v === null || v === undefined) return '';
+          if (Buffer.isBuffer(v)) return v;
+          switch (typeof v) {
+            case 'string':
+              return v;
+            case 'number':
+            case 'bigint':
+            case 'boolean':
+              return String(v);
+            default:
+              try {
+                return JSON.stringify(v);
+              } catch {
+                return String(v);
+              }
+          }
+        };
+
+        const safeKeys = keys.map(toGlideString);
+        const safeArgv = argv.map(toGlideString);
+
+        try {
+          return await client.customCommand(['EVAL', lua, numkeys.toString(), ...safeKeys, ...safeArgv]);
+        } catch (err) {
+          console.error(`defineCommand EVAL error for ${name}:`, err);
+          console.error(`keys(${safeKeys.length}):`, safeKeys.map((k: any) => Buffer.isBuffer(k) ? `<Buffer len=${k.length}>` : String(k)));
+          console.error(`argv(${safeArgv.length}):`, safeArgv.map((a: any) => Buffer.isBuffer(a) ? `<Buffer len=${a.length}>` : String(a)));
+          // Do not rethrow here; fall through to the Bull-specific serialization logic below
+        }
+      }
+      
+      // Bull serialization helper methods
+      const bullSerializationHelpers = {
+        /**
+         * Check if object is Bull job data
+         */
+        isBullJobData: (obj: any): boolean => {
+          if (!obj || typeof obj !== 'object') return false;
+          // Bull job data typically has specific properties
+          return obj.hasOwnProperty('data') || obj.hasOwnProperty('opts') || 
+                 (typeof obj === 'object' && !Array.isArray(obj) && Object.keys(obj).length > 0);
+        },
+        
+        /**
+         * Serialize Bull job data
+         */
+        serializeBullJobData: (data: any): string => {
+          try {
+            // For BullMQ compatibility, use MessagePack for complex data
+            if (data && typeof data === 'object') {
+              const packed = msgpack(data);
+              return Buffer.from(packed).toString('base64');
+            }
+            const result = JSON.stringify(data);
+            return result && result !== 'null' && result !== 'undefined' ? result : '{}';
+          } catch {
+            const fallback = String(data);
+            return fallback && fallback !== 'null' && fallback !== 'undefined' ? fallback : '{}';
+          }
+        },
+        
+        /**
+         * Check if object is Bull job options
+         */
+        isBullJobOptions: (obj: any): boolean => {
+          if (!obj || typeof obj !== 'object') return false;
+          const optionKeys = ['delay', 'priority', 'attempts', 'backoff', 'lifo', 'timeout', 'removeOnComplete', 'removeOnFail'];
+          return optionKeys.some(key => obj.hasOwnProperty(key));
+        },
+        
+        /**
+         * Serialize Bull job options
+         */
+        serializeBullJobOptions: (opts: any): string => {
+          try {
+            // For BullMQ compatibility, use MessagePack for complex data
+            if (opts && typeof opts === 'object') {
+              const packed = msgpack(opts);
+              return Buffer.from(packed).toString('base64');
+            }
+            const result = JSON.stringify(opts);
+            return result && result !== 'null' && result !== 'undefined' ? result : '{}';
+          } catch {
+            const fallback = String(opts);
+            return fallback && fallback !== 'null' && fallback !== 'undefined' ? fallback : '{}';
+          }
+        },
+        
+        /**
+         * Check if object is Bull queue settings
+         */
+        isBullQueueSettings: (obj: any): boolean => {
+          if (!obj || typeof obj !== 'object') return false;
+          const settingKeys = ['stalledInterval', 'maxStalledCount', 'retryProcessDelay'];
+          return settingKeys.some(key => obj.hasOwnProperty(key));
+        },
+        
+        /**
+         * Serialize Bull queue settings
+         */
+        serializeBullQueueSettings: (settings: any): string => {
+          try {
+            const result = JSON.stringify(settings);
+            return result && result !== 'null' && result !== 'undefined' ? result : '{}';
+          } catch {
+            const fallback = String(settings);
+            return fallback && fallback !== 'null' && fallback !== 'undefined' ? fallback : '{}';
+          }
+        },
+        
+        /**
+         * Check if object has nested structure
+         */
+        isNestedObject: (obj: any): boolean => {
+          if (!obj || typeof obj !== 'object') return false;
+          return Object.values(obj).some(value => 
+            typeof value === 'object' && value !== null && !Array.isArray(value)
+          );
+        },
+        
+        /**
+         * Flatten nested objects for Lua script compatibility
+         */
+        flattenObject: (obj: any, prefix: string = ''): string => {
+          const flattened: string[] = [];
+          
+          for (const [key, value] of Object.entries(obj)) {
+            const fullKey = prefix ? `${prefix}.${key}` : key;
+            
+            if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+              // Recursively flatten nested objects
+              const nestedResult = bullSerializationHelpers.flattenObject(value, fullKey);
+              if (nestedResult && nestedResult.trim() !== '') {
+                flattened.push(nestedResult);
+              }
+            } else {
+              // Convert value to string representation
+              const valueStr = Array.isArray(value) 
+                ? value.map(String).join(';')
+                : String(value);
+              flattened.push(`${fullKey}=${valueStr}`);
+            }
+          }
+          
+          const result = flattened.join('|');
+          return result || '{}';
+        },
+        
+        /**
+         * Serialize generic object
+         */
+        serializeGenericObject: (obj: any): string => {
+          try {
+            const result = JSON.stringify(obj);
+            if (!result || result === 'null' || result === 'undefined' || result.trim() === '') {
+              return '{}';
+            }
+            return result;
+          } catch {
+            const result = String(obj);
+            if (!result || result === 'null' || result === 'undefined' || result.trim() === '') {
+              return '{}';
+            }
+            return result;
+          }
+        }
+      };
       
       // Specialized Bull serialization adapter - understands Bull's object patterns
       const createBullSerializationAdapter = (commandName: string): any => {
@@ -1277,11 +1476,11 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
            * Bull-specific argument serialization that understands Bull's internal structures
            * Enhanced to handle script line 84 errors with comprehensive type conversion
            */
-          serializeArgs: (args: any[]): string[] => {
-            return args.map((arg) => {
+          serializeArgs: (args: any[]): (string | Buffer)[] => {
+              return args.map((arg) => {
               // Handle primitive types
               if (arg === null || arg === undefined) {
-                return '0'; // Use '0' instead of empty string for better Lua compatibility
+                return ''; // Use empty string to match defineCommand behavior
               }
               if (typeof arg === 'string') {
                 return arg;
@@ -1294,9 +1493,16 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
                 return arg ? '1' : '0';
               }
               
-              // Handle Buffer objects
+              // Handle Buffer objects - preserve as Buffer for GlideString
               if (Buffer.isBuffer(arg)) {
-                return arg.toString('utf8');
+                // Return Buffer directly since GlideString can handle it
+                return arg;
+              }
+              
+              // Handle objects that might be serialized Buffer representations
+              if (typeof arg === 'object' && arg !== null && arg.type === 'Buffer' && Array.isArray(arg.data)) {
+                // This is a serialized Buffer object, convert back to Buffer
+                return Buffer.from(arg.data);
               }
               
               // Handle Date objects
@@ -1306,15 +1512,13 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
               
               // Handle arrays - Bull sometimes passes arrays
               if (Array.isArray(arg)) {
+                // Don't re-encode if this is already MessagePack data
+                // BullMQ already packs data before sending it to Redis
+                
                 // Recursively serialize array elements
                 const serializedItems = arg.map((item) => {
                   if (typeof item === 'object' && item !== null) {
-                    // Use a safe fallback for object serialization during array processing
-                    try {
-                      return JSON.stringify(item).replace(/[{}'"\[\]]/g, '').replace(/,/g, '|');
-                    } catch {
-                      return String(item);
-                    }
+                    return bullSerializationHelpers.serializeGenericObject(item);
                   }
                   return String(item);
                 });
@@ -1330,6 +1534,9 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
               
               // Handle Bull-specific object patterns
               if (typeof arg === 'object') {
+                // BullMQ already handles MessagePack encoding before sending to Redis
+                // Don't re-encode the data
+                
                 // Bull Job Data Object - most common pattern
                 if (serializer.isBullJobData(arg)) {
                   return serializer.serializeBullJobData(arg);
@@ -1341,36 +1548,17 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
                 }
                 
                 // Bull Queue Settings
-                if (serializer.isBullQueueSettings(arg)) {
-                  return serializer.serializeBullQueueSettings(arg);
+                if (bullSerializationHelpers.isBullQueueSettings(arg)) {
+                  return bullSerializationHelpers.serializeBullQueueSettings(arg);
                 }
                 
                 // Handle nested objects with proper flattening
-                if (serializer.isNestedObject(arg)) {
-                  return serializer.flattenObject(arg);
+                if (bullSerializationHelpers.isNestedObject(arg)) {
+                  return bullSerializationHelpers.flattenObject(arg);
                 }
                 
                 // Generic object fallback with better structure preservation
-                try {
-                  // For plain objects, convert to key=value pairs
-                  if (arg.constructor === Object) {
-                    return Object.entries(arg)
-                      .map(([key, value]) => {
-                        const valueStr = typeof value === 'object' && value !== null
-                          ? JSON.stringify(value).replace(/[{}'"]/g, '').replace(/,/g, ';')
-                          : String(value);
-                        return `${key}=${valueStr}`;
-                      })
-                      .join('|');
-                  }
-                  
-                  // For other objects, try JSON but clean it up for Lua
-                  const jsonStr = JSON.stringify(arg);
-                  return jsonStr.replace(/[{}'"\[\]]/g, '').replace(/,/g, '|');
-                } catch (error) {
-                  console.warn(`Failed to serialize object:`, error);
-                  return String(arg);
-                }
+                return serializer.serializeBullJobData(arg);
               }
               
               // Fallback - ensure all values are strings or convert to safe representation
@@ -1394,31 +1582,14 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
           /**
            * Serialize Bull job data preserving structure
            */
-          serializeBullJobData: (data: any): string => {
-            // Extract key fields that Bull expects
-            const jobFields: string[] = [];
-            
-            if (data.name !== undefined) {
-              jobFields.push(`name:${data.name}`);
+          serializeBullJobData: (data: any): Buffer | string => {
+            try {
+              // Use MessagePack for BullMQ compatibility - return Buffer directly
+              return Buffer.from(msgpack(data));
+            } catch (error) {
+              // Fallback to JSON for simple data
+              return JSON.stringify(data);
             }
-            if (data.data !== undefined) {
-              // For job data, preserve JSON structure but flatten for Lua
-              const dataStr = typeof data.data === 'object' 
-                ? JSON.stringify(data.data).replace(/[{}"']/g, '').replace(/,/g, ';')
-                : String(data.data);
-              jobFields.push(`data:${dataStr}`);
-            }
-            if (data.id !== undefined) {
-              jobFields.push(`id:${data.id}`);
-            }
-            if (data.opts !== undefined) {
-              const optsStr = typeof data.opts === 'object'
-                ? Object.entries(data.opts).map(([k, v]) => `${k}=${v}`).join(',')
-                : String(data.opts);
-              jobFields.push(`opts:${optsStr}`);
-            }
-            
-            return jobFields.join('|');
           },
           
           /**
@@ -1437,26 +1608,14 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
           /**
            * Serialize Bull job options
            */
-          serializeBullJobOptions: (opts: any): string => {
-            const optFields: string[] = [];
-            
-            if (opts.delay !== undefined) optFields.push(`delay:${opts.delay}`);
-            if (opts.priority !== undefined) optFields.push(`priority:${opts.priority}`);
-            if (opts.attempts !== undefined) optFields.push(`attempts:${opts.attempts}`);
-            if (opts.repeat !== undefined) {
-              const repeatStr = typeof opts.repeat === 'object'
-                ? Object.entries(opts.repeat).map(([k, v]) => `${k}=${v}`).join(',')
-                : String(opts.repeat);
-              optFields.push(`repeat:${repeatStr}`);
+          serializeBullJobOptions: (opts: any): Buffer | string => {
+            try {
+              // Use MessagePack for BullMQ compatibility - return Buffer directly
+              return Buffer.from(msgpack(opts));
+            } catch (error) {
+              // Fallback to JSON serialization
+              return JSON.stringify(opts);
             }
-            if (opts.backoff !== undefined) {
-              const backoffStr = typeof opts.backoff === 'object'
-                ? Object.entries(opts.backoff).map(([k, v]) => `${k}=${v}`).join(',')
-                : String(opts.backoff);
-              optFields.push(`backoff:${backoffStr}`);
-            }
-            
-            return optFields.join('|');
           },
           
           /**
@@ -1489,96 +1648,14 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
             return settingFields.join('|');
           }
         };
-        
-
-          serializeGenericObject: (obj: any): string => {
-            try {
-              // For plain objects, convert to key=value pairs
-              if (obj.constructor === Object) {
-                return Object.entries(obj)
-                  .map(([key, value]) => {
-                    const valueStr = typeof value === 'object' && value !== null
-                      ? JSON.stringify(value).replace(/[{}"']/g, '').replace(/,/g, ';')
-                      : String(value);
-                    return `${key}=${valueStr}`;
-                  })
-                  .join('|');
-              }
-              
-              // For other objects, try JSON but clean it up for Lua
-              const jsonStr = JSON.stringify(obj);
-              // Remove problematic characters that Lua might not handle well
-              return jsonStr.replace(/[{}"'\[\]]/g, '').replace(/,/g, '|');
-              
-            } catch (error) {
-              console.warn(`Failed to serialize object:`, error);
-              return String(obj);
-            }
-          },
-          
-          /**
-           * Check if object has nested structure that needs flattening
-           */
-          isNestedObject: (obj: any): boolean => {
-            if (!obj || typeof obj !== 'object') return false;
-            
-            return Object.values(obj).some(value => 
-              typeof value === 'object' && value !== null && !Array.isArray(value)
-            );
-          },
-          
-          /**
-           * Flatten nested objects for Lua script compatibility
-           */
-          flattenObject: (obj: any, prefix: string = ''): string => {
-            const flattened: string[] = [];
-            
-            for (const [key, value] of Object.entries(obj)) {
-              const fullKey = prefix ? `${prefix}.${key}` : key;
-              
-              if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                // Use direct recursion instead of adapter reference
-                const flattenObjectRecursive = (nestedObj: any, nestedPrefix: string): string => {
-                  const nestedFlattened: string[] = [];
-                  for (const [nestedKey, nestedValue] of Object.entries(nestedObj)) {
-                    const nestedFullKey = nestedPrefix ? `${nestedPrefix}.${nestedKey}` : nestedKey;
-                    if (typeof nestedValue === 'object' && nestedValue !== null && !Array.isArray(nestedValue)) {
-                      nestedFlattened.push(flattenObjectRecursive(nestedValue, nestedFullKey));
-                    } else {
-                      const nestedValueStr = Array.isArray(nestedValue) 
-                        ? nestedValue.map(String).join(';')
-                        : String(nestedValue);
-                      nestedFlattened.push(`${nestedFullKey}=${nestedValueStr}`);
-                    }
-                  }
-                  return nestedFlattened.join('|');
-                };
-                flattened.push(flattenObjectRecursive(value, fullKey));
-              } else {
-                // Convert value to string representation
-                const valueStr = Array.isArray(value) 
-                  ? value.map(String).join(';')
-                  : String(value);
-                flattened.push(`${fullKey}=${valueStr}`);
-              }
-            }
-            
-            return flattened.join('|');
-          },
-          
-          isBullJobData: serializer.isBullJobData,
-          serializeBullJobData: serializer.serializeBullJobData,
-          isBullJobOptions: serializer.isBullJobOptions,
-          serializeBullJobOptions: serializer.serializeBullJobOptions,
-          isBullQueueSettings: serializer.isBullQueueSettings,
-          serializeBullQueueSettings: serializer.serializeBullQueueSettings
-        };
-
       };
       
       // Create specialized serializer for this command
       const serializer = createBullSerializationAdapter(name);
       const serializedArgs = serializer.serializeArgs(args);
+      
+      // Debug: Log serialized arguments to identify null/undefined values
+      console.log(`🔍 ${name} serializedArgs:`, serializedArgs.map((arg: any, i: number) => `[${i}]: ${arg === null ? 'NULL' : arg === undefined ? 'UNDEFINED' : typeof arg === 'string' ? `"${arg}"` : arg}`));
       
       // Enhanced Bull numberOfKeys handling with pattern recognition
       let actualNumberOfKeys = numberOfKeys;
@@ -1603,46 +1680,82 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       const keys = serializedArgs.slice(0, actualNumberOfKeys);
       const scriptArgs = serializedArgs.slice(actualNumberOfKeys);
       
+      // Ensure all arguments are properly handled for BullMQ MessagePack compatibility
+      // Use GlideString (string | Buffer) to preserve binary MessagePack data
+      const safeKeys = keys.map((key: any) => {
+        if (key === null || key === undefined) {
+          console.warn(`🔧 Null/undefined key detected, converting to empty string`);
+          return '';
+        }
+        // GlideString accepts string | Buffer, so preserve Buffer objects for MessagePack
+        if (Buffer.isBuffer(key) || typeof key === 'string') {
+          return key; // Keep as-is for GlideString compatibility
+        }
+        return String(key);
+      });
+      
+      const safeScriptArgs = scriptArgs.map((arg: any, index: number) => {
+        if (arg === null || arg === undefined) {
+          console.warn(`🔧 Null/undefined script arg detected at index ${index}, converting to empty string`);
+          return '';
+        }
+        // Preserve Buffers for msgpack data, and avoid String(arg) for objects
+        if (Buffer.isBuffer(arg) || typeof arg === 'string') {
+          console.log(`🔧 Preserving ${Buffer.isBuffer(arg) ? 'Buffer' : 'string'} argument for GlideString at index ${index}`);
+          return arg; // Keep as-is for GlideString compatibility
+        }
+        // If object, MessagePack it to Buffer
+        if (typeof arg === 'object') {
+          try {
+            const packed = Buffer.from(msgpack(arg));
+            console.log(`🔧 Packed object to Buffer for index ${index}, size=${packed.length}`);
+            return packed;
+          } catch (e) {
+            console.warn(`⚠️ Failed to pack object at index ${index}, falling back to String`);
+          }
+        }
+        return String(arg);
+      });
+      
       try {
         // Execute Lua script via EVAL command
-        const evalArgs = [
-          lua,                                // The Lua script
-          actualNumberOfKeys.toString(),      // Number of keys (must be string)
-          ...keys,                           // KEYS array (all strings)
-          ...scriptArgs                      // ARGV array (all strings)
-        ];
-        
         console.log(`🚀 Executing ${name} with Bull-optimized serialization:`, {
-          keysCount: keys.length,
-          argsCount: scriptArgs.length,
-          keysPreview: keys.map((k: string) => k.substring(0, 50)),
-          argsPreview: scriptArgs.map((a: string) => a.substring(0, 50))
+          keysCount: safeKeys.length,
+          argsCount: safeScriptArgs.length,
+          keysPreview: safeKeys.map((k: any) =>
+            Buffer.isBuffer(k)
+              ? `<Buffer len=${k.length} hex=${k.toString('hex', 0, Math.min(16, k.length))}>`
+              : typeof k === 'string'
+              ? k.slice(0, 50)
+              : String(k).slice(0, 50)
+          ),
+          argsPreview: safeScriptArgs.map((a: any) =>
+            Buffer.isBuffer(a)
+              ? `<Buffer len=${a.length} hex=${a.toString('hex', 0, Math.min(16, a.length))}>`
+              : typeof a === 'string'
+              ? a.slice(0, 50)
+              : String(a).slice(0, 50)
+          )
         });
         
-        const result = await client.customCommand(['EVAL', ...evalArgs]);
+        const result = await client.customCommand(['EVAL', lua, actualNumberOfKeys.toString(), ...safeKeys, ...safeScriptArgs]);
         return result;
         
-      } catch (evalError) {
+      } catch (evalError: any) {
         const errorMessage = evalError instanceof Error ? evalError.message : String(evalError);
         console.error(`\n🔥 Bull serialization error for ${name}:`);
         console.error('Original args:', args);
         console.error('Serialized args:', serializedArgs);
-        console.error('Keys:', keys);
-        console.error('Script args:', scriptArgs);
+        console.error('Safe keys:', safeKeys);
+        console.error('Safe script args:', safeScriptArgs);
         console.error('Error:', errorMessage);
         
         // Try EVALSHA fallback
         try {
           const sha = await client.customCommand(['SCRIPT', 'LOAD', lua]);
-          const evalshaArgs = [
-            sha as string,
-            actualNumberOfKeys.toString(),
-            ...keys,
-            ...scriptArgs
-          ];
           console.log(`🔄 Retrying ${name} with EVALSHA...`);
-          return await client.customCommand(['EVALSHA', ...evalshaArgs]);
-        } catch (evalshaError) {
+          return await client.customCommand(['EVALSHA', sha as string, actualNumberOfKeys.toString(), ...safeKeys, ...safeScriptArgs]);
+        } catch (evalshaError: any) {
           const evalshaErrorMessage = evalshaError instanceof Error ? evalshaError.message : String(evalshaError);
           console.error(`❌ Both EVAL and EVALSHA failed for ${name}:`);
           console.error('EVAL error:', errorMessage);
