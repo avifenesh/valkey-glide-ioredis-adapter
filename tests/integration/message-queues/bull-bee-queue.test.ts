@@ -93,13 +93,9 @@ describe('Message Queue Systems Integration', () => {
           });
         });
         
-        if (!testConnection) {
-          console.warn('⚠️  Bull queue not ready, skipping test');
-          return;
-        }
+        expect(testConnection).toBe(true);
       } catch (e) {
-        console.warn('⚠️  Bull connection test failed, skipping');
-        return;
+        throw e;
       }
       
       // Setup processor for this test
@@ -134,10 +130,8 @@ describe('Message Queue Systems Integration', () => {
             data: jobData,
           })
         );
-      } else {
-        console.warn('⚠️  Bull job processing timeout - this may indicate Redis adapter compatibility issues');
-        // Don't fail the test, just warn about compatibility
       }
+      expect(processed).toBe(true);
     }, 10000);
 
     test('should handle job delays', async () => {
@@ -172,11 +166,9 @@ describe('Message Queue Systems Integration', () => {
           })
         ]);
         
-        if (!completed) {
-          console.warn('⚠️  Bull delayed job test timeout - Redis adapter may have compatibility issues');
-        }
+        expect(completed).toBe(true);
       } catch (e) {
-        console.warn('⚠️  Bull delay test failed:', (e as Error).message);
+        throw e;
       }
     }, 10000);
 
@@ -217,11 +209,10 @@ describe('Message Queue Systems Integration', () => {
           expect(processedJobs.some(job => job.priority === 'high')).toBe(true);
           expect(processedJobs.some(job => job.priority === 'medium')).toBe(true);
           expect(processedJobs.some(job => job.priority === 'low')).toBe(true);
-        } else {
-          console.warn('⚠️  Bull priority test timeout - Redis adapter priority handling may differ from expected');
         }
+        expect(allCompleted).toBe(true);
       } catch (e) {
-        console.warn('⚠️  Bull priority test failed:', (e as Error).message);
+        throw e;
       }
     }, 10000);
 
@@ -274,13 +265,11 @@ describe('Message Queue Systems Integration', () => {
           })
         ]);
 
-        if (!completed) {
-          console.warn('⚠️  Bull retry test timeout - Redis adapter may not support Bull retry mechanisms properly');
-        }
+        expect(completed).toBe(true);
 
         await retryQueue.close();
       } catch (e) {
-        console.warn('⚠️  Bull retry test failed:', (e as Error).message);
+        throw e;
       }
     }, 15000);
 
@@ -304,15 +293,9 @@ describe('Message Queue Systems Integration', () => {
 
         const totalJobs = waiting.length + active.length + completed.length;
         
-        if (totalJobs > 0) {
-          expect(totalJobs).toBeGreaterThan(0);
-        } else {
-          console.warn('⚠️  Bull statistics test - no jobs found. This may indicate Redis adapter compatibility issues with Bull\'s job tracking.');
-          // Don't fail - this is likely a Redis adapter compatibility issue
-          expect(totalJobs).toBe(0); // Just verify we got a valid response
-        }
+        expect(totalJobs).toBeGreaterThan(0);
       } catch (e) {
-        console.warn('⚠️  Bull statistics test failed:', (e as Error).message);
+        throw e;
       }
     }, 10000);
   });

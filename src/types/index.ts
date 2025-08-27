@@ -269,6 +269,7 @@ export interface IRedisAdapter extends EventEmitter {
   // Connection management
   connect(): Promise<void>;
   disconnect(): Promise<void>;
+  quit(): Promise<void>; // Bull v3 compatibility alias
   ping(message?: string): Promise<string>;
   info(section?: string): Promise<string>;
   sendCommand(command: any): Promise<any>;
@@ -338,10 +339,20 @@ export interface IRedisAdapter extends EventEmitter {
   lpushx(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
   rpushx(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
   
-  // Blocking list operations - critical for queue systems
-  blpop(timeout: number, ...keys: RedisKey[]): Promise<[string, string] | null>;
-  brpop(timeout: number, ...keys: RedisKey[]): Promise<[string, string] | null>;
+  // Blocking list operations - critical for queue systems (BullMQ compatible)
+  blpop(...args: any[]): Promise<[string, string] | null>;
+  brpop(...args: any[]): Promise<[string, string] | null>;
   brpoplpush(source: RedisKey, destination: RedisKey, timeout: number): Promise<string | null>;
+  
+  // BullMQ-critical blocking sorted set operations
+  bzpopmin(...args: any[]): Promise<[string, string, string] | null>;
+  bzpopmax(...args: any[]): Promise<[string, string, string] | null>;
+  
+  // Stream commands for BullMQ
+  xack(key: RedisKey, group: string, ...ids: string[]): Promise<number>;
+  xgroup(subcommand: string, ...args: any[]): Promise<any>;
+  xpending(key: RedisKey, group: string, ...args: any[]): Promise<any>;
+  xclaim(key: RedisKey, group: string, consumer: string, minIdleTime: number, ...ids: string[]): Promise<any>;
 
   // Set commands
   sadd(key: RedisKey, ...members: RedisValue[]): Promise<number>;
@@ -398,13 +409,14 @@ export interface IRedisAdapter extends EventEmitter {
   watch(...keys: RedisKey[]): Promise<string>;
   unwatch(): Promise<string>;
 
-  // Script methods to match ioredis API
+  // Script methods to match ioredis API (enhanced for BullMQ)
   scriptLoad(script: string): Promise<string>;
   scriptExists(...scripts: string[]): Promise<boolean[]>;
   scriptFlush(): Promise<string>;
   eval(script: string, numkeys: number, ...keysAndArgs: any[]): Promise<any>;
   evalsha(sha1: string, numkeys: number, ...keysAndArgs: any[]): Promise<any>;
   defineCommand(name: string, options: { lua: string; numberOfKeys?: number }): void;
+  script(subcommand: string, ...args: any[]): Promise<any>;
 
   // Event emitter methods (inherited from EventEmitter)
   on<K extends keyof RedisEvents>(event: K, listener: RedisEvents[K]): this;

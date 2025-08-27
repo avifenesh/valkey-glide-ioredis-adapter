@@ -1,7 +1,7 @@
 {
   "name": "@valkey/valkey-glide-ioredis-adapter",
-  "version": "0.1.0-alpha",
-  "description": "Experimental ioredis compatibility adapter for Valkey GLIDE (in development)",
+  "version": "0.1.0",
+  "description": "ioredis compatibility adapter for Valkey GLIDE",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

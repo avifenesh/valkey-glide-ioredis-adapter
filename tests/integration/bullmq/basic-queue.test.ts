@@ -18,35 +18,13 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
   beforeAll(async () => {
     serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      console.warn('⚠️  Redis server not available on localhost:6379');
-      console.warn('💡 To run BullMQ integration tests, start Redis server:');
-      console.warn('   - Install Redis: sudo apt-get install redis-server');
-      console.warn('   - Start Redis: sudo systemctl start redis-server');
-      console.warn('   - Or use Docker: docker run -d -p 6379:6379 redis:latest');
-      console.warn('   - Or use test scripts: ./scripts/start-test-servers.sh');
-      console.warn('📝 Tests will be skipped until Redis server is available.');
+      throw new Error('Redis server not available on localhost:6379. Please start Redis server before running tests.');
     }
   });
 
-  const itConditional = (name: string, testFn: () => Promise<void>) => {
-    it(name, async () => {
-      // Check server availability at runtime for each test
-      const currentServerStatus = await testUtils.checkTestServers();
-      if (!currentServerStatus) {
-        console.warn(`⚠️  Skipping "${name}": Redis server not available`);
-        return; // Skip this test
-      }
-      await testFn();
-    });
-  };
 
   beforeEach(async () => {
-    // Only proceed if servers are available - this should only run for non-skipped tests
-    if (!serversAvailable) {
-      return; // Early exit for skipped tests
-    }
-
-    // Additional health check before each test
+    // Health check before each test
     const healthCheck = await testUtils.checkTestServers();
     if (!healthCheck) {
       throw new Error('Redis server became unavailable during test execution');
@@ -121,13 +99,19 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
     
     if (worker) {
       cleanupPromises.push(
-        worker.close().catch(err => console.warn('Worker close error:', err.message))
+        worker.close().catch(err => {
+          console.error(`Worker close error: ${err.message}`);
+          return Promise.resolve();
+        })
       );
     }
     
     if (queue) {
       cleanupPromises.push(
-        queue.close().catch(err => console.warn('Queue close error:', err.message))
+        queue.close().catch(err => {
+          console.error(`Queue close error: ${err.message}`);
+          return Promise.resolve();
+        })
       );
     }
     
@@ -164,14 +148,14 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.warn('Redis cleanup error:', errorMessage);
+        throw new Error(`Redis cleanup error: ${errorMessage}`);
       }
       
       try {
         await redisAdapter.disconnect();
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        console.warn('Redis disconnect error:', errorMessage);
+        throw new Error(`Redis disconnect error: ${errorMessage}`);
       }
     }
     
@@ -181,7 +165,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
   });
 
   describe('Basic Job Processing', () => {
-    itConditional('should add and process a simple job', async () => {
+    it('should add and process a simple job', async () => {
       const jobData = { message: 'Hello BullMQ!', timestamp: Date.now() };
       
       // Add job to queue
@@ -197,7 +181,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       expect(processedJobs[0].name).toBe('simple-job');
     });
 
-    itConditional('should handle multiple jobs in sequence', async () => {
+    it('should handle multiple jobs in sequence', async () => {
       const jobs = [
         { name: 'job1', data: { value: 1 } },
         { name: 'job2', data: { value: 2 } },
@@ -217,7 +201,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       expect(processedJobs.map(j => j.data.value)).toEqual([1, 2, 3]);
     });
 
-    itConditional('should handle job with priority', async () => {
+    it('should handle job with priority', async () => {
       // Add jobs in reverse priority order
       await queue.add('low-priority', { priority: 'low' }, { priority: 1 });
       await queue.add('high-priority', { priority: 'high' }, { priority: 10 });
@@ -238,7 +222,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
   });
 
   describe('Job State Management', () => {
-    itConditional('should track job states correctly', async () => {
+    it('should track job states correctly', async () => {
       const job = await queue.add('state-test', { test: 'data' });
       
       // Brief delay to ensure job is queued properly
@@ -257,7 +241,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       expect(['completed', 'active']).toContain(jobState);
     });
 
-    itConditional('should handle job removal', async () => {
+    it('should handle job removal', async () => {
       const job = await queue.add('removable-job', { temp: true });
       
       // Brief delay to ensure job is queued
@@ -278,7 +262,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
   });
 
   describe('Queue Statistics', () => {
-    itConditional('should provide accurate queue counts', async () => {
+    it('should provide accurate queue counts', async () => {
       // Add some jobs
       await queue.add('count-test-1', { data: 1 });
       await queue.add('count-test-2', { data: 2 });
@@ -303,7 +287,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
   });
 
   describe('Error Handling', () => {
-    itConditional('should handle job failures gracefully', async () => {
+    it('should handle job failures gracefully', async () => {
       // Create a worker that fails using the same unique queue name
       const failWorker = new Worker(testQueueName, async (job: Job) => {
         if (job.data.shouldFail) {
@@ -337,7 +321,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       }
     });
 
-    itConditional('should handle connection recovery scenarios', async () => {
+    it('should handle connection recovery scenarios', async () => {
       // Test that the system can recover from temporary connection issues
       const jobData = { message: 'Recovery test', timestamp: Date.now() };
       
@@ -357,7 +341,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       expect(processedJob.data).toEqual(jobData);
     });
 
-    itConditional('should provide meaningful error messages for setup failures', async () => {
+    it('should provide meaningful error messages for setup failures', async () => {
       // This test validates that our error handling provides clear context
       try {
         // Attempt to create queue with invalid configuration
@@ -376,7 +360,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       }
     });
 
-    itConditional('should handle worker initialization errors gracefully', async () => {
+    it('should handle worker initialization errors gracefully', async () => {
       let testWorker: Worker | null = null;
       
       try {

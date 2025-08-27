@@ -13,10 +13,7 @@ describe('Connection Management (ioredis compatibility)', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      console.warn(
-        '⚠️  Test servers not available. Please run: ./scripts/start-test-servers.sh'
-      );
-      console.warn('   Skipping connection tests...');
+      throw new Error('Test servers not available. Please start Redis server before running tests.');
     }
   });
 
@@ -239,19 +236,15 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      console.warn(
-        '⚠️  Test servers not available. Please run: ./scripts/start-test-servers.sh'
-      );
-      console.warn('   Skipping pipeline tests...');
+      throw new Error('Test servers not available. Please start Redis server before running tests.');
     }
   });
 
   beforeEach(async () => {
-    // Skip tests if servers are not available
+    // Health check before each test
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      pending('Test servers not available');
-      return;
+      throw new Error('Test servers became unavailable during test execution');
     }
 
     // Use test server configuration

@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }} (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x64
+            node: '18'
+          - os: ubuntu-latest
+            arch: x64
+            node: '20'
+          - os: ubuntu-latest
+            arch: arm64
+            node: '18'
+          - os: macos-latest
+            arch: x64
+            node: '18'
+          - os: macos-latest
+            arch: x64
+            node: '20'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js ${{ matrix.node }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build project
+      run: npm run build
+
+    - name: Start Redis server
+      run: |
+        if [[ "${{ matrix.os }}" == "ubuntu-latest" ]]; then
+          sudo apt-get update
+          sudo apt-get install -y redis-server
+          sudo systemctl start redis-server
+        elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+          brew install redis
+          brew services start redis
+        fi
+
+    - name: Wait for Redis
+      run: |
+        timeout 30 bash -c 'until redis-cli ping; do sleep 1; done'
+
+    - name: Run tests
+      run: npm test
+      env:
+        CI: true
+
+    - name: Upload coverage to Codecov
+      if: matrix.os == 'ubuntu-latest' && matrix.node == '20'
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+
+  lint:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run ESLint
+      run: npm run lint
+
+    - name: Run TypeScript check
+      run: npm run build

@@ -8,8 +8,7 @@ describe('Script Commands', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      console.warn('⚠️  Test servers not available. Please run: ./scripts/start-test-servers.sh');
-      return;
+      throw new Error('Test servers not available. Please start Redis server before running tests.');
     }
 
     const config = await testUtils.getStandaloneConfig();

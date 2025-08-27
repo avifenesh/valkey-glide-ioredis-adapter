@@ -13,17 +13,15 @@ describe('Simple Adapter Integration Test', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      console.warn('⚠️  Test servers not available. Skipping integration tests...');
-      return;
+      throw new Error('Test servers not available. Please start Redis server before running tests.');
     }
   });
 
   beforeEach(async () => {
-    // Skip tests if servers are not available
+    // Health check before each test
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      console.warn('⚠️  Test servers not available. Skipping test...');
-      return;
+      throw new Error('Test servers became unavailable during test execution');
     }
 
     const config = await testUtils.getStandaloneConfig();
@@ -47,22 +45,12 @@ describe('Simple Adapter Integration Test', () => {
   });
 
   test('should connect and ping successfully', async () => {
-    const serversAvailable = await testUtils.checkTestServers();
-    if (!serversAvailable) {
-      console.warn('⚠️  Skipping test - servers not available');
-      return;
-    }
 
     const result = await adapter.ping();
     expect(result).toBe('PONG');
   });
 
   test('should perform basic string operations', async () => {
-    const serversAvailable = await testUtils.checkTestServers();
-    if (!serversAvailable) {
-      console.warn('⚠️  Skipping test - servers not available');
-      return;
-    }
 
     // Set a value
     await adapter.set('test:key1', 'Hello World');
@@ -77,11 +65,6 @@ describe('Simple Adapter Integration Test', () => {
   });
 
   test('should handle multiple operations', async () => {
-    const serversAvailable = await testUtils.checkTestServers();
-    if (!serversAvailable) {
-      console.warn('⚠️  Skipping test - servers not available');
-      return;
-    }
 
     // Set multiple values
     await adapter.mset({
@@ -96,11 +79,6 @@ describe('Simple Adapter Integration Test', () => {
   });
 
   test('should work with hash operations', async () => {
-    const serversAvailable = await testUtils.checkTestServers();
-    if (!serversAvailable) {
-      console.warn('⚠️  Skipping test - servers not available');
-      return;
-    }
 
     // Set hash values
     await adapter.hset('test:hash', {
@@ -121,11 +99,6 @@ describe('Simple Adapter Integration Test', () => {
   });
 
   test('should work with list operations', async () => {
-    const serversAvailable = await testUtils.checkTestServers();
-    if (!serversAvailable) {
-      console.warn('⚠️  Skipping test - servers not available');
-      return;
-    }
 
     // Push values to list
     await adapter.lpush('test:list', ['item1', 'item2', 'item3']);
@@ -140,11 +113,6 @@ describe('Simple Adapter Integration Test', () => {
   });
 
   test('should work with keys pattern matching', async () => {
-    const serversAvailable = await testUtils.checkTestServers();
-    if (!serversAvailable) {
-      console.warn('⚠️  Skipping test - servers not available');
-      return;
-    }
 
     // Set some test keys
     await adapter.set('test:user:1', 'user1');

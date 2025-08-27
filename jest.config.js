@@ -34,6 +34,8 @@ module.exports = {
   verbose: true,
   bail: false,
   errorOnDeprecated: true,
+  detectOpenHandles: true,
+  forceExit: true,
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1'
   }

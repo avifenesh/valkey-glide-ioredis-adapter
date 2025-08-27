@@ -70,3 +70,4 @@ docker-compose.test.yml
 *.tmp
 *.temp
 .cache/
+**/*.test.js
