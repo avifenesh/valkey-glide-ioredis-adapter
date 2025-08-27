@@ -15,7 +15,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      console.warn('⚠️  Test servers not available. Skipping caching integration tests...');
+      throw new Error('Test servers not available - Redis connection required for caching integration tests');
       return;
     }
   });
@@ -557,7 +557,6 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       const endTime = Date.now();
       const duration = endTime - startTime;
 
-      console.log(`✅ Stored ${itemCount} items in ${duration}ms using pipeline`);
 
       // Verify data integrity
       const randomKey = Math.floor(Math.random() * itemCount).toString();

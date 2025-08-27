@@ -22,17 +22,16 @@ describe('Express Session Store Integration', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      console.warn('⚠️  Test servers not available. Skipping session store integration tests...');
+      throw new Error('Test servers not available - Redis connection required for session store integration tests');
       return;
     }
   });
 
   beforeEach(async () => {
-    // Skip tests if servers are not available
+    // Fail tests if servers are not available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      pending('Test servers not available');
-      return;
+      throw new Error('Test servers not available - Redis connection required for session store integration tests');
     }
 
     // Setup Redis client with our adapter

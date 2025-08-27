@@ -59,7 +59,6 @@ export const testUtils = {
       
       if (result.server) {
         if (!hasLoggedDiscovery) {
-          console.log(`🔍 Discovered Redis server at ${result.server.host}:${result.server.port} (${result.server.type} ${result.server.version || 'unknown version'})`);
           hasLoggedDiscovery = true;
         }
         config = { host: result.server.host, port: result.server.port };
@@ -69,10 +68,8 @@ export const testUtils = {
           host: process.env.VALKEY_STANDALONE_HOST,
           port: parseInt(process.env.VALKEY_STANDALONE_PORT, 10)
         };
-        console.log(`📋 Using environment configuration: ${config.host}:${config.port}`);
       } else {
         // Default to standard Redis port
-        console.log('📍 Using default Redis configuration: localhost:6379');
         config = { host: 'localhost', port: 6379 };
       }
       
@@ -83,8 +80,6 @@ export const testUtils = {
       return config;
       
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn('⚠️  Error during server discovery, using default:', errorMessage);
       const defaultConfig = { host: 'localhost', port: 6379 };
       
       // Cache the default config too
@@ -113,8 +108,6 @@ export const testUtils = {
       const config = await portUtils.generateTestConfig(true);
       return config.cluster || [];
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn('⚠️  Error generating cluster config, using defaults:', errorMessage);
       return [
         { host: 'localhost', port: 7000 },
         { host: 'localhost', port: 7001 },
@@ -139,8 +132,6 @@ export const testUtils = {
       lastDiscoveryTime = now;
       return discoveredServers;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn('⚠️  Server discovery failed:', errorMessage);
       return [];
     }
   },
@@ -158,14 +149,11 @@ export const testUtils = {
       const responsiveServers = servers.filter(s => s.responsive);
       
       if (responsiveServers.length > 0) {
-        console.log(`🔍 Found ${responsiveServers.length} responsive Redis server(s)`);
         return true;
       }
       
       return false;
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.warn('⚠️  Error checking test servers:', errorMessage);
       return false;
     }
   },

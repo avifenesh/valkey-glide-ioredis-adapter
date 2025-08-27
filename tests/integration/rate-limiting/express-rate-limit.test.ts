@@ -19,17 +19,16 @@ describe('Rate Limiting Integration', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      console.warn('⚠️  Test servers not available. Skipping rate limiting integration tests...');
+      throw new Error('Test servers not available - Redis connection required for rate limiting integration tests');
       return;
     }
   });
 
   beforeEach(async () => {
-    // Skip tests if servers are not available
+    // Fail tests if servers are not available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      pending('Test servers not available');
-      return;
+      throw new Error('Test servers not available - Redis connection required for rate limiting integration tests');
     }
 
     // Use test server configuration

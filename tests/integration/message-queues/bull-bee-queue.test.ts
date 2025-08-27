@@ -19,17 +19,16 @@ describe('Message Queue Systems Integration', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      console.warn('⚠️  Test servers not available. Skipping message queue integration tests...');
+      throw new Error('Test servers not available - Redis connection required for message queue integration tests');
       return;
     }
   });
 
   beforeEach(async () => {
-    // Skip tests if servers are not available
+    // Fail tests if servers are not available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      pending('Test servers not available');
-      return;
+      throw new Error('Test servers not available - Redis connection required for message queue integration tests');
     }
 
     // Setup Redis client
@@ -210,7 +209,9 @@ describe('Message Queue Systems Integration', () => {
           expect(processedJobs.some(job => job.priority === 'medium')).toBe(true);
           expect(processedJobs.some(job => job.priority === 'low')).toBe(true);
         }
-        expect(allCompleted).toBe(true);
+        if (!allCompleted) {
+          throw new Error('Bull priority test timeout - Redis adapter priority handling incompatible');
+        }
       } catch (e) {
         throw e;
       }
@@ -265,7 +266,9 @@ describe('Message Queue Systems Integration', () => {
           })
         ]);
 
-        expect(completed).toBe(true);
+        if (!completed) {
+          throw new Error('Bull retry test timeout - Redis adapter does not support Bull retry mechanisms');
+        }
 
         await retryQueue.close();
       } catch (e) {
@@ -293,6 +296,9 @@ describe('Message Queue Systems Integration', () => {
 
         const totalJobs = waiting.length + active.length + completed.length;
         
+        if (totalJobs === 0) {
+          throw new Error('Bull statistics test - no jobs found. Redis adapter compatibility issues with Bull job tracking detected');
+        }
         expect(totalJobs).toBeGreaterThan(0);
       } catch (e) {
         throw e;
@@ -389,14 +395,12 @@ describe('Message Queue Systems Integration', () => {
               if (actualDelay >= delayMs - 100) { // Allow some tolerance
                 resolve(true);
               } else {
-                console.warn(`⚠️  Bee-queue delay was ${actualDelay}ms, expected ~${delayMs}ms`);
                 resolve(false);
               }
             });
           }),
           new Promise<boolean>((resolve) => {
             setTimeout(() => {
-              console.warn('⚠️  Bee-queue delay test timeout - this may indicate Redis adapter compatibility issues with delayed job processing');
               resolve(false);
             }, delayMs + 3000); // More generous timeout
           })
@@ -406,10 +410,8 @@ describe('Message Queue Systems Integration', () => {
           expect(processedAt - startTime).toBeGreaterThanOrEqual(delayMs - 100);
         } else {
           // Don't fail the test - log warning and pass
-          console.warn('⚠️  Bee-queue delay test did not complete as expected - Redis adapter may have different delay handling than native Redis');
         }
       } catch (e) {
-        console.warn('⚠️  Bee-queue delay test error:', (e as Error).message);
         // Don't fail - this is likely a compatibility issue
       }
     }, 15000);
@@ -520,7 +522,6 @@ describe('Message Queue Systems Integration', () => {
       expect(jobs.length).toBe(jobCount);
       expect(duration).toBeLessThan(5000); // Should complete within 5 seconds
 
-      console.log(`✅ Created ${jobCount} Bull jobs in ${duration}ms`);
 
       await bullQueue.close();
     });
@@ -616,13 +617,10 @@ describe('Message Queue Systems Integration', () => {
         const storedValue = await customRedisClient.get('test:counter');
         expect(parseInt(storedValue as string)).toBe(8);
         
-        console.log('✅ defineCommand working correctly with enhanced implementation');
       } catch (err) {
-        console.error('defineCommand test failed:', err);
         
         // Provide detailed error information
         if (err instanceof Error && err.message.includes('arguments must be strings or integers')) {
-          console.error('Valkey GLIDE argument type error - this indicates our serialization needs improvement');
         }
         
         // Re-throw to fail the test with proper error details
@@ -636,7 +634,6 @@ describe('Message Queue Systems Integration', () => {
       // Create Bull queue with custom createClient function using our enhanced adapter
       queue = new Queue('custom-client-queue', {
         createClient: (type: 'client' | 'subscriber') => {
-          console.log(`🔧 Bull requesting ${type} Redis client`);
           
           // Create our enhanced Redis adapter
           const client = new RedisAdapter({
@@ -646,9 +643,7 @@ describe('Message Queue Systems Integration', () => {
           
           // Enhanced connection pattern: start connecting immediately
           client.connect().then(() => {
-            console.log(`✅ ${type} client connected successfully`);
           }).catch(err => {
-            console.error(`❌ ${type} client connection failed:`, err);
             client.emit('error', err);
           });
           
@@ -696,7 +691,6 @@ describe('Message Queue Systems Integration', () => {
         }),
         new Promise<boolean>((resolve) => {
           setTimeout(() => {
-            console.warn('⚠️  Custom client job processing timeout');
             resolve(false);
           }, 8000); // Increased timeout for better reliability
         })
@@ -707,7 +701,7 @@ describe('Message Queue Systems Integration', () => {
         expect(processedJobs[0].message).toBe('Using custom Redis adapter!');
         console.log('🎉 Bull successfully used our custom Redis adapter!');
       } else {
-        console.warn('⚠️  Bull createClient integration test timed out - checking Bull compatibility with enhanced adapter');
+        throw new Error('Bull createClient integration test timed out - Bull compatibility issue with enhanced adapter');
         
         // Instead of failing, let's check what happened
         const waiting = await queue.getWaiting();
@@ -839,7 +833,6 @@ describe('Message Queue Systems Integration', () => {
         }),
         new Promise<boolean>((resolve) => {
           setTimeout(() => {
-            console.warn('⚠️  Shared client with custom commands test timed out');
             resolve(false);
           }, 12000);
         })
@@ -853,13 +846,13 @@ describe('Message Queue Systems Integration', () => {
             expect(parseInt(totalCompletions as string)).toBeGreaterThanOrEqual(2);
             console.log('🎯 Custom Redis commands successfully integrated with Bull!');
           } else {
-            console.warn('⚠️  Custom command counter not found - may indicate compatibility issues');
+            throw new Error('Custom command counter not found - compatibility issues detected');
           }
         } catch (err) {
-          console.warn('⚠️  Error checking custom command results:', err instanceof Error ? err.message : String(err));
+          throw new Error(`Error checking custom command results: ${err instanceof Error ? err.message : String(err)}`);
         }
       } else {
-        console.warn('⚠️  Jobs did not complete as expected - checking Bull queue status');
+        throw new Error('Jobs did not complete as expected - Bull queue compatibility issue');
         
         // Check queue status for debugging
         try {
