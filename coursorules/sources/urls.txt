@@ -1,0 +1,5 @@
+https://ioredis.readthedocs.io/en/latest/API/
+https://github.com/bee-queue/bee-queue
+https://valkey.io/valkey-glide/node/
+https://github.com/OptimalBits/bull
+https://github.com/taskforcesh/bullmq/tree/master/src

@@ -3,7 +3,7 @@
  * ioredis-compatible client built on valkey-glide
  */
 
-import { Batch, GlideClient, Script, TimeUnit } from '@valkey/valkey-glide';
+import { Batch, GlideClient, Script, TimeUnit, RangeByScore, Boundary } from '@valkey/valkey-glide';
 import { EventEmitter } from 'events';
 import { pack as msgpack } from 'msgpackr';
 import {
@@ -189,12 +189,76 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   // Bull compatibility: stream operations that Bull may use
   async xadd(key: RedisKey, id: string, ...fieldsAndValues: any[]): Promise<string> {
     const client = await this.ensureConnected();
-    return client.customCommand(['XADD', String(key), id, ...fieldsAndValues.map(String)]) as Promise<string>;
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    // Convert ioredis format (field1, value1, field2, value2, ...) to GLIDE format [[field1, value1], [field2, value2]]
+    const values: [string, string][] = [];
+    for (let i = 0; i < fieldsAndValues.length; i += 2) {
+      if (i + 1 < fieldsAndValues.length) {
+        values.push([String(fieldsAndValues[i]), String(fieldsAndValues[i + 1])]);
+      }
+    }
+    
+    // Use native GLIDE method instead of customCommand
+    const options = id !== '*' ? { id } : undefined;
+    const result = await client.xadd(normalizedKey, values, options);
+    
+    return ParameterTranslator.convertGlideString(result) || '';
   }
   
   async xread(...args: any[]): Promise<any> {
     const client = await this.ensureConnected();
-    return client.customCommand(['XREAD', ...args.map(String)]);
+    
+    // Parse ioredis XREAD arguments: [COUNT, count, BLOCK, timeout, STREAMS, key1, key2, ..., id1, id2, ...]
+    // Convert to GLIDE format: keys_and_ids: Record<string, string>, options?: StreamReadOptions
+    
+    let countValue: number | undefined;
+    let blockValue: number | undefined;
+    let streamsIndex = -1;
+    
+    // Find STREAMS keyword and parse options
+    for (let i = 0; i < args.length; i++) {
+      const arg = String(args[i]).toUpperCase();
+      if (arg === 'COUNT' && i + 1 < args.length) {
+        countValue = parseInt(String(args[i + 1]));
+        i++; // Skip the count value
+      } else if (arg === 'BLOCK' && i + 1 < args.length) {
+        blockValue = parseInt(String(args[i + 1]));
+        i++; // Skip the block value
+      } else if (arg === 'STREAMS') {
+        streamsIndex = i + 1;
+        break;
+      }
+    }
+    
+    if (streamsIndex === -1) {
+      throw new Error('XREAD requires STREAMS keyword');
+    }
+    
+    // Split streams arguments into keys and IDs
+    const streamArgs = args.slice(streamsIndex);
+    const numStreams = Math.floor(streamArgs.length / 2);
+    const keys = streamArgs.slice(0, numStreams);
+    const ids = streamArgs.slice(numStreams);
+    
+    // Build GLIDE keys_and_ids object
+    const keys_and_ids: Record<string, string> = {};
+    for (let i = 0; i < numStreams; i++) {
+      const normalizedKey = ParameterTranslator.normalizeKey(keys[i]);
+      keys_and_ids[normalizedKey] = String(ids[i]);
+    }
+    
+    // Build GLIDE options
+    const options: any = {};
+    if (countValue !== undefined) options.count = countValue;
+    if (blockValue !== undefined) options.block = blockValue;
+    
+    // Use native GLIDE method instead of customCommand
+    const result = await client.xread(keys_and_ids, options);
+    
+    // TODO: Convert GLIDE result format to ioredis format
+    // For now, return as-is (will be improved in Phase 1.3 with ResultTranslator)
+    return result;
   }
   
   // Bull compatibility: additional Lua script support
@@ -220,13 +284,15 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     }
     
     const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
-    const result = await client.customCommand(['BZPOPMIN', ...normalizedKeys, timeout.toString()]);
+    
+    // Use native GLIDE method instead of customCommand
+    const result = await client.bzpopmin(normalizedKeys, timeout);
     
     if (Array.isArray(result) && result.length === 3) {
       return [
         ParameterTranslator.convertGlideString(result[0]) || '',
         ParameterTranslator.convertGlideString(result[1]) || '',
-        ParameterTranslator.convertGlideString(result[2]) || ''
+        result[2].toString() // Convert score number to string for ioredis compatibility
       ];
     }
     
@@ -248,13 +314,15 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     }
     
     const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
-    const result = await client.customCommand(['BZPOPMAX', ...normalizedKeys, timeout.toString()]);
+    
+    // Use native GLIDE method instead of customCommand
+    const result = await client.bzpopmax(normalizedKeys, timeout);
     
     if (Array.isArray(result) && result.length === 3) {
       return [
         ParameterTranslator.convertGlideString(result[0]) || '',
         ParameterTranslator.convertGlideString(result[1]) || '',
-        ParameterTranslator.convertGlideString(result[2]) || ''
+        result[2].toString() // Convert score number to string for ioredis compatibility
       ];
     }
     
@@ -264,7 +332,9 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   async xack(key: RedisKey, group: string, ...ids: string[]): Promise<number> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.customCommand(['XACK', normalizedKey, group, ...ids]) as number;
+    
+    // Use native GLIDE method instead of customCommand
+    return await client.xack(normalizedKey, group, ids);
   }
 
   async xgroup(subcommand: string, ...args: any[]): Promise<any> {
@@ -289,26 +359,43 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const options = override ? { ...this._options, ...override } : this._options;
     const newAdapter = new RedisAdapter(options);
     
+    // Copy client type if set
+    if ((this as any).clientType) {
+      (newAdapter as any).clientType = (this as any).clientType;
+    }
+    
     // For Bull compatibility: return immediately, connect in background
     // Bull expects synchronous client return from createClient
+    setImmediate(() => {
     newAdapter.connect().catch(err => {
       console.error('Background connection failed for duplicated client:', err);
       newAdapter.emit('error', err);
+      });
     });
     
     return newAdapter;
   }
   
   // Bull-specific compatibility: createClient factory method
-  static createClient(type: 'client' | 'subscriber', options: RedisOptions): RedisAdapter {
+  static createClient(type: 'client' | 'subscriber' | 'bclient', options?: RedisOptions): RedisAdapter {
     console.log(`🔧 Creating ${type} Redis client for Bull integration`);
     
-    const adapter = new RedisAdapter(options);
+    const adapter = new RedisAdapter(options || {});
+    
+    // Set client type for specialized behavior
+    (adapter as any).clientType = type;
+    
+    if (type === 'bclient') {
+      // Enable blocking operations
+      (adapter as any).enableBlockingOps = true;
+    }
     
     // Bull expects immediate return - connect asynchronously
+    setImmediate(() => {
     adapter.connect().catch(err => {
       console.error(`Failed to connect ${type} client for Bull:`, err);
       adapter.emit('error', err);
+      });
     });
     
     return adapter;
@@ -376,6 +463,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
 
   /**
    * Create and configure subscriber client for pub/sub operations
+   * GLIDE handles reconnection automatically for pub/sub clients
    */
   private async createSubscriberConnection(): Promise<GlideClient> {
     if (this.subscriberClient) {
@@ -387,46 +475,18 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       ...(this._options.password && { 
         credentials: { password: this._options.password }
       }),
-      // Configure pub/sub callback to handle incoming messages
-      pubsubSubscriptions: {
-        channelsAndPatterns: {},
-        callback: (msg: any) => {
-          this.handlePubSubMessage(msg);
-        },
-        context: this
-      }
+      clientName: 'ioredis-adapter-pubsub'
     };
     
-    // Import GlideClient dynamically to handle potential import issues
+    // Create subscriber client - GLIDE will handle reconnection automatically
     this.subscriberClient = await GlideClient.createClient(config);
     
     return this.subscriberClient;
   }
 
-  /**
-   * Handle incoming pub/sub messages and emit ioredis-compatible events
-   */
-  private handlePubSubMessage(msg: any): void {
-    try {
-      // Based on Valkey GLIDE documentation, msg should have channel and payload properties
-      // We need to emit ioredis-compatible events
-      
-      if (msg.channel && msg.payload !== undefined) {
-        // Check if this is a pattern message
-        const isPatternMessage = this.subscribedPatterns.has(msg.pattern || '');
-        
-        if (isPatternMessage && msg.pattern) {
-          // Emit pattern message event
-          this.emit('pmessage', msg.pattern, msg.channel, msg.payload);
-        } else {
-          // Emit regular message event
-          this.emit('message', msg.channel, msg.payload);
-        }
-      }
-    } catch (error) {
-      console.warn('Error handling pub/sub message:', error);
-    }
-  }
+
+
+
 
   // String commands
   async set(key: RedisKey, value: RedisValue, ...args: any[]): Promise<string | null> {
@@ -794,7 +854,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     
     const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
     
-    const result = await client.customCommand(['BLPOP', ...normalizedKeys, timeout.toString()]);
+    const result = await client.blpop(normalizedKeys, timeout);
     
     if (Array.isArray(result) && result.length === 2) {
       return [
@@ -830,7 +890,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     
     const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
     
-    const result = await client.customCommand(['BRPOP', ...normalizedKeys, timeout.toString()]);
+    const result = await client.brpop(normalizedKeys, timeout);
     
     if (Array.isArray(result) && result.length === 2) {
       return [
@@ -842,14 +902,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return null;
   }
 
-  async brpoplpush(source: RedisKey, destination: RedisKey, timeout: number): Promise<string | null> {
-    const client = await this.ensureConnected();
-    const normalizedSource = ParameterTranslator.normalizeKey(source);
-    const normalizedDestination = ParameterTranslator.normalizeKey(destination);
-    
-    const result = await client.customCommand(['BRPOPLPUSH', normalizedSource, normalizedDestination, timeout.toString()]);
-    return ParameterTranslator.convertGlideString(result);
-  }
+
 
   // Set commands
   async sadd(key: RedisKey, ...members: RedisValue[]): Promise<number> {
@@ -1077,12 +1130,245 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return await client.zremRangeByRank(normalizedKey, start, stop);
   }
 
-  async zremrangebyscore(_key: RedisKey, _min: number | string, _max: number | string): Promise<number> {
-    // TODO: Fix boundary type compatibility with Valkey GLIDE
-    // const client = await this.ensureConnected();
-    // const normalizedKey = ParameterTranslator.normalizeKey(key);
-    // return await client.zremRangeByScore(normalizedKey, minBound, maxBound);
-    throw new Error('zremrangebyscore temporarily unavailable - boundary type compatibility issue');
+  async zremrangebyscore(key: RedisKey, min: number | string, max: number | string): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    try {
+      // Use customCommand for full Redis compatibility
+      const result = await client.customCommand(['ZREMRANGEBYSCORE', normalizedKey, min.toString(), max.toString()]);
+      return Number(result) || 0;
+    } catch (error) {
+      console.warn('zremrangebyscore error:', error);
+      return 0;
+    }
+  }
+
+  // Enhanced ZSET operations for Bull/Bee-Queue compatibility
+  async zrangebyscore(
+    key: RedisKey,
+    min: string | number,
+    max: string | number,
+    ...args: string[]
+  ): Promise<string[]> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    try {
+      // Build command arguments for full Redis compatibility
+      const commandArgs = [normalizedKey, min.toString(), max.toString()];
+      
+      // Handle additional arguments (WITHSCORES, LIMIT, etc.)
+      for (let i = 0; i < args.length; i++) {
+        const currentArg = args[i];
+        if (!currentArg) continue;
+        const arg = currentArg.toString().toUpperCase();
+        
+        if (arg === 'WITHSCORES') {
+          commandArgs.push(arg);
+        } else if (arg === 'LIMIT' && i + 2 < args.length) {
+          const nextArg = args[i + 1];
+          const thirdArg = args[i + 2];
+          if (nextArg !== undefined && thirdArg !== undefined) {
+            // LIMIT offset count
+            commandArgs.push(arg, nextArg.toString(), thirdArg.toString());
+            i += 2; // Skip the next two arguments
+          }
+        } else {
+          commandArgs.push(currentArg.toString());
+        }
+      }
+      
+      // Parse min/max boundaries for native GLIDE zrange
+      const minBoundary: Boundary<number> = typeof min === 'string' && min.startsWith('(') 
+        ? { value: parseFloat(min.slice(1)), isInclusive: false }
+        : { value: typeof min === 'number' ? min : parseFloat(min.toString()), isInclusive: true };
+      
+      const maxBoundary: Boundary<number> = typeof max === 'string' && max.startsWith('(')
+        ? { value: parseFloat(max.slice(1)), isInclusive: false }
+        : { value: typeof max === 'number' ? max : parseFloat(max.toString()), isInclusive: true };
+      
+      const rangeQuery: RangeByScore = {
+        type: "byScore",
+        start: minBoundary,
+        end: maxBoundary
+      };
+      
+      // Handle LIMIT arguments
+      for (let i = 0; i < args.length; i++) {
+        const currentArg = args[i];
+        if (currentArg && currentArg.toString().toUpperCase() === 'LIMIT' && i + 2 < args.length) {
+          const offsetArg = args[i + 1];
+          const countArg = args[i + 2];
+          if (offsetArg !== undefined && countArg !== undefined) {
+            rangeQuery.limit = {
+              offset: parseInt(offsetArg.toString()),
+              count: parseInt(countArg.toString())
+            };
+            break;
+          }
+        }
+      }
+      
+      // Check if WITHSCORES is requested
+      const withScores = args.some(arg => arg.toUpperCase() === 'WITHSCORES');
+      
+      // Use native GLIDE zrange method
+      if (withScores) {
+        const result = await client.zrangeWithScores(normalizedKey, rangeQuery);
+        if (!Array.isArray(result)) {
+          return [];
+        }
+        
+        // GLIDE returns SortedSetDataType: {element: string, score: number}[]
+        // ioredis expects flat array: [member1, score1, member2, score2]
+        const flatArray: string[] = [];
+        for (const item of result) {
+          flatArray.push(
+            ParameterTranslator.convertGlideString(item.element) || '',
+            item.score.toString()
+          );
+        }
+        return flatArray;
+      } else {
+        const result = await client.zrange(normalizedKey, rangeQuery);
+        if (!Array.isArray(result)) {
+          return [];
+        }
+        
+        // Convert all results to strings for ioredis compatibility
+        return result.map(item => ParameterTranslator.convertGlideString(item) || '');
+      }
+    } catch (error) {
+      console.warn('zrangebyscore error:', error);
+      return [];
+    }
+  }
+
+  async zrevrangebyscore(
+    key: RedisKey,
+    max: string | number,
+    min: string | number,
+    ...args: string[]
+  ): Promise<string[]> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    try {
+      // Parse max/min boundaries for native GLIDE zrange
+      // For zrevrangebyscore: parameters are (key, max, min) but range query needs (start=min, end=max)
+      const minBoundary: Boundary<number> = typeof min === 'string' && min.startsWith('(') 
+        ? { value: parseFloat(min.slice(1)), isInclusive: false }
+        : { value: typeof min === 'number' ? min : parseFloat(min.toString()), isInclusive: true };
+      
+      const maxBoundary: Boundary<number> = typeof max === 'string' && max.startsWith('(')
+        ? { value: parseFloat(max.slice(1)), isInclusive: false }
+        : { value: typeof max === 'number' ? max : parseFloat(max.toString()), isInclusive: true };
+      
+      // For zrevrangebyscore with GLIDE's reverse flag, we need to swap start/end
+      const rangeQuery: RangeByScore = {
+        type: "byScore",
+        start: maxBoundary,  // For reverse: start should be the higher bound (max)
+        end: minBoundary     // For reverse: end should be the lower bound (min)
+      };
+      
+      // Handle LIMIT arguments
+      for (let i = 0; i < args.length; i++) {
+        const currentArg = args[i];
+        if (currentArg && currentArg.toString().toUpperCase() === 'LIMIT' && i + 2 < args.length) {
+          const offsetArg = args[i + 1];
+          const countArg = args[i + 2];
+          if (offsetArg !== undefined && countArg !== undefined) {
+            rangeQuery.limit = {
+              offset: parseInt(offsetArg.toString()),
+              count: parseInt(countArg.toString())
+            };
+            break;
+          }
+        }
+      }
+      
+      // Check if WITHSCORES is requested
+      const withScores = args.some(arg => arg.toUpperCase() === 'WITHSCORES');
+      
+      // Use native GLIDE zrange method with reverse option
+      if (withScores) {
+        const result = await client.zrangeWithScores(normalizedKey, rangeQuery, { reverse: true });
+        if (!Array.isArray(result)) {
+          return [];
+        }
+        
+        // GLIDE returns SortedSetDataType: {element: string, score: number}[]
+        // ioredis expects flat array: [member1, score1, member2, score2]
+        const flatArray: string[] = [];
+        for (const item of result) {
+          flatArray.push(
+            ParameterTranslator.convertGlideString(item.element) || '',
+            item.score.toString()
+          );
+        }
+        return flatArray;
+      } else {
+        const result = await client.zrange(normalizedKey, rangeQuery, { reverse: true });
+        if (!Array.isArray(result)) {
+          return [];
+        }
+        
+        return result.map(item => ParameterTranslator.convertGlideString(item) || '');
+      }
+    } catch (error) {
+      console.warn('zrevrangebyscore error:', error);
+      return [];
+    }
+  }
+
+  // Add missing zpopmin/zpopmax for Bull compatibility
+  async zpopmin(key: RedisKey, count?: number): Promise<string[]> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    const options = count !== undefined ? { count } : undefined;
+    const result = await client.zpopmin(normalizedKey, options);
+    
+    if (!Array.isArray(result)) {
+      return [];
+    }
+    
+    // GLIDE returns SortedSetDataType: {element: string, score: number}[]
+    // ioredis expects flat array: [member1, score1, member2, score2]
+    const flatArray: string[] = [];
+    for (const item of result) {
+      flatArray.push(
+        ParameterTranslator.convertGlideString(item.element) || '',
+        item.score.toString()
+      );
+    }
+    
+    return flatArray;
+  }
+
+  async zpopmax(key: RedisKey, count?: number): Promise<string[]> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    const options = count !== undefined ? { count } : undefined;
+    const result = await client.zpopmax(normalizedKey, options);
+    
+    if (!Array.isArray(result)) {
+      return [];
+    }
+    
+    // GLIDE returns SortedSetDataType: {element: string, score: number}[]
+    // ioredis expects flat array: [member1, score1, member2, score2]
+    const flatArray: string[] = [];
+    for (const item of result) {
+      flatArray.push(
+        ParameterTranslator.convertGlideString(item.element) || '',
+        item.score.toString()
+      );
+    }
+    
+    return flatArray;
   }
 
   // Key commands
@@ -1132,6 +1418,33 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return [];
   }
 
+  // Blocking operations for Bull compatibility
+  async brpoplpush(source: RedisKey, destination: RedisKey, timeout: number): Promise<string | null> {
+    const client = await this.ensureConnected();
+    const normalizedSource = ParameterTranslator.normalizeKey(source);
+    const normalizedDest = ParameterTranslator.normalizeKey(destination);
+    
+    try {
+      // Use native GLIDE method if available, otherwise customCommand
+      const result = await client.customCommand([
+        'BRPOPLPUSH',
+        normalizedSource,
+        normalizedDest,
+        timeout.toString()
+      ]);
+      
+      return result ? ParameterTranslator.convertGlideString(result) : null;
+    } catch (error: any) {
+      // Handle timeout as expected behavior
+      if (timeout > 0 && (error?.message?.includes('timeout') || error?.message?.includes('TIMEOUT'))) {
+        return null;
+      }
+      throw error;
+    }
+  }
+
+
+
   // Generic command execution
   async call(command: string, ...args: (string | number | Buffer)[]): Promise<any> {
     const client = await this.ensureConnected();
@@ -1165,8 +1478,14 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     for (const channel of channels) {
       if (!this.subscribedChannels.has(channel)) {
         try {
-          // Use separate subscriber client for pub/sub operations
-          await this.subscriberClient!.customCommand(['SUBSCRIBE', channel]);
+          // Use customCommand for SUBSCRIBE since GLIDE doesn't have native subscribe method
+          try {
+            await this.subscriberClient!.customCommand(['SUBSCRIBE', channel]);
+          } catch (subscribeError) {
+            // Handle subscription errors
+            await this.subscriberClient!.customCommand(['SUBSCRIBE', channel]);
+          }
+          
           this.subscribedChannels.add(channel);
           
           // Emit subscribe event
@@ -1231,8 +1550,9 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     for (const pattern of patterns) {
       if (!this.subscribedPatterns.has(pattern)) {
         try {
-          // Use separate subscriber client for pub/sub operations
+          // Use customCommand for psubscribe
           await this.subscriberClient!.customCommand(['PSUBSCRIBE', pattern]);
+          
           this.subscribedPatterns.add(pattern);
           
           // Emit psubscribe event
@@ -1434,67 +1754,73 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   defineCommand(name: string, options: { lua: string; numberOfKeys?: number }): void {
     const { lua, numberOfKeys = 0 } = options;
     
-    // MessagePack handling removed - BullMQ handles encoding internally
-    
     // Define the method on this instance
     (this as any)[name] = async (...args: any[]): Promise<any> => {
       const client = await this.ensureConnected();
-
-      // BullMQ-compatible Lua script execution
-      console.log(`🔧 defineCommand ${name} called with args:`, args.length, args.map((arg, i) => `[${i}]: ${typeof arg === 'object' ? JSON.stringify(arg) : arg}`));
       
       const numkeys = Number(numberOfKeys) || 0;
       
-      // Handle BullMQ's argument pattern where all args are passed as a flat array
+      // Handle both argument patterns for maximum compatibility
       let keys: any[];
       let argv: any[];
       
       if (args.length === 1 && Array.isArray(args[0])) {
-        // BullMQ passes arguments as a single array
+        // BullMQ/array style: single array argument
         const allArgs = args[0];
         keys = allArgs.slice(0, numkeys);
         argv = allArgs.slice(numkeys);
       } else {
-        // Standard ioredis pattern
+        // ioredis/variadic style: separate arguments
         keys = args.slice(0, numkeys);
         argv = args.slice(numkeys);
       }
 
-      const toGlideString = (v: any): string | Buffer => {
-        if (v === null || v === undefined) return '';
-        if (Buffer.isBuffer(v)) return v;
-        switch (typeof v) {
-          case 'string':
-            return v;
-          case 'number':
-          case 'bigint':
-          case 'boolean':
-            return String(v);
-          default:
-            try {
-              return JSON.stringify(v);
+      // Normalize arguments for Valkey GLIDE
+      const normalizedKeys = keys.map(k => ParameterTranslator.normalizeKey(k));
+      const normalizedArgs = argv.map(arg => {
+        if (Buffer.isBuffer(arg)) return arg;
+        if (arg === null || arg === undefined) return '';
+        if (typeof arg === 'object') {
+          try {
+            return JSON.stringify(arg);
             } catch {
-              return String(v);
-            }
+            return String(arg);
+          }
         }
-      };
-
-      const safeKeys = keys.map(toGlideString);
-      const safeArgv = argv.map(toGlideString);
-
-      console.log(`🔧 ${name} executing with keys(${safeKeys.length}), argv(${safeArgv.length})`);
+        return String(arg);
+      });
 
       try {
-        return await client.customCommand(['EVAL', lua, numkeys.toString(), ...safeKeys, ...safeArgv]);
-      } catch (err) {
-        console.error(`defineCommand EVAL error for ${name}:`, err);
-        console.error(`keys(${safeKeys.length}):`, safeKeys.map((k: any) => Buffer.isBuffer(k) ? `<Buffer len=${k.length}>` : String(k)));
-        console.error(`argv(${safeArgv.length}):`, safeArgv.map((a: any) => Buffer.isBuffer(a) ? `<Buffer len=${a.length}>` : String(a)));
-        throw err;
+        // Try using Valkey GLIDE's Script object first (preferred method)
+        const scriptObj = new Script(lua);
+        const result = await client.invokeScript(scriptObj, {
+          keys: normalizedKeys,
+          args: normalizedArgs
+        });
+        
+        // Ensure arrays are returned instead of null for empty results
+        if (result === null && (lua.includes('return {}') || lua.includes('return nil'))) {
+          return [];
+        }
+        
+        return result;
+      } catch (error) {
+        // Fallback to direct EVAL if Script fails
+        const commandArgs = [lua, numkeys.toString(), ...normalizedKeys, ...normalizedArgs];
+        const fallbackResult = await client.customCommand(['EVAL', ...commandArgs]);
+        
+        // Apply same null-to-array conversion
+        if (fallbackResult === null && (lua.includes('return {}') || lua.includes('return nil'))) {
+          return [];
+        }
+        
+        return fallbackResult;
       }
+    };
+  }
       
-      // Bull serialization helper methods
-      const bullSerializationHelpers = {
+  // Bull serialization helper methods  
+  private bullSerializationHelpers = {
         /**
          * Check if object is Bull job data
          */
@@ -1593,7 +1919,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
             
             if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
               // Recursively flatten nested objects
-              const nestedResult = bullSerializationHelpers.flattenObject(value, fullKey);
+              const nestedResult = this.bullSerializationHelpers.flattenObject(value, fullKey);
               if (nestedResult && nestedResult.trim() !== '') {
                 flattened.push(nestedResult);
               }
@@ -1629,8 +1955,6 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
           }
         }
       };
-    };
-  }
 }
 
 // Pipeline mock implementation
