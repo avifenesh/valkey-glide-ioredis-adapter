@@ -3,9 +3,8 @@
  * Tests basic cluster functionality with our ClusterAdapter
  */
 
-import { expect } from 'chai';
 import { ClusterAdapter } from '../../../src/adapters/ClusterAdapter';
-import { describe, it, beforeEach, afterEach } from 'mocha';
+
 
 // Mock Redis cluster for testing
 class MockRedisCluster {
@@ -39,8 +38,8 @@ describe('ClusterAdapter - Basic Tests', () => {
         nodes: [{ host: '127.0.0.1', port: 7000 }]
       });
       
-      expect(cluster).to.be.instanceOf(ClusterAdapter);
-      expect(cluster.status).to.equal('disconnected');
+      expect(cluster).toBeInstanceOf(ClusterAdapter);
+      expect(cluster.status).toBe('disconnected');
     });
 
     it('should create cluster adapter with multiple nodes', async () => {
@@ -52,8 +51,8 @@ describe('ClusterAdapter - Basic Tests', () => {
         ]
       });
       
-      expect(cluster).to.be.instanceOf(ClusterAdapter);
-      expect(cluster.status).to.equal('disconnected');
+      expect(cluster).toBeInstanceOf(ClusterAdapter);
+      expect(cluster.status).toBe('disconnected');
     });
 
     it('should support createClient factory method', () => {
@@ -61,8 +60,8 @@ describe('ClusterAdapter - Basic Tests', () => {
         nodes: [{ host: '127.0.0.1', port: 7000 }]
       });
       
-      expect(cluster).to.be.instanceOf(ClusterAdapter);
-      expect((cluster as any).clientType).to.equal('client');
+      expect(cluster).toBeInstanceOf(ClusterAdapter);
+      expect((cluster as any).clientType).toBe('client');
     });
 
     it('should support createClient with bclient type', () => {
@@ -70,9 +69,9 @@ describe('ClusterAdapter - Basic Tests', () => {
         nodes: [{ host: '127.0.0.1', port: 7000 }]
       });
       
-      expect(cluster).to.be.instanceOf(ClusterAdapter);
-      expect((cluster as any).clientType).to.equal('bclient');
-      expect((cluster as any).enableBlockingOps).to.equal(true);
+      expect(cluster).toBeInstanceOf(ClusterAdapter);
+      expect((cluster as any).clientType).toBe('bclient');
+      expect((cluster as any).enableBlockingOps).toBe(true);
     });
 
     it('should support createClient with subscriber type', () => {
@@ -80,8 +79,8 @@ describe('ClusterAdapter - Basic Tests', () => {
         nodes: [{ host: '127.0.0.1', port: 7000 }]
       });
       
-      expect(cluster).to.be.instanceOf(ClusterAdapter);
-      expect((cluster as any).clientType).to.equal('subscriber');
+      expect(cluster).toBeInstanceOf(ClusterAdapter);
+      expect((cluster as any).clientType).toBe('subscriber');
     });
   });
 
@@ -97,13 +96,13 @@ describe('ClusterAdapter - Basic Tests', () => {
         readOnly: true
       });
       
-      expect(cluster).to.be.instanceOf(ClusterAdapter);
-      expect((cluster as any).options.enableReadFromReplicas).to.equal(true);
-      expect((cluster as any).options.scaleReads).to.equal('all');
-      expect((cluster as any).options.maxRedirections).to.equal(32);
-      expect((cluster as any).options.retryDelayOnFailover).to.equal(200);
-      expect((cluster as any).options.enableOfflineQueue).to.equal(false);
-      expect((cluster as any).options.readOnly).to.equal(true);
+      expect(cluster).toBeInstanceOf(ClusterAdapter);
+      expect((cluster as any).options.enableReadFromReplicas).toBe(true);
+      expect((cluster as any).options.scaleReads).toBe('all');
+      expect((cluster as any).options.maxRedirections).toBe(32);
+      expect((cluster as any).options.retryDelayOnFailover).toBe(200);
+      expect((cluster as any).options.enableOfflineQueue).toBe(false);
+      expect((cluster as any).options.readOnly).toBe(true);
     });
 
     it('should use default cluster options', () => {
@@ -111,12 +110,12 @@ describe('ClusterAdapter - Basic Tests', () => {
         nodes: [{ host: '127.0.0.1', port: 7000 }]
       });
       
-      expect((cluster as any).options.enableReadFromReplicas).to.equal(false);
-      expect((cluster as any).options.scaleReads).to.equal('master');
-      expect((cluster as any).options.maxRedirections).to.equal(16);
-      expect((cluster as any).options.retryDelayOnFailover).to.equal(100);
-      expect((cluster as any).options.enableOfflineQueue).to.equal(true);
-      expect((cluster as any).options.readOnly).to.equal(false);
+      expect((cluster as any).options.enableReadFromReplicas).toBe(false);
+      expect((cluster as any).options.scaleReads).toBe('master');
+      expect((cluster as any).options.maxRedirections).toBe(16);
+      expect((cluster as any).options.retryDelayOnFailover).toBe(100);
+      expect((cluster as any).options.enableOfflineQueue).toBe(true);
+      expect((cluster as any).options.readOnly).toBe(false);
     });
   });
 
@@ -132,10 +131,10 @@ describe('ClusterAdapter - Basic Tests', () => {
         scaleReads: 'all'
       });
       
-      expect(duplicate).to.be.instanceOf(ClusterAdapter);
-      expect(duplicate).to.not.equal(original);
-      expect((duplicate as any).options.enableReadFromReplicas).to.equal(false);
-      expect((duplicate as any).options.scaleReads).to.equal('all');
+      expect(duplicate).toBeInstanceOf(ClusterAdapter);
+      expect(duplicate).not.toBe(original);
+      expect((duplicate as any).options.enableReadFromReplicas).toBe(false);
+      expect((duplicate as any).options.scaleReads).toBe('all');
     });
 
     it('should preserve blocking operations in duplicate', async () => {
@@ -146,7 +145,7 @@ describe('ClusterAdapter - Basic Tests', () => {
       
       const duplicate = await original.duplicate();
       
-      expect((duplicate as any).enableBlockingOps).to.equal(true);
+      expect((duplicate as any).enableBlockingOps).toBe(true);
     });
   });
 
@@ -157,7 +156,7 @@ describe('ClusterAdapter - Basic Tests', () => {
       });
       
       const pipeline = cluster.pipeline();
-      expect(pipeline).to.exist;
+      expect(pipeline).toBeTruthy();
     });
 
     it('should create multi transaction', () => {
@@ -166,7 +165,7 @@ describe('ClusterAdapter - Basic Tests', () => {
       });
       
       const multi = cluster.multi();
-      expect(multi).to.exist;
+      expect(multi).toBeTruthy();
     });
   });
 
@@ -180,73 +179,73 @@ describe('ClusterAdapter - Basic Tests', () => {
     });
 
     it('should have string command methods', () => {
-      expect(cluster.set).to.be.a('function');
-      expect(cluster.get).to.be.a('function');
-      expect(cluster.mget).to.be.a('function');
-      expect(cluster.mset).to.be.a('function');
-      expect(cluster.incr).to.be.a('function');
-      expect(cluster.decr).to.be.a('function');
+      expect(cluster.set).toBeInstanceOf(Function);
+      expect(cluster.get).toBeInstanceOf(Function);
+      expect(cluster.mget).toBeInstanceOf(Function);
+      expect(cluster.mset).toBeInstanceOf(Function);
+      expect(cluster.incr).toBeInstanceOf(Function);
+      expect(cluster.decr).toBeInstanceOf(Function);
     });
 
     it('should have hash command methods', () => {
-      expect(cluster.hset).to.be.a('function');
-      expect(cluster.hget).to.be.a('function');
-      expect(cluster.hmset).to.be.a('function');
-      expect(cluster.hmget).to.be.a('function');
-      expect(cluster.hgetall).to.be.a('function');
-      expect(cluster.hdel).to.be.a('function');
+      expect(cluster.hset).toBeInstanceOf(Function);
+      expect(cluster.hget).toBeInstanceOf(Function);
+      expect(cluster.hmset).toBeInstanceOf(Function);
+      expect(cluster.hmget).toBeInstanceOf(Function);
+      expect(cluster.hgetall).toBeInstanceOf(Function);
+      expect(cluster.hdel).toBeInstanceOf(Function);
     });
 
     it('should have list command methods', () => {
-      expect(cluster.lpush).to.be.a('function');
-      expect(cluster.rpush).to.be.a('function');
-      expect(cluster.lpop).to.be.a('function');
-      expect(cluster.rpop).to.be.a('function');
-      expect(cluster.llen).to.be.a('function');
-      expect(cluster.lrange).to.be.a('function');
+      expect(cluster.lpush).toBeInstanceOf(Function);
+      expect(cluster.rpush).toBeInstanceOf(Function);
+      expect(cluster.lpop).toBeInstanceOf(Function);
+      expect(cluster.rpop).toBeInstanceOf(Function);
+      expect(cluster.lrange).toBeInstanceOf(Function);
+      expect(cluster.llen).toBeInstanceOf(Function);
     });
 
     it('should have sorted set command methods', () => {
-      expect(cluster.zadd).to.be.a('function');
-      expect(cluster.zrem).to.be.a('function');
-      expect(cluster.zcard).to.be.a('function');
-      expect(cluster.zscore).to.be.a('function');
-      expect(cluster.zrange).to.be.a('function');
-      expect(cluster.zrevrange).to.be.a('function');
+      expect(cluster.zadd).toBeInstanceOf(Function);
+      expect(cluster.zrem).toBeInstanceOf(Function);
+      expect(cluster.zcard).toBeInstanceOf(Function);
+      expect(cluster.zscore).toBeInstanceOf(Function);
+      expect(cluster.zrange).toBeInstanceOf(Function);
+      expect(cluster.zrevrange).toBeInstanceOf(Function);
     });
 
     it('should have pub/sub command methods', () => {
-      expect(cluster.publish).to.be.a('function');
-      expect(cluster.subscribe).to.be.a('function');
-      expect(cluster.unsubscribe).to.be.a('function');
-      expect(cluster.psubscribe).to.be.a('function');
-      expect(cluster.punsubscribe).to.be.a('function');
+      expect(cluster.publish).toBeInstanceOf(Function);
+      expect(cluster.subscribe).toBeInstanceOf(Function);
+      expect(cluster.unsubscribe).toBeInstanceOf(Function);
+      expect(cluster.psubscribe).toBeInstanceOf(Function);
+      expect(cluster.punsubscribe).toBeInstanceOf(Function);
     });
 
     it('should have transaction command methods', () => {
-      expect(cluster.script).to.be.a('function');
-      expect(cluster.watch).to.be.a('function');
-      expect(cluster.unwatch).to.be.a('function');
-      expect(cluster.eval).to.be.a('function');
-      expect(cluster.evalsha).to.be.a('function');
-      expect(cluster.defineCommand).to.be.a('function');
+      expect(cluster.script).toBeInstanceOf(Function);
+      expect(cluster.watch).toBeInstanceOf(Function);
+      expect(cluster.unwatch).toBeInstanceOf(Function);
+      expect(cluster.eval).toBeInstanceOf(Function);
+      expect(cluster.evalsha).toBeInstanceOf(Function);
+      expect(cluster.defineCommand).toBeInstanceOf(Function);
     });
 
     it('should have blocking command methods', () => {
-      expect(cluster.blpop).to.be.a('function');
-      expect(cluster.brpop).to.be.a('function');
-      expect(cluster.brpoplpush).to.be.a('function');
-      expect(cluster.bzpopmin).to.be.a('function');
-      expect(cluster.bzpopmax).to.be.a('function');
+      expect(cluster.blpop).toBeInstanceOf(Function);
+      expect(cluster.brpop).toBeInstanceOf(Function);
+      expect(cluster.brpoplpush).toBeInstanceOf(Function);
+      expect(cluster.bzpopmin).toBeInstanceOf(Function);
+      expect(cluster.bzpopmax).toBeInstanceOf(Function);
     });
 
     it('should have stream command methods', () => {
-      expect(cluster.xadd).to.be.a('function');
-      expect(cluster.xread).to.be.a('function');
-      expect(cluster.xack).to.be.a('function');
-      expect(cluster.xgroup).to.be.a('function');
-      expect(cluster.xpending).to.be.a('function');
-      expect(cluster.xclaim).to.be.a('function');
+      expect(cluster.xadd).toBeInstanceOf(Function);
+      expect(cluster.xread).toBeInstanceOf(Function);
+      expect(cluster.xack).toBeInstanceOf(Function);
+      expect(cluster.xgroup).toBeInstanceOf(Function);
+      expect(cluster.xpending).toBeInstanceOf(Function);
+      expect(cluster.xclaim).toBeInstanceOf(Function);
     });
   });
 
@@ -283,11 +282,11 @@ describe('ClusterAdapter - Basic Tests', () => {
         nodes: [{ host: '127.0.0.1', port: 7000 }]
       });
       
-      expect(cluster.connect).to.be.a('function');
-      expect(cluster.disconnect).to.be.a('function');
-      expect(cluster.quit).to.be.a('function');
-      expect(cluster.ping).to.be.a('function');
-      expect(cluster.info).to.be.a('function');
+      expect(cluster.connect).toBeInstanceOf(Function);
+      expect(cluster.disconnect).toBeInstanceOf(Function);
+      expect(cluster.quit).toBeInstanceOf(Function);
+      expect(cluster.ping).toBeInstanceOf(Function);
+      expect(cluster.info).toBeInstanceOf(Function);
     });
 
     it('should have sendCommand method', () => {
@@ -295,8 +294,8 @@ describe('ClusterAdapter - Basic Tests', () => {
         nodes: [{ host: '127.0.0.1', port: 7000 }]
       });
       
-      expect(cluster.sendCommand).to.be.a('function');
-      expect(cluster.call).to.be.a('function');
+      expect(cluster.sendCommand).toBeInstanceOf(Function);
+      expect(cluster.call).toBeInstanceOf(Function);
     });
   });
 
@@ -316,14 +315,14 @@ describe('ClusterAdapter - Basic Tests', () => {
       const subscriber = createClient('subscriber');
       const bclient = createClient('bclient');
       
-      expect(client).to.be.instanceOf(ClusterAdapter);
-      expect(subscriber).to.be.instanceOf(ClusterAdapter);
-      expect(bclient).to.be.instanceOf(ClusterAdapter);
+      expect(client).toBeInstanceOf(ClusterAdapter);
+      expect(subscriber).toBeInstanceOf(ClusterAdapter);
+      expect(bclient).toBeInstanceOf(ClusterAdapter);
       
-      expect((client as any).clientType).to.equal('client');
-      expect((subscriber as any).clientType).to.equal('subscriber');
-      expect((bclient as any).clientType).to.equal('bclient');
-      expect((bclient as any).enableBlockingOps).to.equal(true);
+      expect((client as any).clientType).toBe('client');
+      expect((subscriber as any).clientType).toBe('subscriber');
+      expect((bclient as any).clientType).toBe('bclient');
+      expect((bclient as any).enableBlockingOps).toBe(true);
     });
   });
 
@@ -336,16 +335,16 @@ describe('ClusterAdapter - Basic Tests', () => {
       let errorEmitted = false;
       cluster.on('error', (err) => {
         errorEmitted = true;
-        expect(err).to.be.instanceOf(Error);
+        expect(err).toBeInstanceOf(Error);
       });
       
       try {
         await cluster.connect();
       } catch (error) {
-        expect(error).to.be.instanceOf(Error);
+        expect(error).toBeInstanceOf(Error);
       }
       // Ensure error event was emitted
-      expect(errorEmitted).to.be.true;
+      expect(errorEmitted).toBe(true);
     });
   });
 });
@@ -359,7 +358,7 @@ describe('ClusterAdapter - Cluster Specific Features', () => {
         scaleReads: 'master'
       });
       
-      expect((cluster as any).options.scaleReads).to.equal('master');
+      expect((cluster as any).options.scaleReads).toBe('master');
     });
 
     it('should support slave read scaling', () => {
@@ -368,7 +367,7 @@ describe('ClusterAdapter - Cluster Specific Features', () => {
         scaleReads: 'slave'
       });
       
-      expect((cluster as any).options.scaleReads).to.equal('slave');
+      expect((cluster as any).options.scaleReads).toBe('slave');
     });
 
     it('should support all nodes read scaling', () => {
@@ -377,7 +376,7 @@ describe('ClusterAdapter - Cluster Specific Features', () => {
         scaleReads: 'all'
       });
       
-      expect((cluster as any).options.scaleReads).to.equal('all');
+      expect((cluster as any).options.scaleReads).toBe('all');
     });
   });
 
@@ -388,7 +387,7 @@ describe('ClusterAdapter - Cluster Specific Features', () => {
         enableReadFromReplicas: true
       });
       
-      expect((cluster as any).options.enableReadFromReplicas).to.equal(true);
+      expect((cluster as any).options.enableReadFromReplicas).toBe(true);
     });
 
     it('should support read-only mode', () => {
@@ -397,7 +396,7 @@ describe('ClusterAdapter - Cluster Specific Features', () => {
         readOnly: true
       });
       
-      expect((cluster as any).options.readOnly).to.equal(true);
+      expect((cluster as any).options.readOnly).toBe(true);
     });
   });
 
@@ -408,7 +407,7 @@ describe('ClusterAdapter - Cluster Specific Features', () => {
         maxRedirections: 32
       });
       
-      expect((cluster as any).options.maxRedirections).to.equal(32);
+      expect((cluster as any).options.maxRedirections).toBe(32);
     });
 
     it('should configure retry delay on failover', () => {
@@ -417,7 +416,7 @@ describe('ClusterAdapter - Cluster Specific Features', () => {
         retryDelayOnFailover: 500
       });
       
-      expect((cluster as any).options.retryDelayOnFailover).to.equal(500);
+      expect((cluster as any).options.retryDelayOnFailover).toBe(500);
     });
 
     it('should support offline queue configuration', () => {
@@ -426,7 +425,7 @@ describe('ClusterAdapter - Cluster Specific Features', () => {
         enableOfflineQueue: false
       });
       
-      expect((cluster as any).options.enableOfflineQueue).to.equal(false);
+      expect((cluster as any).options.enableOfflineQueue).toBe(false);
     });
   });
 });
