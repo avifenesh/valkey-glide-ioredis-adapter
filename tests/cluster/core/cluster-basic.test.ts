@@ -344,6 +344,8 @@ describe('ClusterAdapter - Basic Tests', () => {
       } catch (error) {
         expect(error).to.be.instanceOf(Error);
       }
+      // Ensure error event was emitted
+      expect(errorEmitted).to.be.true;
     });
   });
 });
