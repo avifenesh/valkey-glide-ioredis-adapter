@@ -1,4 +1,35 @@
 import { PortDiscovery } from '../utils/port-discovery';
+import { execSync } from 'child_process';
+import * as net from 'net';
+
+function isPortOpen(port: number, host = '127.0.0.1', timeout = 500): Promise<boolean> {
+  return new Promise((resolve) => {
+    const socket = new net.Socket();
+    const onError = () => { try { socket.destroy(); } catch {} resolve(false); };
+    socket.setTimeout(timeout);
+    socket.once('error', onError);
+    socket.once('timeout', onError);
+    socket.connect(port, host, () => { socket.end(); resolve(true); });
+  });
+}
+
+async function ensureValkeyCluster(): Promise<void> {
+  const ports = [7000,7001,7002,7003,7004,7005];
+  const checks = await Promise.all(ports.map((p) => isPortOpen(p)));
+  const allUp = checks.every(Boolean);
+  if (allUp) return;
+  try {
+    execSync('docker compose -f docker-compose.valkey-cluster.yml up -d', { stdio: 'inherit' });
+  } catch (e) {
+    try { execSync('docker-compose -f docker-compose.valkey-cluster.yml up -d', { stdio: 'inherit' }); } catch {}
+  }
+  const start = Date.now();
+  while (Date.now() - start < 60000) {
+    const ready = (await Promise.all(ports.map((p) => isPortOpen(p)))).every(Boolean);
+    if (ready) break;
+    await new Promise(r => setTimeout(r, 1000));
+  }
+}
 
 module.exports = async () => {
   // If already provided via env, keep them
@@ -8,11 +39,19 @@ module.exports = async () => {
 
   // Discover responsive server
   try {
+    await ensureValkeyCluster();
     const servers = await PortDiscovery.discoverRedisServers();
     const responsive = servers.find(s => s.responsive);
     if (responsive) {
       process.env.REDIS_HOST = responsive.host;
       process.env.REDIS_PORT = String(responsive.port);
+      // Expose cluster ports for tests that need them
+      process.env.VALKEY_CLUSTER_PORT_1 = '7000';
+      process.env.VALKEY_CLUSTER_PORT_2 = '7001';
+      process.env.VALKEY_CLUSTER_PORT_3 = '7002';
+      process.env.VALKEY_CLUSTER_PORT_4 = '7003';
+      process.env.VALKEY_CLUSTER_PORT_5 = '7004';
+      process.env.VALKEY_CLUSTER_PORT_6 = '7005';
       return;
     }
   } catch {}
@@ -20,4 +59,10 @@ module.exports = async () => {
   // Fallback to defaults
   process.env.REDIS_HOST = process.env.REDIS_HOST || 'localhost';
   process.env.REDIS_PORT = process.env.REDIS_PORT || '6379';
+  process.env.VALKEY_CLUSTER_PORT_1 = process.env.VALKEY_CLUSTER_PORT_1 || '7000';
+  process.env.VALKEY_CLUSTER_PORT_2 = process.env.VALKEY_CLUSTER_PORT_2 || '7001';
+  process.env.VALKEY_CLUSTER_PORT_3 = process.env.VALKEY_CLUSTER_PORT_3 || '7002';
+  process.env.VALKEY_CLUSTER_PORT_4 = process.env.VALKEY_CLUSTER_PORT_4 || '7003';
+  process.env.VALKEY_CLUSTER_PORT_5 = process.env.VALKEY_CLUSTER_PORT_5 || '7004';
+  process.env.VALKEY_CLUSTER_PORT_6 = process.env.VALKEY_CLUSTER_PORT_6 || '7005';
 };

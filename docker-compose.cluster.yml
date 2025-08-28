@@ -1,0 +1,21 @@
+version: '3.8'
+services:
+  redis-cluster:
+    image: bitnami/redis-cluster:7.2
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+      - REDIS_NODES=6
+      - REDIS_CLUSTER_CREATOR=yes
+    ports:
+      - "7000:7000"
+      - "7001:7001"
+      - "7002:7002"
+      - "7003:7003"
+      - "7004:7004"
+      - "7005:7005"
+    healthcheck:
+      test: ["CMD", "redis-cli", "-p", "7000", "PING"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
