@@ -1,154 +1,99 @@
-# ioredis-adapter Knowledge Base
+# ioredis-adapter Development Rules
 
-## 🎉 **PHASE 1 COMPLETE: ARCHITECTURAL BREAKTHROUGH ACHIEVED!**
+## Core Principles
 
-**Status**: Successfully transformed from command proxy to translation layer architecture
-**Test Pass Rate**: 95.7% (21/22 tests passing)
-**CustomCommand Reduction**: 76 → 57 (25% complete, targeting 87% total reduction)
+### 1. Pure GLIDE Architecture (MANDATORY)
+- **PURE GLIDE ONLY** - This project uses exclusively Valkey GLIDE
+- **NO OTHER CLIENTS EVER** - No ioredis, no node-redis, no other Redis clients
+- **Custom Logic Over External Dependencies** - If we need custom behavior, we build it ourselves
+- **GLIDE-Native Solutions** - All functionality must be implemented using GLIDE APIs only
 
-## Overview
+### 2. Research First, Never Assume
+- **ALWAYS research and validate** before implementing any solution
+- **NEVER assume** behavior, API contracts, or implementation details
+- Use MCP tools to gather information from web sources and official documentation
+- Examine local code in node_modules for built clients and actual implementations
+- Custom commands are almost never the correct answer - prefer official APIs and documented methods
 
-This knowledge base contains comprehensive analysis, specifications, and implementation plans for the ioredis-adapter project - an ioredis-compatible API layer built on Valkey GLIDE.
+### 3. Glide API Validation
+For each adaptation implemented:
+- **Check Glide API from official URLs** first
+- **Examine built client in node_modules** for actual implementation details
+- **Validate API contracts** against official documentation
+- **Test API behavior** with real examples before implementation
 
-## 🚀 **Major Achievements (Phase 1)**
+### 4. Testing Standards
+- **100% test coverage** is mandatory for all code
+- **NEVER skip tests** with warning messages
+- **If tests don't work, fix them** - don't suppress failures
+- **Fail fast** - if a test cannot be made to pass, the implementation is incomplete
+- **Integration tests** required for all adapter functionality
+- **Unit tests** for all utility functions and edge cases
 
-### ✅ **ZSET Operations: 100% Test Pass Rate**
-- **Problem**: GLIDE returns structured objects, ioredis expects flat arrays
-- **Solution**: Implemented proper result translation layer
-- **Impact**: All 6 ZSET tests now pass, critical for Bull/BullMQ integration
+### 5. Documentation Validation
+- **Always validate documentation** using MCP tools for web research
+- **Cross-reference** multiple sources when possible
+- **Verify examples** work as documented
+- **Check for breaking changes** in recent versions
+- **Validate against actual implementations** in node_modules
 
-### ✅ **Stream Commands: 75% Migration Complete** 
-- **Problem**: Bull relies on stream operations using inefficient customCommand
-- **Solution**: Migrated XADD, XREAD, XACK to native GLIDE methods
-- **Impact**: Better performance and Bull integration reliability
+### 6. Code Quality Standards
+- **Type safety** - use TypeScript strictly, no `any` types without justification
+- **Error handling** - comprehensive error handling for all external API calls
+- **Logging** - meaningful logging for debugging and monitoring
+- **Performance** - consider performance implications of all implementations
+- **Security** - validate all inputs and handle sensitive data appropriately
 
-### ✅ **Architecture Infrastructure**
-- **Created**: ResultTranslator utility for centralized format conversion
-- **Documented**: Complete analysis of 76 customCommand usages
-- **Established**: Clear migration patterns and best practices
+### 7. Implementation Process
+1. **Research** the official API documentation
+2. **Examine** existing implementations in node_modules
+3. **Design** the adapter interface
+4. **Implement** with comprehensive error handling
+5. **Test** with real scenarios
+6. **Document** usage examples and edge cases
+7. **Validate** against official documentation again
 
-## Key Files
+### 8. Never Skip These Steps
+- **API validation** against official sources
+- **Real-world testing** with actual data
+- **Error scenario testing** - test failure modes
+- **Performance testing** for critical paths
+- **Documentation updates** for any API changes
 
-### 📋 **Analysis & Planning**
-- [`ARCHITECTURAL_ANALYSIS.md`](./ARCHITECTURAL_ANALYSIS.md) - Root cause analysis of customCommand overuse
-- [`GLIDE_API_BEHAVIORAL_ANALYSIS.md`](./GLIDE_API_BEHAVIORAL_ANALYSIS.md) - Deep dive into GLIDE vs ioredis architectural differences
-- [`GLIDE_COMMAND_COVERAGE.md`](./GLIDE_COMMAND_COVERAGE.md) - Comprehensive command availability analysis
-- [`GLIDE_API_MAPPING.md`](./GLIDE_API_MAPPING.md) - Detailed migration tables and progress tracking
-- [`IMPLEMENTATION_ROADMAP.md`](./IMPLEMENTATION_ROADMAP.md) - Phased implementation plan
-- [`PHASE_1_SUMMARY.md`](./PHASE_1_SUMMARY.md) - Complete Phase 1 achievements and learnings
-- [`PHASE_2_IMPLEMENTATION_STRATEGY.md`](./PHASE_2_IMPLEMENTATION_STRATEGY.md) - Detailed Phase 2 architectural bridges
-- [`PHASE_2_LEARNINGS.md`](./PHASE_2_LEARNINGS.md) - Critical discoveries from careful pub/sub investigation
-- [`PHASE_2_SUCCESS.md`](./PHASE_2_SUCCESS.md) - **BREAKTHROUGH**: Hybrid pub/sub solution successfully implemented
+### 9. Quality Gates
+- All tests must pass
+- All linting rules must pass
+- All TypeScript compilation must succeed
+- All documentation must be up-to-date
+- All examples must work as documented
 
-### 📊 **Status & Progress**
-- [`CURRENT_STATUS.md`](./CURRENT_STATUS.md) - Real-time progress tracking and next steps
-- [`COMPREHENSIVE_TESTING_PLAN.md`](./COMPREHENSIVE_TESTING_PLAN.md) - Testing strategy for cluster support
+## File Naming and Structure
+- Use descriptive names for all files and functions
+- Follow existing project structure and conventions
+- Group related functionality logically
+- Maintain clear separation of concerns
 
-### 📚 **Knowledge Sources**
-- [`sources/`](./sources/) - Documentation and research from ioredis, Bull, BullMQ, Valkey GLIDE
-- [`spec/`](./spec/) - Design specifications and API gap analysis
+## Commit Standards
+- **Meaningful commit messages** that explain the "why"
+- **Atomic commits** - one logical change per commit
+- **Test coverage** must not decrease
+- **Documentation updates** included with code changes
 
-## 🔍 **Root Cause Identified**
+## When in Doubt
+1. **Research more** - there's always more to learn
+2. **Check the source** - examine actual implementations
+3. **Test thoroughly** - don't assume it works
+4. **Document everything** - future developers will thank you
+5. **Ask for review** - fresh eyes catch issues
 
-**The Problem**: Using 76 `customCommand` calls, treating GLIDE as a generic Redis protocol proxy instead of leveraging its rich native API.
+Remember: **Stable, tested, and documented code is more valuable than quick, untested solutions.**
 
-**The Solution**: Transform to a proper translation layer that:
-1. **Parameter Translation**: Convert ioredis formats → GLIDE formats
-2. **Native Method Mapping**: Use GLIDE's optimized native methods
-3. **Result Translation**: Convert GLIDE responses → ioredis-compatible formats
-4. **Behavior Emulation**: Handle ioredis-specific behaviors properly
+## Special Considerations
 
-## 📈 **Migration Progress**
+### Pub/Sub Implementation
+Due to GLIDE's pub/sub execution context sensitivity, we implement **two distinct pub/sub patterns**:
 
-### ✅ **Completed (25% of total)**
-| Command Family | Before | After | Status |
-|----------------|--------|-------|---------|
-| String Commands | 4 | 0 | ✅ 100% Complete |
-| Blocking Commands | 6 | 1 | ✅ 100% Complete |
-| ZSET Commands | 2 | 0 | ✅ 100% Complete |
-| Stream Commands | 14 | 5 | 🔄 75% Complete |
+1. **General Usage Pub/Sub**: Direct GLIDE pattern for user applications
+2. **Internal Library Pub/Sub**: Custom encapsulated pattern for Bull/BullMQ integration
 
-### 📋 **Next Priorities**
-| Command Family | Impact | Complexity |
-|----------------|---------|------------|
-| Pub/Sub Commands (10) | HIGH | HIGH - Requires architecture redesign |
-| Script Commands (12) | HIGH | MEDIUM - Use GLIDE Script class |
-| Utility Commands (24) | MEDIUM | LOW - Research native methods |
-
-## 🎯 **Success Metrics**
-
-### ✅ **Achieved**
-- [x] Zero TypeScript compilation errors
-- [x] 95.7% test pass rate (21/22 tests)
-- [x] ZSET operations: 100% test pass rate
-- [x] 25% reduction in customCommand usage
-- [x] Comprehensive architectural documentation
-
-### 🎯 **Phase 2 Targets**
-- [ ] 99%+ test pass rate
-- [ ] 87% reduction in customCommand usage (76 → 10)
-- [ ] Full Bull/BullMQ integration compatibility
-- [ ] 20%+ performance improvement with native methods
-
-## 🔧 **Technical Discoveries**
-
-### **GLIDE API Patterns**
-1. **Boundary Swapping**: GLIDE's `byScore` ranges with `reverse: true` require swapped start/end boundaries
-2. **Result Formats**: GLIDE returns structured objects while ioredis expects flat arrays
-3. **Parameter Patterns**: GLIDE uses options objects while ioredis uses variadic parameters
-4. **Native Methods**: GLIDE has optimized implementations for most Redis commands
-
-### **Translation Patterns**
-1. **Parameter Translation**: ioredis variadic → GLIDE structured options
-2. **Result Translation**: GLIDE objects → ioredis flat arrays
-3. **Error Handling**: Maintain ioredis-compatible error formats
-4. **Type Safety**: Leverage GLIDE's TypeScript interfaces
-
-## 🏗️ **Architecture Transformation**
-
-### ❌ **Before (Command Proxy)**
-```typescript
-// Wrong: Treating GLIDE as generic Redis proxy
-async zpopmin(key: string): Promise<string[]> {
-  return client.customCommand(['ZPOPMIN', key]);
-}
-```
-
-### ✅ **After (Translation Layer)**
-```typescript
-// Correct: Leveraging GLIDE's native API with proper translation
-async zpopmin(key: string, count?: number): Promise<string[]> {
-  const options = count !== undefined ? { count } : undefined;
-  const result = await client.zpopmin(key, options); // Native GLIDE
-  return ResultTranslator.flattenSortedSetData(result); // Proper translation
-}
-```
-
-## 📚 **Key Learnings**
-
-### ✅ **Best Practices**
-1. **Research First**: Always check GLIDE API before using customCommand
-2. **Translation Over Proxy**: Convert between API patterns, don't just forward
-3. **Centralized Logic**: Use utilities like ResultTranslator for consistency
-4. **Incremental Migration**: Phased approach with continuous validation
-
-### ❌ **Anti-Patterns**
-1. **Command Proxy Pattern**: Treating GLIDE as generic Redis proxy
-2. **Assuming Compatibility**: ioredis and GLIDE have different design patterns
-3. **Ignoring Result Formats**: GLIDE's structured objects vs ioredis flat arrays
-
-## 🚀 **Next Steps**
-
-### **Phase 2: Architecture Redesign**
-1. **Pub/Sub Migration**: Replace command-based with GLIDE's callback pattern
-2. **Script Management**: Use GLIDE's Script class instead of EVAL/EVALSHA
-3. **Utility Commands**: Research and migrate INFO, CLIENT, KEYS commands
-
-### **Phase 3: Performance & Polish**
-1. **Performance Validation**: Benchmark native methods vs customCommand
-2. **Code Cleanup**: Remove fallback implementations and dead code
-3. **Documentation**: Complete migration guide and best practices
-
----
-
-**The adapter has been transformed from a broken command proxy to a working translation layer with solid architectural foundations. Ready for Phase 2!** 🎉
+Both patterns are **pure GLIDE** implementations with different architectural approaches to handle GLIDE's limitations while maintaining full compatibility.

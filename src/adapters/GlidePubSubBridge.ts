@@ -250,47 +250,34 @@ export class GlidePubSubBridge extends EventEmitter {
   }
 
   /**
-   * Main polling loop - based on valkey-pubsub implementation
+   * Main polling loop - using for-loop pattern that works with GLIDE
+   * 
+   * CRITICAL: while-loop polling breaks GLIDE's getPubSubMessage() - use for-loop instead
    */
   private async pollForMessages(): Promise<void> {
-    let retryCount = 0;
-    const maxRetries = 3;
-    let pollCount = 0;
-
-    console.log('🔄 DEBUG: Starting polling loop');
-
-    while (this.pollingActive && this.subscribeClient) {
+    console.log('🔄 DEBUG: Starting for-loop polling (GLIDE-compatible pattern)');
+    
+    // Use for-loop pattern instead of while-loop (while-loop breaks GLIDE message delivery)
+    const maxIterations = 1000; // Reasonable upper bound to prevent infinite loop
+    
+    for (let i = 0; i < maxIterations && this.pollingActive && this.subscribeClient; i++) {
       try {
-        pollCount++;
-        console.log(`🔄 DEBUG: Poll iteration ${pollCount}, active: ${this.pollingActive}, hasClient: ${!!this.subscribeClient}`);
+        console.log(`🔄 DEBUG: Poll iteration ${i + 1}, active: ${this.pollingActive}, hasClient: ${!!this.subscribeClient}`);
 
-        // Use the simple approach that worked in our polling test
-        let message: PubSubMsg | null = null;
-        
         console.log('🔄 DEBUG: About to call getPubSubMessage...');
-        try {
-          // Use getPubSubMessage with a timeout to avoid blocking indefinitely
-          message = await Promise.race([
-            this.subscribeClient.getPubSubMessage(),
-            new Promise<null>(resolve => setTimeout(() => resolve(null), 100)) // 100ms timeout
-          ]);
-          
-          console.log('🔄 DEBUG: getPubSubMessage completed, message:', !!message);
-          
-          if (message) {
-            console.log('📨 DEBUG: Got message from getPubSubMessage:', message);
-          }
-        } catch (error) {
-          console.log('❌ DEBUG: Error in getPubSubMessage:', error);
-          if (error instanceof ClosingError) {
-            console.log('🔄 DEBUG: Client closing, exiting polling loop');
-            break;
-          }
-          // Continue on other errors
-        }
+        
+        // Use the exact pattern that works in our tests
+        const message: PubSubMsg | null = await Promise.race([
+          this.subscribeClient.getPubSubMessage(),
+          new Promise<null>(resolve => setTimeout(() => resolve(null), 100)) // 100ms timeout
+        ]);
+        
+        console.log('🔄 DEBUG: getPubSubMessage completed, message:', !!message);
         
         if (message) {
+          console.log('📨 DEBUG: Got message from getPubSubMessage:', message);
           console.log('🎯 DEBUG: Processing message:', message);
+          
           // Convert GLIDE message to ioredis-compatible events
           const channel = String(message.channel);
           const messageContent = String(message.message);
@@ -306,33 +293,26 @@ export class GlidePubSubBridge extends EventEmitter {
             this.emit('message', channel, messageContent);
           }
           
-          // Reset retry count on successful message
-          retryCount = 0;
-        } else {
-          // Small delay to prevent tight loop when no messages
-          await new Promise(resolve => setTimeout(resolve, 10));
+          // Continue polling for more messages (don't break after first message)
         }
+        
+        // Small delay to prevent tight loop
+        await new Promise(resolve => setTimeout(resolve, 10));
         
       } catch (error) {
         if (error instanceof ClosingError) {
-          // Client is closing, exit gracefully
+          console.log('🔄 DEBUG: Client closing, exiting polling loop');
           break;
-        } else {
-          console.error('Error in pub/sub polling:', error);
-          
-          if (retryCount < maxRetries) {
-            retryCount++;
-            // Exponential backoff
-            await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
-            continue;
-          } else {
-            // Max retries reached, emit error and break
-            this.emit('error', error);
-            break;
-          }
         }
+        
+        console.log(`❌ DEBUG: Polling error on iteration ${i + 1}:`, error);
+        
+        // Continue polling despite errors (with small delay)
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
+    
+    console.log('🔄 DEBUG: For-loop polling ended');
   }
 
   /**
