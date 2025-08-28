@@ -36,6 +36,14 @@
     "prepublishOnly": "npm run clean && npm run build && npm run test",
     "dev": "concurrently \"npm run build:watch\" \"npm run test:watch\""
   },
+  "jest": {
+    "globalSetup": "<rootDir>/tests/setup/globalSetup.ts",
+    "testEnvironment": "node",
+    "transform": {
+      "^.+\\.(ts|tsx)$": ["ts-jest", {"useESM": false}]
+    },
+    "moduleFileExtensions": ["ts", "tsx", "js", "jsx", "json", "node"]
+  },
   "keywords": [
     "redis",
     "valkey",
