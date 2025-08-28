@@ -74,11 +74,11 @@ async function directPubSubExample() {
 ### Library Integration Helper
 
 ```typescript
-import { BullGlideIntegration } from './DirectGlidePubSub';
+import { LibraryGlideIntegration } from './DirectGlidePubSub';
 
 // For job queue libraries (Bull, BullMQ, Bee-Queue)
 async function jobQueueIntegration() {
-  const integration = new BullGlideIntegration();
+  const integration = new LibraryGlideIntegration();
   
   await integration.initialize(
     { host: 'localhost', port: 6379 },
@@ -96,7 +96,7 @@ async function jobQueueIntegration() {
 
 // For session stores (connect-redis)
 async function sessionStoreIntegration() {
-  const integration = new BullGlideIntegration();
+  const integration = new LibraryGlideIntegration();
   
   await integration.initialize(
     { host: 'localhost', port: 6379 },
@@ -113,7 +113,7 @@ async function sessionStoreIntegration() {
 
 // For real-time applications (Socket.IO)
 async function realtimeIntegration() {
-  const integration = new BullGlideIntegration();
+  const integration = new LibraryGlideIntegration();
   
   await integration.initialize(
     { host: 'localhost', port: 6379 },

@@ -8,7 +8,7 @@ This project uses **exclusively Valkey GLIDE** - a high-performance, language-in
 
 ## 🚀 **Key Features**
 
-- **100% GLIDE-based**: No other Redis clients used
+- **Pure GLIDE**: Built exclusively on Valkey GLIDE APIs
 - **ioredis-compatible API**: Drop-in replacement for most ioredis usage
 - **High Performance**: Leverages GLIDE's Rust core for optimal performance
 - **TypeScript Support**: Full type safety with GLIDE's native TypeScript interfaces
@@ -40,9 +40,9 @@ if (message) {
 
 ### 2. **Library Integration Helper** (For existing Redis libraries)
 ```typescript
-import { BullGlideIntegration } from './src/pubsub/DirectGlidePubSub';
+import { LibraryGlideIntegration } from './src/pubsub/DirectGlidePubSub';
 
-const integration = new BullGlideIntegration();
+const integration = new LibraryGlideIntegration();
 await integration.initialize(
   { host: 'localhost', port: 6379 },
   ['app:notifications', 'app:events']
@@ -100,8 +100,12 @@ const messages = await redis.xread('STREAMS', 'mystream', '0');
 # Run all tests
 npm test
 
-# Run specific test suites
+# Run pub/sub tests
 npm test -- tests/unit/direct-glide-pubsub.test.ts
+npm test -- tests/unit/pubsub-basic.test.ts
+npm test -- tests/unit/pubsub-polling.test.ts
+
+# Run integration tests
 npm test -- tests/integration/
 ```
 
