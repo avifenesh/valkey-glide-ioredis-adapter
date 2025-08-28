@@ -52,6 +52,17 @@ export const testUtils = {
     }
     
     try {
+      // Highest priority: explicit env
+      if (process.env.REDIS_HOST && process.env.REDIS_PORT) {
+        const envConfig = {
+          host: process.env.REDIS_HOST,
+          port: parseInt(process.env.REDIS_PORT, 10)
+        } as ServerConfig;
+        cachedStandaloneConfig = envConfig;
+        lastStandaloneConfigTime = now;
+        return envConfig;
+      }
+
       // First try to find any existing Redis server
       const result = await portUtils.findRedisServerOrPort();
       
