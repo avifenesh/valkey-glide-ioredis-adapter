@@ -45,7 +45,7 @@ describe('Socket.IO Redis Adapter Integration', () => {
     port2 = testUtils.randomPort();
 
     // Setup Redis clients for both Socket.IO instances
-    const config = testUtils.getStandaloneConfig();
+    const config = await testUtils.getStandaloneConfig();
     
     redisClient1 = new RedisAdapter({
       ...config,
