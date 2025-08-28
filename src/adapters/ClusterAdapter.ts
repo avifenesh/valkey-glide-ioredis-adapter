@@ -412,7 +412,7 @@ export class ClusterAdapter extends BaseClusterAdapter {
   }
 
   async exec(): Promise<Array<[Error | null, any]> | null> {
-    const client = await this.ensureConnected();
+    await this.ensureConnected();
     // Reuse MultiAdapter batching if present on this instance
     if (typeof (this as any).commands !== 'undefined') {
       // If this instance is actually acting as a Multi, delegate to its exec
