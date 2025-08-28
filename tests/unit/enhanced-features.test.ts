@@ -197,8 +197,9 @@ describe('Enhanced Features for Queue Compatibility', () => {
     });
 
     test('allows override options', async () => {
-      const duplicated = await redis.duplicate({ port: 6380 });
-      expect((duplicated as any)._options.port).toBe(6380);
+      const targetPort = process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : 6379;
+      const duplicated = await redis.duplicate({ port: targetPort });
+      expect((duplicated as any)._options.port).toBe(targetPort);
     });
 
     test('connects in background (Bull compatibility)', async () => {
