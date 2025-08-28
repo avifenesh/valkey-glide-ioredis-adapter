@@ -205,4 +205,4 @@ Both patterns support full GLIDE configuration options:
 
 ---
 
-**Remember**: This is a **pure GLIDE** implementation. No other Redis clients are used, ensuring consistency and leveraging GLIDE's performance benefits.
+**Remember**: This is a **pure GLIDE** implementation, ensuring consistency and leveraging GLIDE's performance benefits.
