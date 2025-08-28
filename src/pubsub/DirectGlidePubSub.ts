@@ -214,9 +214,29 @@ async function example() {
 export class LibraryGlideIntegration {
   private clients: PubSubClients | null = null;
   private pollingActive = false;
+  private channels = new Set<string>();
+  private patterns = new Set<string>();
+  private onMessageCallback: ((msg: PubSubMessage) => void) | null = null;
 
-  async initialize(options: RedisOptions, channels: string[]) {
-    this.clients = await createPubSubClients(options, { channels });
+  constructor(onMessage?: (msg: PubSubMessage) => void) {
+    if (onMessage) this.onMessageCallback = onMessage;
+  }
+
+  setOnMessage(handler: (msg: PubSubMessage) => void) {
+    this.onMessageCallback = handler;
+  }
+
+  async initialize(options: RedisOptions, subs: string[] | { channels?: string[]; patterns?: string[] }) {
+    const channels = Array.isArray(subs) ? subs : (subs.channels || []);
+    const patterns = Array.isArray(subs) ? [] : (subs.patterns || []);
+
+    this.channels = new Set(channels.map(String));
+    this.patterns = new Set(patterns.map(String));
+
+    this.clients = await createPubSubClients(options, {
+      channels: Array.from(this.channels),
+      patterns: Array.from(this.patterns),
+    });
     this.pollingActive = true;
 
     // Start polling in background
@@ -226,18 +246,14 @@ export class LibraryGlideIntegration {
   private async startPolling() {
     if (!this.clients) return;
 
-    // Use the working pattern in a background context
-    // This runs in the main event loop, not encapsulated
     const poll = async () => {
       if (!this.pollingActive || !this.clients) return;
 
       const message = await pollForMessage(this.clients.subscriber);
       if (message) {
-        // Emit to Bull's expected interface
         this.handleLibraryMessage(message);
       }
 
-      // Continue polling
       if (this.pollingActive) {
         setImmediate(poll);
       }
@@ -247,14 +263,41 @@ export class LibraryGlideIntegration {
   }
 
   private handleLibraryMessage(message: PubSubMessage) {
-    // Convert to library's expected format
-    console.log('Library message:', message.channel, message.message);
-    // Here you would integrate with the specific library's message handling
+    if (this.onMessageCallback) {
+      this.onMessageCallback(message);
+    } else {
+      console.log('Library message:', message.channel, message.message);
+    }
   }
 
   async publish(channel: string, message: string): Promise<number> {
     if (!this.clients) throw new Error('Not initialized');
     return await publishMessage(this.clients.publisher, channel, message);
+  }
+
+  getSubscriptions() {
+    return {
+      channels: Array.from(this.channels),
+      patterns: Array.from(this.patterns),
+    };
+  }
+
+  async updateSubscriptions(options: RedisOptions, updates: { addChannels?: string[]; removeChannels?: string[]; addPatterns?: string[]; removePatterns?: string[] }) {
+    // Update sets
+    (updates.addChannels || []).forEach(c => this.channels.add(String(c)));
+    (updates.removeChannels || []).forEach(c => this.channels.delete(String(c)));
+    (updates.addPatterns || []).forEach(p => this.patterns.add(String(p)));
+    (updates.removePatterns || []).forEach(p => this.patterns.delete(String(p)));
+
+    // Recreate clients to apply new subscriptions
+    await this.reinitialize(options);
+  }
+
+  private async reinitialize(options: RedisOptions) {
+    const currentHandler = this.onMessageCallback;
+    await this.cleanup();
+    this.onMessageCallback = currentHandler || null;
+    await this.initialize(options, { channels: Array.from(this.channels), patterns: Array.from(this.patterns) });
   }
 
   async cleanup() {

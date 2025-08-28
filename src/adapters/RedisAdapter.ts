@@ -28,6 +28,8 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   private subscribedPatterns: Set<string> = new Set();
 
   private messageHandler: PubSubMessageHandler | null = null;
+  private _libIntegration: any | null = null;
+  private _pubsubEmitter: EventEmitter;
 
   constructor();
   constructor(port: number, host?: string);
@@ -46,6 +48,8 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     } else {
       this._options = { port: 6379, host: 'localhost' };
     }
+
+    this._pubsubEmitter = new EventEmitter();
   }
 
   get status(): ConnectionStatus {
@@ -159,9 +163,38 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   async info(section?: string): Promise<string> {
     const client = await this.ensureConnected();
     if (section) {
-      return client.customCommand(['INFO', section]) as Promise<string>;
+      try {
+        // Map common ioredis sections to GLIDE InfoOptions; fallback to raw section
+        const { InfoOptions } = await import('@valkey/valkey-glide/build-ts/Commands');
+        const map: Record<string, string> = {
+          server: InfoOptions.Server,
+          clients: InfoOptions.Clients,
+          memory: InfoOptions.Memory,
+          persistence: InfoOptions.Persistence,
+          stats: InfoOptions.Stats,
+          replication: InfoOptions.Replication,
+          cpu: InfoOptions.Cpu,
+          commandstats: InfoOptions.Commandstats,
+          latencystats: InfoOptions.Latencystats,
+          sentinel: InfoOptions.Sentinel,
+          cluster: InfoOptions.Cluster,
+          modules: InfoOptions.Modules,
+          keyspace: InfoOptions.Keyspace,
+          all: InfoOptions.All,
+          default: InfoOptions.Default,
+          everything: InfoOptions.Everything,
+        };
+        const normalized = section.toLowerCase();
+        const option = map[normalized] as any;
+        if (option) {
+          return await client.info([option]);
+        }
+      } catch {
+        // Fallback if dynamic import path changes; continue to customCommand fallback below
+      }
     }
-    return client.customCommand(['INFO']) as Promise<string>;
+    // Fallback to GLIDE native without section (default)
+    return await client.info();
   }
 
   // ioredis compatibility: sendCommand method for arbitrary Redis commands
@@ -421,19 +454,93 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
 
   async xgroup(subcommand: string, ...args: any[]): Promise<any> {
     const client = await this.ensureConnected();
-    return await client.customCommand(['XGROUP', subcommand, ...args.map(String)]);
+    const sub = subcommand.toUpperCase();
+    switch (sub) {
+      case 'CREATE': {
+        const key = String(args[0]);
+        const groupName = String(args[1]);
+        const id = String(args[2]);
+        const rest = args.slice(3).map(String);
+        const normalizedKey = ParameterTranslator.normalizeKey(key);
+        const options: any = {};
+        if (rest.includes('MKSTREAM')) options.mkstream = true;
+        const entriesReadIndex = rest.findIndex(v => v.toUpperCase() === 'ENTRIESREAD');
+        if (entriesReadIndex >= 0 && rest[entriesReadIndex + 1]) {
+          options.entriesRead = Number(rest[entriesReadIndex + 1]);
+        }
+        return await (client as any).xgroupCreate(normalizedKey, groupName, id, options);
+      }
+      case 'DESTROY': {
+        const key = String(args[0]);
+        const groupName = String(args[1]);
+        const normalizedKey = ParameterTranslator.normalizeKey(key);
+        return await (client as any).xgroupDestroy(normalizedKey, groupName);
+      }
+      case 'CREATECONSUMER': {
+        const key = String(args[0]);
+        const groupName = String(args[1]);
+        const consumerName = String(args[2]);
+        const normalizedKey = ParameterTranslator.normalizeKey(key);
+        return await (client as any).xgroupCreateConsumer(normalizedKey, groupName, consumerName);
+      }
+      case 'DELCONSUMER': {
+        const key = String(args[0]);
+        const groupName = String(args[1]);
+        const consumerName = String(args[2]);
+        const normalizedKey = ParameterTranslator.normalizeKey(key);
+        return await (client as any).xgroupDelConsumer(normalizedKey, groupName, consumerName);
+      }
+      case 'SETID': {
+        const key = String(args[0]);
+        const groupName = String(args[1]);
+        const id = String(args[2]);
+        const rest = args.slice(3).map(String);
+        const normalizedKey = ParameterTranslator.normalizeKey(key);
+        const options: any = {};
+        const entriesReadIndex = rest.findIndex(v => v.toUpperCase() === 'ENTRIESREAD');
+        if (entriesReadIndex >= 0 && rest[entriesReadIndex + 1]) {
+          options.entriesRead = Number(rest[entriesReadIndex + 1]);
+        }
+        return await (client as any).xgroupSetId(normalizedKey, groupName, id, options);
+      }
+      default:
+        // Fallback for other subcommands not mapped
+        return await (client as any).customCommand(['XGROUP', subcommand, ...args.map(String)]);
+    }
   }
 
   async xpending(key: RedisKey, group: string, ...args: any[]): Promise<any> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.customCommand(['XPENDING', normalizedKey, group, ...args.map(String)]);
+    if (args.length === 0) {
+      return await (client as any).xpending(normalizedKey, group);
+    }
+    // Extended form: start end count [consumer]
+    const [start, end, count, consumer] = args.map(String);
+    const options: any = {};
+    if (start) options.start = { value: start, isInclusive: true };
+    if (end) options.end = { value: end, isInclusive: true };
+    if (count) options.count = Number(count);
+    if (consumer) options.consumer = consumer;
+    return await (client as any).xpending(normalizedKey, group, options);
   }
 
   async xclaim(key: RedisKey, group: string, consumer: string, minIdleTime: number, ...ids: string[]): Promise<any> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.customCommand(['XCLAIM', normalizedKey, group, consumer, minIdleTime.toString(), ...ids]);
+    // Map common options if passed via ids tail (JUSTID, IDLE, RETRYCOUNT, FORCE, LASTID)
+    const parsedIds: string[] = [];
+    const options: any = {};
+    for (let i = 0; i < ids.length; i++) {
+      const token = String(ids[i]).toUpperCase();
+      if (token === 'JUSTID') { options.justId = true; continue; }
+      if (token === 'IDLE' && ids[i+1]) { options.idle = Number(ids[++i]); continue; }
+      if (token === 'RETRYCOUNT' && ids[i+1]) { options.retryCount = Number(ids[++i]); continue; }
+      if (token === 'FORCE') { options.isForce = true; continue; }
+      if (token === 'LASTID' && ids[i+1]) { options.lastId = String(ids[++i]); continue; }
+      parsedIds.push(String(ids[i]));
+    }
+    return await (client as any).xclaim(normalizedKey, group, consumer, Number(minIdleTime), parsedIds, options);
   }
 
   // Additional ioredis compatibility methods
@@ -1522,6 +1629,21 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return new MultiAdapter(this, new Set(this.watchedKeys));
   }
 
+  private async ensureLibIntegration(): Promise<void> {
+    if (this._libIntegration) return;
+    const { LibraryGlideIntegration } = await import('../pubsub/DirectGlidePubSub');
+    this._libIntegration = new LibraryGlideIntegration((msg: any) => {
+      if (msg.pattern) {
+        this.emit('pmessage', msg.pattern, msg.channel, msg.message);
+        this._pubsubEmitter.emit('pmessage', msg.pattern, msg.channel, msg.message);
+      } else {
+        this.emit('message', msg.channel, msg.message);
+        this._pubsubEmitter.emit('message', msg.channel, msg.message);
+      }
+    });
+    await this._libIntegration.initialize(this._options, { channels: Array.from(this.subscribedChannels), patterns: Array.from(this.subscribedPatterns) });
+  }
+
   // Pub/Sub
   async publish(channel: string, message: RedisValue): Promise<number> {
     const client = await this.ensureConnected();
@@ -1530,22 +1652,38 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return await client.publish(normalizedChannel, normalizedMessage);
   }
 
-  async subscribe(..._channels: string[]): Promise<number> {
-    // For full pub/sub functionality, use DirectGlidePubSub utilities
-    // This is a simplified implementation for basic compatibility
-    throw new Error('Use DirectGlidePubSub utilities for pub/sub functionality. See /src/pubsub/DirectGlidePubSub.ts');
+  async subscribe(...channels: string[]): Promise<number> {
+    await this.ensureLibIntegration();
+    channels.forEach(c => this.subscribedChannels.add(String(c)));
+    await this._libIntegration!.updateSubscriptions(this._options, { addChannels: channels });
+    channels.forEach((c, i) => this.emit('subscribe', c, this.subscribedChannels.size - i));
+    return this.subscribedChannels.size;
   }
 
-  async unsubscribe(..._channels: string[]): Promise<number> {
-    throw new Error('Use DirectGlidePubSub utilities for pub/sub functionality. See /src/pubsub/DirectGlidePubSub.ts');
+  async unsubscribe(...channels: string[]): Promise<number> {
+    if (!this._libIntegration) return this.subscribedChannels.size;
+    const toRemove = channels.length ? channels : Array.from(this.subscribedChannels);
+    toRemove.forEach(c => this.subscribedChannels.delete(String(c)));
+    await this._libIntegration.updateSubscriptions(this._options, { removeChannels: toRemove });
+    toRemove.forEach((c, i) => this.emit('unsubscribe', c, this.subscribedChannels.size - i));
+    return this.subscribedChannels.size;
   }
 
-  async psubscribe(..._patterns: string[]): Promise<number> {
-    throw new Error('Use DirectGlidePubSub utilities for pub/sub functionality. See /src/pubsub/DirectGlidePubSub.ts');
+  async psubscribe(...patterns: string[]): Promise<number> {
+    await this.ensureLibIntegration();
+    patterns.forEach(p => this.subscribedPatterns.add(String(p)));
+    await this._libIntegration!.updateSubscriptions(this._options, { addPatterns: patterns });
+    patterns.forEach((p, i) => this.emit('psubscribe', p, this.subscribedPatterns.size - i));
+    return this.subscribedPatterns.size;
   }
 
-  async punsubscribe(..._patterns: string[]): Promise<number> {
-    throw new Error('Use DirectGlidePubSub utilities for pub/sub functionality. See /src/pubsub/DirectGlidePubSub.ts');
+  async punsubscribe(...patterns: string[]): Promise<number> {
+    if (!this._libIntegration) return this.subscribedPatterns.size;
+    const toRemove = patterns.length ? patterns : Array.from(this.subscribedPatterns);
+    toRemove.forEach(p => this.subscribedPatterns.delete(String(p)));
+    await this._libIntegration.updateSubscriptions(this._options, { removePatterns: toRemove });
+    toRemove.forEach((p, i) => this.emit('punsubscribe', p, this.subscribedPatterns.size - i));
+    return this.subscribedPatterns.size;
   }
 
   async watch(...keys: RedisKey[]): Promise<string> {

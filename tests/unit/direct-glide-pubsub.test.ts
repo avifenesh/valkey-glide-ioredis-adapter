@@ -9,12 +9,14 @@ import {
   cleanupPubSubClients,
   BullGlideIntegration
 } from '../../src/pubsub/DirectGlidePubSub';
+import { getRedisTestConfig } from '../utils/redis-config';
 
 describe('Direct GLIDE Pub/Sub', () => {
   test('basic pub/sub with direct utilities', async () => {
+    const cfg = await getRedisTestConfig();
     // Create clients using the utility
     const clients = await createPubSubClients(
-      { host: 'localhost', port: 6379 },
+      { host: cfg.host, port: cfg.port },
       { channels: ['direct-test'] }
     );
 
@@ -61,9 +63,10 @@ describe('Direct GLIDE Pub/Sub', () => {
   });
 
   test('pattern subscription with direct utilities', async () => {
+    const cfg = await getRedisTestConfig();
     // Create clients with pattern subscription
     const clients = await createPubSubClients(
-      { host: 'localhost', port: 6379 },
+      { host: cfg.host, port: cfg.port },
       { patterns: ['direct.*'] }
     );
 
@@ -111,11 +114,12 @@ describe('Direct GLIDE Pub/Sub', () => {
 
   test('Bull integration helper', async () => {
     const integration = new BullGlideIntegration();
+    const cfg = await getRedisTestConfig();
 
     try {
       // Initialize with Bull-style channels
       await integration.initialize(
-        { host: 'localhost', port: 6379 },
+        { host: cfg.host, port: cfg.port },
         ['bull:job:completed', 'bull:job:failed']
       );
 
