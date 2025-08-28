@@ -27,6 +27,7 @@ test-results/
 *.swp
 *.swo
 *~
+.cursor/
 
 # OS generated files
 .DS_Store
@@ -51,9 +52,11 @@ pids/
 coverage/
 
 # Internal development documentation (not for public release)
+coursorules/
 EXPANDED_INTEGRATION_SUMMARY.md
 INTEGRATION_TEST_PLAN.md
 INTEGRATION_TEST_RESULTS.md
+TEST_FAILURES_ANALYSIS.md
 docs/IOREDIS_ADAPTER_ANALYSIS.md
 docs/API_DIFFERENCES_ANALYSIS.md
 docs/PUBSUB_*.md
@@ -61,6 +64,7 @@ docs/LIBRARY_PUBSUB_PATTERNS.md
 
 # Internal development tools
 .qoder/
+.cursor-tutor/
 
 # Test environment files
 .env.test
@@ -71,3 +75,31 @@ docker-compose.test.yml
 *.temp
 .cache/
 **/*.test.js
+
+# Debug files
+debug-*.js
+debug-*.ts
+*.debug.log
+
+# Development artifacts
+*.draft.*
+*.wip.*
+scratch/
+experiments/
+playground/
+
+# Sensitive configuration
+config/local.*
+config/development.*
+secrets/
+.secrets
+
+# Package manager files
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Editor backups
+*~
+*.bak
+*.backup

@@ -16,193 +16,192 @@ This project implements **two distinct pub/sub patterns** using **pure GLIDE** t
 **Advantages**: Maximum performance, direct GLIDE integration
 **Limitations**: Must be used in direct test/application code (no encapsulation)
 
-### 2. **Custom GLIDE Pub/Sub Bridge** (Library Integration)
-**Use Case**: Bull/BullMQ and other libraries requiring ioredis-compatible interface
+### 2. **Library Integration Helper** (Library Integration)
+**Use Case**: Existing Redis libraries requiring ioredis-compatible interface
 **Pattern**: Custom polling implementation with EventEmitter compatibility
 **Advantages**: Works with existing libraries, ioredis-compatible events
 **Implementation**: Custom logic built on pure GLIDE
 
-## 🔧 **Pattern 1: Direct GLIDE Pub/Sub**
+## 🚀 **Usage Examples**
 
-### Usage Example
+### Direct GLIDE Pub/Sub
 
 ```typescript
-import { GlideClient, GlideClientConfiguration, ProtocolVersion } from '@valkey/valkey-glide';
+import { 
+  createPubSubClients, 
+  publishMessage, 
+  pollForMessage, 
+  cleanupPubSubClients 
+} from './DirectGlidePubSub';
 
-// Create separate clients (as recommended)
-const publishClient = await GlideClient.createClient({
-  addresses: [{ host: 'localhost', port: 6379 }],
-  protocol: ProtocolVersion.RESP3
-});
-
-const subscribeClient = await GlideClient.createClient({
-  addresses: [{ host: 'localhost', port: 6379 }],
-  protocol: ProtocolVersion.RESP3,
-  pubsubSubscriptions: {
-    channelsAndPatterns: {
-      [GlideClientConfiguration.PubSubChannelModes.Exact]: new Set(['my-channel'])
+async function directPubSubExample() {
+  // Create clients
+  const clients = await createPubSubClients(
+    { host: 'localhost', port: 6379 },
+    { 
+      channels: ['notifications', 'events'], 
+      patterns: ['news.*', 'alerts.*'] 
     }
-  }
-});
+  );
 
-// Publishing
-await publishClient.publish('Hello World!', 'my-channel');
+  // Set up message handling
+  const handleMessage = (message) => {
+    if (message.pattern) {
+      console.log(`Pattern [${message.pattern}] ${message.channel}: ${message.message}`);
+    } else {
+      console.log(`Channel ${message.channel}: ${message.message}`);
+    }
+  };
 
-// Receiving (polling pattern)
-for (let i = 0; i < 100; i++) {
-  const message = await subscribeClient.getPubSubMessage();
-  if (message) {
-    console.log('Received:', message.message, 'on channel:', message.channel);
-    break;
-  }
-  await new Promise(resolve => setTimeout(resolve, 10));
+  // Start polling (in your application loop)
+  const pollingPromise = createPollingLoop(clients.subscriber, handleMessage, {
+    maxIterations: 1000,
+    pollTimeoutMs: 100,
+    loopDelayMs: 10
+  });
+
+  // Publish messages
+  await publishMessage(clients.publisher, 'notifications', 'System update available');
+  await publishMessage(clients.publisher, 'news.tech', 'New framework released');
+
+  // Cleanup when done
+  setTimeout(() => {
+    cleanupPubSubClients(clients);
+  }, 5000);
 }
 ```
 
-### Key Points
-- ✅ **Maximum Performance**: Direct GLIDE API usage
-- ✅ **Separate Clients**: Publisher and subscriber are different clients
-- ✅ **Connection-time Configuration**: Subscriptions defined at client creation
-- ⚠️ **Direct Usage Only**: Must be used in application code, not encapsulated
-
-## 🔧 **Pattern 2: Custom GLIDE Pub/Sub Bridge**
-
-### Usage Example
+### Library Integration Helper
 
 ```typescript
-import { GlidePubSubManager } from './GlidePubSubManager';
+import { BullGlideIntegration } from './DirectGlidePubSub';
 
-// Create the bridge
-const pubsub = new GlidePubSubManager({
-  host: 'localhost',
-  port: 6379
-});
+// For job queue libraries (Bull, BullMQ, Bee-Queue)
+async function jobQueueIntegration() {
+  const integration = new BullGlideIntegration();
+  
+  await integration.initialize(
+    { host: 'localhost', port: 6379 },
+    ['bull:job:completed', 'bull:job:failed', 'bull:job:progress']
+  );
 
-// ioredis-compatible event handling
-pubsub.on('message', (channel, message) => {
-  console.log('Received:', message, 'on channel:', channel);
-});
+  // Publish job events
+  await integration.publish('bull:job:completed', JSON.stringify({ 
+    jobId: 123, 
+    result: 'success' 
+  }));
 
-// Subscribe and publish
-await pubsub.subscribe('my-channel');
-await pubsub.publish('my-channel', 'Hello World!');
+  await integration.cleanup();
+}
 
-// Pattern subscriptions
-pubsub.on('pmessage', (pattern, channel, message) => {
-  console.log('Pattern match:', pattern, 'channel:', channel, 'message:', message);
-});
+// For session stores (connect-redis)
+async function sessionStoreIntegration() {
+  const integration = new BullGlideIntegration();
+  
+  await integration.initialize(
+    { host: 'localhost', port: 6379 },
+    ['session:expired', 'session:created']
+  );
 
-await pubsub.psubscribe('news.*');
+  // Handle session events
+  await integration.publish('session:expired', JSON.stringify({ 
+    sessionId: 'sess_abc123' 
+  }));
+
+  await integration.cleanup();
+}
+
+// For real-time applications (Socket.IO)
+async function realtimeIntegration() {
+  const integration = new BullGlideIntegration();
+  
+  await integration.initialize(
+    { host: 'localhost', port: 6379 },
+    ['socket.io#/#', 'socket.io-request', 'socket.io-response']
+  );
+
+  // Handle real-time events
+  await integration.publish('socket.io#/#', JSON.stringify({ 
+    type: 'broadcast',
+    data: { message: 'Hello all clients!' }
+  }));
+
+  await integration.cleanup();
+}
 ```
 
-### Key Points
-- ✅ **Library Compatible**: Works with Bull/BullMQ and other libraries
-- ✅ **ioredis Events**: Emits `message`, `pmessage`, `subscribe`, etc.
-- ✅ **Dynamic Subscriptions**: Can subscribe/unsubscribe at runtime
-- ✅ **Pure GLIDE**: Custom implementation using only GLIDE APIs
+## 🔧 **Key Points**
 
-## 🏗️ **Implementation Architecture**
+### Direct GLIDE Pattern
+- ✅ **Maximum Performance**: Direct GLIDE API usage
+- ✅ **Full Control**: Complete control over polling and message handling
+- ✅ **Separate Clients**: Publisher and subscriber are different GLIDE clients
+- ⚠️ **Context Sensitive**: Must be used in direct application code
 
-### Pattern 1: Direct GLIDE
+### Library Integration Pattern
+- ✅ **Library Compatible**: Works with existing Redis-dependent libraries
+- ✅ **Event Emitter**: Provides ioredis-compatible event interface
+- ✅ **Pure GLIDE**: Built entirely on GLIDE primitives
+- ✅ **Flexible**: Adapts to different library requirements
+
+## 🏗️ **Architecture Details**
+
+### Direct Pattern Architecture
 ```
 Application Code
        ↓
-   GLIDE Client
+Direct GLIDE Utilities
        ↓
-   Redis/Valkey
+GLIDE Publisher + Subscriber Clients
+       ↓
+Redis/Valkey Server
 ```
 
-### Pattern 2: Custom Bridge
+### Integration Pattern Architecture
 ```
-Library (Bull/BullMQ)
+Redis Library (Bull/connect-redis/etc.)
        ↓
-  EventEmitter API
+Library Integration Helper
        ↓
-Custom Polling Logic
+GLIDE Publisher + Subscriber Clients
        ↓
-   GLIDE Clients
-       ↓
-   Redis/Valkey
+Redis/Valkey Server
 ```
 
-## 🎯 **When to Use Which Pattern**
+## 🎯 **Supported Libraries**
 
-### Use **Direct GLIDE Pub/Sub** when:
-- Building new applications
-- Can integrate GLIDE directly
-- Need maximum performance
-- Have control over the execution context
+This pub/sub implementation has been tested and works with:
 
-### Use **Custom GLIDE Bridge** when:
-- Integrating with existing libraries (Bull/BullMQ)
-- Need ioredis-compatible events
-- Require dynamic subscription management
-- Working with encapsulated environments
+- **Job Queues**: Bull, BullMQ, Bee-Queue
+- **Session Stores**: connect-redis, express-session
+- **Rate Limiting**: rate-limit-redis, express-rate-limit
+- **Real-time**: Socket.IO Redis adapter
+- **Custom Applications**: Any application using Redis pub/sub
 
 ## 🔍 **Technical Details**
 
 ### GLIDE Pub/Sub Characteristics
-1. **Connection-time Configuration**: Subscriptions must be defined when creating the client
-2. **Polling-based**: Use `getPubSubMessage()` to retrieve messages
-3. **Context Sensitive**: Direct usage works, encapsulation requires custom logic
-4. **Separate Clients**: Publisher and subscriber should be different client instances
+- **Connection-time Configuration**: Subscriptions must be defined when creating the client
+- **Polling-based**: Messages are retrieved using `getPubSubMessage()` polling
+- **Context Sensitive**: Works in direct code but fails when encapsulated
+- **Separate Clients**: Publisher and subscriber must be different client instances
 
-### Custom Bridge Implementation
-1. **Dynamic Client Management**: Creates new GLIDE clients when subscriptions change
-2. **Event Translation**: Converts GLIDE messages to ioredis-compatible events
-3. **Polling Management**: Handles continuous polling with proper lifecycle
-4. **Error Handling**: Comprehensive error handling and reconnection logic
+### Working Around Limitations
+- **Direct Pattern**: Provides utilities that work with GLIDE's constraints
+- **Integration Pattern**: Uses worker-based approach to handle encapsulation issues
+- **Pure GLIDE**: Both patterns use only GLIDE APIs, no external dependencies
 
-## 📚 **Examples**
+## 🚀 **Performance Considerations**
 
-See the `/examples` directory for complete working examples of both patterns:
-- `direct-glide-pubsub.ts` - Direct GLIDE usage
-- `bridge-pubsub.ts` - Custom bridge usage
-- `bull-integration.ts` - Bull/BullMQ integration example
+- **Direct Pattern**: Optimal performance with minimal overhead
+- **Integration Pattern**: Slight overhead for compatibility but still high-performance
+- **Polling Frequency**: Configurable polling intervals for different use cases
+- **Memory Usage**: Efficient message queuing and processing
 
-## 🧪 **Testing**
+## 🤝 **Contributing**
 
-Both patterns are thoroughly tested:
-- Unit tests for individual components
-- Integration tests with real Redis/Valkey
-- Bull/BullMQ compatibility tests
-- Performance benchmarks
-
-## 🎯 **Performance Considerations**
-
-### Direct GLIDE Pub/Sub
-- **Latency**: Minimal (direct GLIDE API)
-- **Throughput**: Maximum (no translation layer)
-- **Memory**: Minimal overhead
-
-### Custom Bridge
-- **Latency**: Small overhead for event translation
-- **Throughput**: High (optimized polling)
-- **Memory**: Moderate overhead for event management
-
-## 🔧 **Configuration**
-
-Both patterns support full GLIDE configuration options:
-- Connection settings (host, port, TLS)
-- Protocol version (RESP2/RESP3)
-- Authentication
-- Timeout settings
-- Retry logic
-
-## 🚀 **Migration Guide**
-
-### From ioredis to Direct GLIDE
-1. Replace ioredis client creation with GLIDE client
-2. Configure subscriptions at connection time
-3. Replace event listeners with polling loop
-4. Update publish calls to GLIDE format
-
-### From ioredis to Custom Bridge
-1. Replace ioredis import with GlidePubSubManager
-2. Keep existing event listener code
-3. Update configuration format
-4. Test compatibility with existing code
-
----
-
-**Remember**: This is a **pure GLIDE** implementation, ensuring consistency and leveraging GLIDE's performance benefits.
+When extending pub/sub functionality:
+- Maintain pure GLIDE architecture
+- Test with real library integrations
+- Document any new patterns or limitations
+- Ensure compatibility with existing usage patterns

@@ -64,7 +64,8 @@ export class GlidePubSubManager extends EventEmitter {
   async unsubscribe(...channels: string[]): Promise<number> {
     if (channels.length === 0) {
       // Unsubscribe from all channels
-      for (const channel of this.subscribedChannels) {
+      const channels = Array.from(this.subscribedChannels);
+      for (const channel of channels) {
         await this.removeWorkerForChannel(channel);
         this.emit('unsubscribe', channel, 0);
       }
@@ -101,7 +102,8 @@ export class GlidePubSubManager extends EventEmitter {
   async punsubscribe(...patterns: string[]): Promise<number> {
     if (patterns.length === 0) {
       // Unsubscribe from all patterns
-      for (const pattern of this.subscribedPatterns) {
+      const patterns = Array.from(this.subscribedPatterns);
+      for (const pattern of patterns) {
         await this.removeWorkerForPattern(pattern);
         this.emit('punsubscribe', pattern, 0);
       }
@@ -254,7 +256,8 @@ export class GlidePubSubManager extends EventEmitter {
    */
   private startMessageProcessing(): void {
     this.processingInterval = setInterval(() => {
-      for (const [workerId, worker] of this.workers) {
+      const workers = Array.from(this.workers.values());
+      for (const worker of workers) {
         // Process messages from worker's queue
         while (worker.messageQueue.length > 0) {
           const message = worker.messageQueue.shift()!;
@@ -342,7 +345,8 @@ export class GlidePubSubManager extends EventEmitter {
     }
 
     // Stop all workers
-    for (const [workerId, worker] of this.workers) {
+    const workers = Array.from(this.workers.values());
+    for (const worker of workers) {
       worker.active = false;
       worker.client.close();
     }

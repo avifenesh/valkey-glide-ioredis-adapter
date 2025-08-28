@@ -1,301 +1,192 @@
-# ioredis Adapter for Valkey GLIDE
+# ioredis-adapter
 
-An experimental compatibility adapter that provides an ioredis-compatible API layer built on top of valkey-glide. This project is currently in active development.
+An ioredis-compatible API layer built on **Valkey GLIDE** for high-performance Redis operations.
 
-🚀 **Status**: Ready for 0.1 release with 99.7% test coverage and full BullMQ compatibility.
+## 🎯 **Pure GLIDE Architecture**
 
-## Overview
+This project uses **exclusively Valkey GLIDE** - a high-performance, language-independent Redis client library with a Rust core and Node.js wrapper.
 
-This adapter aims to provide ioredis-compatible APIs built on valkey-glide, potentially allowing existing applications to migrate to valkey-glide with minimal code changes.
+## 🚀 **Key Features**
 
-## Features
+- **100% GLIDE-based**: No other Redis clients used
+- **ioredis-compatible API**: Drop-in replacement for most ioredis usage
+- **High Performance**: Leverages GLIDE's Rust core for optimal performance
+- **TypeScript Support**: Full type safety with GLIDE's native TypeScript interfaces
+- **Library Compatibility**: Works with popular Redis-dependent libraries
 
-- 🔄 **ioredis-Compatible API**: Provides familiar ioredis-style interfaces
-- ⚡ **Built on valkey-glide**: Leverages valkey-glide's Rust-powered performance
-- 📋 **Pipeline Support**: Pipeline operations using valkey-glide's Batch functionality
-- 🔗 **Connection Management**: ioredis-style connection handling
-- 🏷️ **TypeScript Support**: Full TypeScript support with ioredis-compatible types
+## 📋 **Pub/Sub Implementation**
 
-### ✅ **Library Compatibility Status**
+Due to GLIDE's pub/sub architecture, we provide **two distinct pub/sub patterns**:
 
-| Category                  | Libraries                      | Status             | Notes                                       |
-| ------------------------- | ------------------------------ | ------------------ | ------------------------------------------- |
-| **Basic Operations**      | String, Hash, List commands    | ✅ **Working**     | 391/392 tests passing (99.7%)              |
-| **Connection & Pipeline** | Basic pipeline operations      | ✅ **Working**     | Pipeline and transaction support functional |
-| **Job Queues**            | BullMQ, Bull v3, Bee-queue    | ✅ **Working**     | Full BullMQ compatibility, Bull v3 support |
-| **Session Stores**        | connect-redis, express-session | ✅ **Working**     | Session storage functional                  |
-| **Rate Limiting**         | express-rate-limit             | ✅ **Working**     | Rate limiting functional                    |
-| **Real-time Apps**        | Socket.IO Redis adapter        | ✅ **Working**     | Real-time communication functional          |
-| **Pub/Sub**               | Basic pub/sub operations       | ✅ **Working**     | Publish/subscribe functional                |
+### 1. **Direct GLIDE Pub/Sub** (Recommended for new applications)
+```typescript
+import { createPubSubClients, publishMessage, pollForMessage } from './src/pubsub/DirectGlidePubSub';
 
-## Installation
+// Create separate publisher and subscriber clients
+const clients = await createPubSubClients(
+  { host: 'localhost', port: 6379 },
+  { channels: ['my-channel'], patterns: ['news.*'] }
+);
 
-⚠️ **Not Published**: This package is not yet published to npm. For development:
+// Publish messages
+await publishMessage(clients.publisher, 'my-channel', 'Hello World!');
+
+// Poll for messages (use in your application loop)
+const message = await pollForMessage(clients.subscriber);
+if (message) {
+  console.log('Received:', message.message, 'on channel:', message.channel);
+}
+```
+
+### 2. **Library Integration Helper** (For existing Redis libraries)
+```typescript
+import { BullGlideIntegration } from './src/pubsub/DirectGlidePubSub';
+
+const integration = new BullGlideIntegration();
+await integration.initialize(
+  { host: 'localhost', port: 6379 },
+  ['app:notifications', 'app:events']
+);
+
+// Use with any Redis library requiring pub/sub
+await integration.publish('app:notifications', JSON.stringify({ type: 'update' }));
+```
+
+## 🔧 **Installation**
 
 ```bash
-git clone https://github.com/valkey-io/valkey-glide.git
-cd valkey-glide/ioredis-adapter
-npm install
-npm run build
+npm install @valkey/valkey-glide-ioredis-adapter
 ```
 
-## Quick Start
-
-### Basic Usage
-
-```javascript
-// Import the adapter
-const { RedisAdapter } = require('./dist/index.js'); // local build
-const redis = new RedisAdapter();
-
-// Basic Redis operations
-await redis.connect();
-await redis.set('key', 'value');
-const value = await redis.get('key');
-console.log(value); // 'value'
-```
-
-### TypeScript Usage
+## 📖 **Basic Usage**
 
 ```typescript
-import { RedisAdapter } from './dist/index.js'; // local build
+import { RedisAdapter } from '@valkey/valkey-glide-ioredis-adapter';
 
+// Create adapter instance
 const redis = new RedisAdapter({
-  port: 6379,
   host: 'localhost',
-  password: 'your-password',
+  port: 6379
 });
 
-await redis.connect();
-await redis.set('typescript-key', 'works-great');
+// Use ioredis-compatible API
+await redis.set('key', 'value');
+const value = await redis.get('key');
+
+// ZSET operations with proper result translation
+const members = await redis.zrange('myset', 0, -1, 'WITHSCORES');
+
+// Stream operations using native GLIDE methods
+await redis.xadd('mystream', '*', 'field', 'value');
+const messages = await redis.xread('STREAMS', 'mystream', '0');
 ```
 
-### Connection Options
+## 🎯 **Performance Benefits**
 
-```javascript
-// ioredis-style connection patterns
-const redis = new RedisAdapter(); // localhost:6379
-const redis = new RedisAdapter(6380, 'redis-server'); // specific host:port
-const redis = new RedisAdapter('redis://user:pass@host:port/db'); // URL
-const redis = new RedisAdapter({
-  port: 6379,
-  host: 'localhost',
-  password: 'secret',
-  db: 0,
-});
-```
+- **Native GLIDE Methods**: Uses GLIDE's optimized implementations instead of generic Redis commands
+- **Result Translation**: Efficient conversion between GLIDE's structured responses and ioredis formats
+- **Type Safety**: Leverages GLIDE's TypeScript interfaces for better development experience
+- **Rust Core**: Benefits from GLIDE's high-performance Rust implementation
 
-### Pipeline Operations
+## 📚 **Documentation**
 
-```javascript
-// ioredis-style pipeline
-const pipeline = redis.pipeline();
-pipeline.set('key1', 'value1');
-pipeline.set('key2', 'value2');
-pipeline.get('key1');
-pipeline.get('key2');
+- **[Pub/Sub Guide](./src/pubsub/README.md)**: Comprehensive guide to both pub/sub patterns
+- **[Development Rules](./coursorules/README.md)**: Pure GLIDE development principles
+- **[API Migration](./coursorules/GLIDE_API_MAPPING.md)**: Detailed mapping from ioredis to GLIDE
 
-const results = await pipeline.exec();
-console.log(results); // [[null, 'OK'], [null, 'OK'], [null, 'value1'], [null, 'value2']]
-```
-
-### Pub/Sub
-
-```javascript
-// Publisher
-await redis.publish('news', 'Breaking news!');
-
-// Subscriber
-redis.subscribe('news');
-redis.on('message', (channel, message) => {
-  console.log(`Received ${message} from ${channel}`);
-});
-```
-
-## Supported Commands
-
-### Implemented Commands
-
-- **String Operations**: `GET`, `SET`, `MGET`, `MSET`, `INCR`, `DECR`, `APPEND`, etc.
-- **Hash Operations**: `HGET`, `HSET`, `HMGET`, `HMSET`, `HGETALL`, `HDEL`, etc.
-- **List Operations**: `LPUSH`, `RPUSH`, `LPOP`, `RPOP`, `LRANGE`, `LLEN`, etc.
-- **Key Management**: `DEL`, `EXISTS`, `EXPIRE`, `TTL`, `TYPE`, etc.
-- **Set Operations**: `SADD`, `SREM`, `SMEMBERS`, `SCARD`, etc.
-- **Sorted Set Operations**: `ZADD`, `ZRANGE`, `ZSCORE`, `ZCARD`, etc.
-- **Pub/Sub Operations**: `PUBLISH`, `SUBSCRIBE`, `PSUBSCRIBE`, etc.
-
-### Advanced Features
-
-- **Pipeline Operations**: Batched command execution
-- **Transaction Support**: Basic `MULTI`/`EXEC` operations
-- **Connection Events**: Event emitter compatibility
-- **Script Support**: Lua script execution
-
-## Development Guide
-
-### 1. Build the Project
-
-```bash
-git clone https://github.com/valkey-io/valkey-glide.git
-cd valkey-glide/ioredis-adapter
-npm install
-npm run build
-```
-
-### 2. Try the Adapter
-
-```javascript
-// Import from built files
-const { RedisAdapter } = require('./dist/index.js');
-const redis = new RedisAdapter();
-```
-
-### 3. Test Your Use Case
-
-The adapter aims for ioredis compatibility, but test thoroughly as some features may have issues.
-
-### 4. Report Issues
-
-If you encounter problems, please report them in the GitHub issues.
-
-## Usage Examples
-
-### Basic Redis Operations
-
-```javascript
-const { RedisAdapter } = require('./dist/index.js');
-
-const redis = new RedisAdapter({ host: 'localhost', port: 6379 });
-await redis.connect();
-
-// String operations
-await redis.set('user:1', 'John');
-const user = await redis.get('user:1');
-
-// Hash operations
-await redis.hset('user:1:profile', { name: 'John', age: 30 });
-const profile = await redis.hgetall('user:1:profile');
-
-// List operations
-await redis.lpush('tasks', 'task1', 'task2');
-const tasks = await redis.lrange('tasks', 0, -1);
-```
-
-### With Express Session (Experimental)
-
-```javascript
-const express = require('express');
-const session = require('express-session');
-const RedisStore = require('connect-redis');
-const { RedisAdapter } = require('./dist/index.js');
-
-const app = express();
-const redisClient = new RedisAdapter();
-
-app.use(
-  session({
-    store: new RedisStore({ client: redisClient }),
-    secret: 'your-secret',
-    resave: false,
-    saveUninitialized: false,
-  })
-);
-```
-
-## Testing
-
-The project includes unit and integration tests to validate functionality:
-
-### Current Test Status
-
-- **Unit Tests**: 8 passed, 6 failed (8/14 test suites passing)
-- **Individual Tests**: ~254 passed, ~18 failed (93% pass rate for unit tests)
-- **Integration Tests**: Mixed results - most libraries working except BullMQ
-- **Known Issues**: BullMQ Lua script compatibility requires further development
-
-### Running Tests
+## 🧪 **Testing**
 
 ```bash
 # Run all tests
 npm test
 
-# Run with coverage
-npm run test:coverage
-
-# Run specific test files
-npm test tests/unit/string-commands.test.ts
-npm test tests/integration/session-store/
+# Run specific test suites
+npm test -- tests/unit/direct-glide-pubsub.test.ts
+npm test -- tests/integration/
 ```
 
-## Development Status
+## 🔄 **Migration from ioredis**
 
-| Component             | Status     | Notes                            |
-| --------------------- | ---------- | -------------------------------- |
-| String Commands       | ✅ Working | Basic operations implemented     |
-| Hash Commands         | ✅ Working | Most hash operations working     |
-| List Commands         | ✅ Working | Core list operations implemented |
-| Key Management        | ✅ Working | Basic key operations             |
-| Pipeline Operations   | ✅ Working | Using valkey-glide Batch         |
-| Connection Management | ✅ Working | Basic connection handling        |
-| Pub/Sub               | ✅ Working | Basic pub/sub functionality      |
-| Transaction Support   | 🔄 Partial | Basic multi/exec support         |
-| BullMQ Integration    | ⚠️ Issues  | Some serialization problems      |
-| Script Support        | ✅ Working | Lua script execution             |
+### For Regular Operations
+```typescript
+// Before (ioredis)
+import Redis from 'ioredis';
+const redis = new Redis();
 
-## Performance
-
-The adapter is built on valkey-glide which uses a Rust core for performance. However:
-
-- **Performance benchmarks**: Not yet measured
-- **Overhead analysis**: Not yet quantified
-- **Optimization status**: Basic implementation, not yet optimized
-
-_Performance testing and optimization are planned for future releases._
-
-## Contributing
-
-This project is in active development. Contributions are welcome!
-
-### Development Setup
-
-```bash
-git clone https://github.com/valkey-io/valkey-glide.git
-cd valkey-glide/ioredis-adapter
-npm install
-npm run build
-npm test
+// After (GLIDE adapter)
+import { RedisAdapter } from '@valkey/valkey-glide-ioredis-adapter';
+const redis = new RedisAdapter();
 ```
 
-### Running Tests
+### For Pub/Sub Operations
+```typescript
+// Before (ioredis)
+const subscriber = new Redis();
+subscriber.on('message', (channel, message) => {
+  console.log(channel, message);
+});
+await subscriber.subscribe('my-channel');
 
-```bash
-npm test                # Run all tests
-npm run test:watch      # Run tests in watch mode
-npm run test:coverage   # Run tests with coverage
-npm run test:ci         # Run tests without watch mode
+// After (Direct GLIDE)
+import { createPubSubClients, pollForMessage } from './src/pubsub/DirectGlidePubSub';
+
+const clients = await createPubSubClients(
+  { host: 'localhost', port: 6379 },
+  { channels: ['my-channel'] }
+);
+
+// Implement polling in your application
+while (true) {
+  const message = await pollForMessage(clients.subscriber);
+  if (message) {
+    console.log(message.channel, message.message);
+  }
+}
 ```
 
-## Requirements
+## 🏗️ **Architecture**
 
-- **Node.js**: 18.0.0 or higher
-- **Redis/Valkey Server**: 6.2+ (for testing and development)
-- **TypeScript**: 5.0+ (for development)
-- **Valkey GLIDE**: 2.0.1 (dependency)
+### Translation Layer Approach
+```
+Application Code
+       ↓
+ioredis-compatible API
+       ↓
+Parameter Translation
+       ↓
+Native GLIDE Methods
+       ↓
+Result Translation
+       ↓
+ioredis-compatible Results
+```
 
-## License
+### Pub/Sub Architecture
+```
+Direct Pattern:
+Application → GLIDE Client → Redis/Valkey
 
-Apache-2.0 - see [LICENSE](LICENSE) for details.
+Integration Pattern:
+Library → Helper Class → GLIDE Clients → Redis/Valkey
+```
 
-## Support
+## 🤝 **Contributing**
 
-⚠️ **Experimental Project**: This is an experimental project under active development. Use at your own risk.
+This project follows **pure GLIDE** principles:
+- Use only GLIDE APIs
+- Implement custom logic when needed
+- Maintain ioredis compatibility through translation
+- Comprehensive testing required
 
-- **Issues**: [GitHub Issues](https://github.com/valkey-io/valkey-glide/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/valkey-io/valkey-glide/discussions)
-- **Documentation**: [Valkey GLIDE Documentation](https://valkey.io/valkey-glide/)
+## 📄 **License**
 
-## Related Projects
+MIT License - see [LICENSE](./LICENSE) file for details.
 
-- [valkey-glide](https://github.com/valkey-io/valkey-glide) - The underlying high-performance client
-- [ioredis](https://github.com/redis/ioredis) - The original Redis client for Node.js
-- [Valkey](https://valkey.io/) - Open source in-memory data store
+## 🔗 **Related Projects**
+
+- [Valkey GLIDE](https://github.com/valkey-io/valkey-glide) - The underlying high-performance client
+- [ioredis](https://github.com/luin/ioredis) - The API we're compatible with
+- [Bull](https://github.com/OptimalBits/bull) / [BullMQ](https://github.com/taskforcesh/bullmq) - Job queue libraries
+- [connect-redis](https://github.com/tj/connect-redis) - Express session store
+- [rate-limit-redis](https://github.com/wyattjoh/rate-limit-redis) - Rate limiting store
+- [socket.io-redis-adapter](https://github.com/socketio/socket.io-redis-adapter) - Socket.IO scaling adapter

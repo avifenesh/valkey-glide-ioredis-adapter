@@ -26,7 +26,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   private watchedKeys: Set<string> = new Set();
   private subscribedChannels: Set<string> = new Set();
   private subscribedPatterns: Set<string> = new Set();
-  private isInSubscriberMode: boolean = false;
+
   private messageHandler: PubSubMessageHandler | null = null;
 
   constructor();
@@ -132,7 +132,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       this.watchedKeys.clear();
       this.subscribedChannels.clear();
       this.subscribedPatterns.clear();
-      this.isInSubscriberMode = false;
+
       
       this._status = 'end';
       this.emit('end');
@@ -543,48 +543,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return this.redisClient;
   }
 
-  /**
-   * Create and configure subscriber client for pub/sub operations
-   * GLIDE handles reconnection automatically for pub/sub clients
-   */
-  private async createSubscriberConnection(): Promise<GlideClient> {
-    if (this.subscriberClient) {
-      return this.subscriberClient;
-    }
 
-    const config = {
-      addresses: [{ host: this._options.host || 'localhost', port: this._options.port || 6379 }],
-      ...(this._options.password && { 
-        credentials: { password: this._options.password }
-      }),
-      clientName: 'ioredis-adapter-pubsub'
-    };
-    
-    // Create subscriber client - GLIDE will handle reconnection automatically
-    this.subscriberClient = await GlideClient.createClient(config);
-    
-    return this.subscriberClient;
-  }
-
-  /**
-   * Ensure message handler is initialized for proper message reception
-   */
-  private ensureMessageHandler(): PubSubMessageHandler {
-    if (!this.messageHandler) {
-      const config = {
-        addresses: [{ host: this._options.host || 'localhost', port: this._options.port || 6379 }],
-        ...(this._options.password && { 
-          credentials: { 
-            password: this._options.password 
-          } 
-        }),
-      };
-      
-      this.messageHandler = new PubSubMessageHandler(config, this);
-    }
-    
-    return this.messageHandler;
-  }
 
 
 
@@ -1571,179 +1530,22 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return await client.publish(normalizedChannel, normalizedMessage);
   }
 
-  async subscribe(...channels: string[]): Promise<number> {
-    // Get message handler for proper message reception
-    const messageHandler = this.ensureMessageHandler();
-    
-    // Create subscriber client if not exists (for compatibility)
-    if (!this.subscriberClient) {
-      await this.createSubscriberConnection();
-    }
-    
-    for (const channel of channels) {
-      if (!this.subscribedChannels.has(channel)) {
-        try {
-          // Create message client for this channel (this enables message reception)
-          await messageHandler.createMessageClient(channel);
-          
-          // Also use customCommand for backward compatibility (will be removed in Phase 2)
-          try {
-            await this.subscriberClient!.customCommand(['SUBSCRIBE', channel]);
-          } catch (subscribeError) {
-            // Handle subscription errors
-            await this.subscriberClient!.customCommand(['SUBSCRIBE', channel]);
-          }
-          
-          this.subscribedChannels.add(channel);
-          
-          // Emit subscribe event
-          this.emit('subscribe', channel, this.subscribedChannels.size);
-        } catch (error) {
-          // Log error but continue with other channels
-          console.warn(`Failed to subscribe to channel ${channel}:`, error);
-        }
-      }
-    }
-    
-    this.isInSubscriberMode = true;
-    return this.subscribedChannels.size;
+  async subscribe(..._channels: string[]): Promise<number> {
+    // For full pub/sub functionality, use DirectGlidePubSub utilities
+    // This is a simplified implementation for basic compatibility
+    throw new Error('Use DirectGlidePubSub utilities for pub/sub functionality. See /src/pubsub/DirectGlidePubSub.ts');
   }
 
-  async unsubscribe(...channels: string[]): Promise<number> {
-    if (!this.subscriberClient || !this.isInSubscriberMode) {
-      return 0;
-    }
-    
-    const messageHandler = this.messageHandler;
-    
-    // If no channels specified, unsubscribe from all
-    if (channels.length === 0) {
-      const allChannels = Array.from(this.subscribedChannels);
-      for (const channel of allChannels) {
-        try {
-          // Clean up message client
-          if (messageHandler) {
-            await messageHandler.removeMessageClient(channel);
-          }
-          
-          await this.subscriberClient.customCommand(['UNSUBSCRIBE', channel]);
-          this.subscribedChannels.delete(channel);
-          this.emit('unsubscribe', channel, this.subscribedChannels.size);
-        } catch (error) {
-          console.warn(`Failed to unsubscribe from channel ${channel}:`, error);
-        }
-      }
-    } else {
-      // Unsubscribe from specific channels
-      for (const channel of channels) {
-        if (this.subscribedChannels.has(channel)) {
-          try {
-            // Clean up message client
-            if (messageHandler) {
-              await messageHandler.removeMessageClient(channel);
-            }
-            
-            await this.subscriberClient.customCommand(['UNSUBSCRIBE', channel]);
-            this.subscribedChannels.delete(channel);
-            this.emit('unsubscribe', channel, this.subscribedChannels.size);
-          } catch (error) {
-            console.warn(`Failed to unsubscribe from channel ${channel}:`, error);
-          }
-        }
-      }
-    }
-    
-    // Exit subscriber mode if no more subscriptions
-    if (this.subscribedChannels.size === 0 && this.subscribedPatterns.size === 0) {
-      this.isInSubscriberMode = false;
-    }
-    
-    return this.subscribedChannels.size;
+  async unsubscribe(..._channels: string[]): Promise<number> {
+    throw new Error('Use DirectGlidePubSub utilities for pub/sub functionality. See /src/pubsub/DirectGlidePubSub.ts');
   }
 
-  async psubscribe(...patterns: string[]): Promise<number> {
-    // Get message handler for proper message reception
-    const messageHandler = this.ensureMessageHandler();
-    
-    // Create subscriber client if not exists (for compatibility)
-    if (!this.subscriberClient) {
-      await this.createSubscriberConnection();
-    }
-    
-    for (const pattern of patterns) {
-      if (!this.subscribedPatterns.has(pattern)) {
-        try {
-          // Create pattern client for this pattern (this enables message reception)
-          await messageHandler.createPatternClient(pattern);
-          
-          // Also use customCommand for backward compatibility (will be removed in Phase 2)
-          await this.subscriberClient!.customCommand(['PSUBSCRIBE', pattern]);
-          
-          this.subscribedPatterns.add(pattern);
-          
-          // Emit psubscribe event
-          this.emit('psubscribe', pattern, this.subscribedPatterns.size);
-        } catch (error) {
-          // Log error but continue with other patterns
-          console.warn(`Failed to subscribe to pattern ${pattern}:`, error);
-        }
-      }
-    }
-    
-    this.isInSubscriberMode = true;
-    return this.subscribedPatterns.size;
+  async psubscribe(..._patterns: string[]): Promise<number> {
+    throw new Error('Use DirectGlidePubSub utilities for pub/sub functionality. See /src/pubsub/DirectGlidePubSub.ts');
   }
 
-  async punsubscribe(...patterns: string[]): Promise<number> {
-    if (!this.subscriberClient || !this.isInSubscriberMode) {
-      return 0;
-    }
-    
-    const messageHandler = this.messageHandler;
-    
-    // If no patterns specified, unsubscribe from all
-    if (patterns.length === 0) {
-      const allPatterns = Array.from(this.subscribedPatterns);
-      for (const pattern of allPatterns) {
-        try {
-          // Clean up pattern client
-          if (messageHandler) {
-            await messageHandler.removePatternClient(pattern);
-          }
-          
-          await this.subscriberClient.customCommand(['PUNSUBSCRIBE', pattern]);
-          this.subscribedPatterns.delete(pattern);
-          this.emit('punsubscribe', pattern, this.subscribedPatterns.size);
-        } catch (error) {
-          console.warn(`Failed to unsubscribe from pattern ${pattern}:`, error);
-        }
-      }
-    } else {
-      // Unsubscribe from specific patterns
-      for (const pattern of patterns) {
-        if (this.subscribedPatterns.has(pattern)) {
-          try {
-            // Clean up pattern client
-            if (messageHandler) {
-              await messageHandler.removePatternClient(pattern);
-            }
-            
-            await this.subscriberClient.customCommand(['PUNSUBSCRIBE', pattern]);
-            this.subscribedPatterns.delete(pattern);
-            this.emit('punsubscribe', pattern, this.subscribedPatterns.size);
-          } catch (error) {
-            console.warn(`Failed to unsubscribe from pattern ${pattern}:`, error);
-          }
-        }
-      }
-    }
-    
-    // Exit subscriber mode if no more subscriptions
-    if (this.subscribedChannels.size === 0 && this.subscribedPatterns.size === 0) {
-      this.isInSubscriberMode = false;
-    }
-    
-    return this.subscribedPatterns.size;
+  async punsubscribe(..._patterns: string[]): Promise<number> {
+    throw new Error('Use DirectGlidePubSub utilities for pub/sub functionality. See /src/pubsub/DirectGlidePubSub.ts');
   }
 
   async watch(...keys: RedisKey[]): Promise<string> {
