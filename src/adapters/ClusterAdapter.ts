@@ -411,6 +411,17 @@ export class ClusterAdapter extends BaseClusterAdapter {
     return this.transactionCommands.evalsha(sha, numKeys, ...keysAndArgs);
   }
 
+  async exec(): Promise<Array<[Error | null, any]> | null> {
+    const client = await this.ensureConnected();
+    // Reuse MultiAdapter batching if present on this instance
+    if (typeof (this as any).commands !== 'undefined') {
+      // If this instance is actually acting as a Multi, delegate to its exec
+      return (this as any).exec();
+    }
+    // For ClusterAdapter top-level exec just return null (ioredis exec is for MULTI context)
+    return null;
+  }
+
   // Additional compatibility methods
   async call(command: string, ...args: (string | number | Buffer)[]): Promise<any> {
     const client = await this.ensureConnected();
