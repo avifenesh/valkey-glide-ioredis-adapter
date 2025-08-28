@@ -10,7 +10,7 @@ Based on research of GLIDE's actual API in `/node_modules/@valkey/valkey-glide/b
 | `['XADD', key, id, ...fields]` | `client.xadd(key, values, options)` | ✅ **MIGRATED** | HIGH |
 | `['XREAD', ...args]` | `client.xread(keys_and_ids, options)` | ✅ **MIGRATED** | HIGH |
 | `['XACK', key, group, ...ids]` | `client.xack(key, group, ids)` | ✅ **MIGRATED** | HIGH |
-| `['XREADGROUP', ...]` | `client.xreadgroup(group, consumer, keys_and_ids, options)` | 🔄 Next | HIGH |
+| `['XREADGROUP', ...]` | `client.xreadgroup(group, consumer, keys_and_ids, options)` | ✅ **MIGRATED** | HIGH |
 | `['XGROUP', ...]` | ❌ Needs customCommand | ❌ Keep | LOW |
 | `['XPENDING', ...]` | ❌ Needs customCommand | ❌ Keep | LOW |
 | `['XCLAIM', ...]` | ❌ Needs customCommand | ❌ Keep | LOW |
@@ -134,7 +134,7 @@ Research and migrate INFO, CLIENT, KEYS commands to native methods.
 
 | Command Family | Current | After Migration | Reduction | Status |
 |----------------|---------|-----------------|-----------|---------|
-| Stream | 14 | 3 | 79% | 🔄 **75% COMPLETE** |
+| Stream | 14 | 3 | 79% | 🔄 **86% COMPLETE** |
 | Blocking | 6 | 1 | 83% | ✅ **COMPLETED** |
 | String | 4 | 0 | 100% | ✅ **COMPLETED** |
 | List | 3 | 1 | 67% | ⚠️ Partial |
@@ -144,7 +144,7 @@ Research and migrate INFO, CLIENT, KEYS commands to native methods.
 | Utility | 24 | TBD | TBD | 🔍 Research |
 | **TOTAL** | **76** | **~10** | **87%** | **🎯 Target** |
 
-### ✅ **Progress**: 19/76 customCommands migrated (25% complete)
+### ✅ **Progress**: 20/76 customCommands migrated (26% complete)
 
 ## 🎉 **MAJOR MILESTONE ACHIEVED**
 

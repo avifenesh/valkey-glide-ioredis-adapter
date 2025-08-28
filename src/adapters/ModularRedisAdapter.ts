@@ -454,6 +454,61 @@ export class ModularRedisAdapter extends BaseRedisAdapter {
     return await client.xread(keys_and_ids, options);
   }
 
+  async xreadgroup(group: string, consumer: string, ...args: any[]): Promise<any> {
+    const client = await this.ensureConnected();
+    
+    // Parse ioredis XREADGROUP arguments: [COUNT, count, BLOCK, timeout, NOACK, STREAMS, key1, key2, ..., id1, id2, ...]
+    // Convert to GLIDE format: group, consumer, keys_and_ids: Record<string, string>, options?: StreamReadGroupOptions
+    
+    let countValue: number | undefined;
+    let blockValue: number | undefined;
+    let noAck = false;
+    let streamsIndex = -1;
+    
+    // Find STREAMS keyword and parse options
+    for (let i = 0; i < args.length; i++) {
+      const arg = String(args[i]).toUpperCase();
+      if (arg === 'COUNT' && i + 1 < args.length) {
+        countValue = parseInt(String(args[i + 1]));
+        i++; // Skip the count value
+      } else if (arg === 'BLOCK' && i + 1 < args.length) {
+        blockValue = parseInt(String(args[i + 1]));
+        i++; // Skip the block value
+      } else if (arg === 'NOACK') {
+        noAck = true;
+      } else if (arg === 'STREAMS') {
+        streamsIndex = i + 1;
+        break;
+      }
+    }
+    
+    if (streamsIndex === -1) {
+      throw new Error('XREADGROUP requires STREAMS keyword');
+    }
+    
+    // Split streams arguments into keys and IDs
+    const streamArgs = args.slice(streamsIndex);
+    const numStreams = Math.floor(streamArgs.length / 2);
+    const keys = streamArgs.slice(0, numStreams);
+    const ids = streamArgs.slice(numStreams);
+    
+    // Build GLIDE keys_and_ids object
+    const keys_and_ids: Record<string, string> = {};
+    for (let i = 0; i < numStreams; i++) {
+      const normalizedKey = ParameterTranslator.normalizeKey(keys[i]);
+      keys_and_ids[normalizedKey] = String(ids[i]);
+    }
+    
+    // Build GLIDE options
+    const options: any = {};
+    if (countValue !== undefined) options.count = countValue;
+    if (blockValue !== undefined) options.block = blockValue;
+    if (noAck) options.noAck = true;
+    
+    // Use native GLIDE method
+    return await client.xreadgroup(group, consumer, keys_and_ids, options);
+  }
+
   async xack(key: RedisKey, group: string, ...ids: string[]): Promise<number> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);

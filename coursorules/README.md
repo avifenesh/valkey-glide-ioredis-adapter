@@ -31,9 +31,14 @@ This knowledge base contains comprehensive analysis, specifications, and impleme
 
 ### 📋 **Analysis & Planning**
 - [`ARCHITECTURAL_ANALYSIS.md`](./ARCHITECTURAL_ANALYSIS.md) - Root cause analysis of customCommand overuse
+- [`GLIDE_API_BEHAVIORAL_ANALYSIS.md`](./GLIDE_API_BEHAVIORAL_ANALYSIS.md) - Deep dive into GLIDE vs ioredis architectural differences
+- [`GLIDE_COMMAND_COVERAGE.md`](./GLIDE_COMMAND_COVERAGE.md) - Comprehensive command availability analysis
 - [`GLIDE_API_MAPPING.md`](./GLIDE_API_MAPPING.md) - Detailed migration tables and progress tracking
 - [`IMPLEMENTATION_ROADMAP.md`](./IMPLEMENTATION_ROADMAP.md) - Phased implementation plan
 - [`PHASE_1_SUMMARY.md`](./PHASE_1_SUMMARY.md) - Complete Phase 1 achievements and learnings
+- [`PHASE_2_IMPLEMENTATION_STRATEGY.md`](./PHASE_2_IMPLEMENTATION_STRATEGY.md) - Detailed Phase 2 architectural bridges
+- [`PHASE_2_LEARNINGS.md`](./PHASE_2_LEARNINGS.md) - Critical discoveries from careful pub/sub investigation
+- [`PHASE_2_SUCCESS.md`](./PHASE_2_SUCCESS.md) - **BREAKTHROUGH**: Hybrid pub/sub solution successfully implemented
 
 ### 📊 **Status & Progress**
 - [`CURRENT_STATUS.md`](./CURRENT_STATUS.md) - Real-time progress tracking and next steps

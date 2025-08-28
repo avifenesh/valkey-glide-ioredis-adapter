@@ -16,6 +16,7 @@ import {
   RedisValue,
 } from '../types';
 import { ParameterTranslator } from '../utils/ParameterTranslator';
+import { PubSubMessageHandler } from './PubSubMessageHandler';
 
 export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   private _status: ConnectionStatus = 'disconnected';
@@ -26,6 +27,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   private subscribedChannels: Set<string> = new Set();
   private subscribedPatterns: Set<string> = new Set();
   private isInSubscriberMode: boolean = false;
+  private messageHandler: PubSubMessageHandler | null = null;
 
   constructor();
   constructor(port: number, host?: string);
@@ -100,7 +102,17 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     try {
       this._status = 'disconnecting';
       
-      // Clean up subscriber client first
+      // Clean up message handler first
+      if (this.messageHandler) {
+        try {
+          await this.messageHandler.cleanup();
+        } catch (error) {
+          console.warn('Warning: Error cleaning up message handler:', error);
+        }
+        this.messageHandler = null;
+      }
+      
+      // Clean up subscriber client
       if (this.subscriberClient) {
         try {
           await this.subscriberClient.close();
@@ -260,7 +272,77 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     // For now, return as-is (will be improved in Phase 1.3 with ResultTranslator)
     return result;
   }
+
+  async xreadgroup(group: string, consumer: string, ...args: any[]): Promise<any> {
+    const client = await this.ensureConnected();
+    
+    // Parse ioredis XREADGROUP arguments: [COUNT, count, BLOCK, timeout, NOACK, STREAMS, key1, key2, ..., id1, id2, ...]
+    // Convert to GLIDE format: group, consumer, keys_and_ids: Record<string, string>, options?: StreamReadGroupOptions
+    
+    let countValue: number | undefined;
+    let blockValue: number | undefined;
+    let noAck = false;
+    let streamsIndex = -1;
+    
+    // Find STREAMS keyword and parse options
+    for (let i = 0; i < args.length; i++) {
+      const arg = String(args[i]).toUpperCase();
+      if (arg === 'COUNT' && i + 1 < args.length) {
+        countValue = parseInt(String(args[i + 1]));
+        i++; // Skip the count value
+      } else if (arg === 'BLOCK' && i + 1 < args.length) {
+        blockValue = parseInt(String(args[i + 1]));
+        i++; // Skip the block value
+      } else if (arg === 'NOACK') {
+        noAck = true;
+      } else if (arg === 'STREAMS') {
+        streamsIndex = i + 1;
+        break;
+      }
+    }
+    
+    if (streamsIndex === -1) {
+      throw new Error('XREADGROUP requires STREAMS keyword');
+    }
+    
+    // Split streams arguments into keys and IDs
+    const streamArgs = args.slice(streamsIndex);
+    const numStreams = Math.floor(streamArgs.length / 2);
+    const keys = streamArgs.slice(0, numStreams);
+    const ids = streamArgs.slice(numStreams);
+    
+    // Build GLIDE keys_and_ids object
+    const keys_and_ids: Record<string, string> = {};
+    for (let i = 0; i < numStreams; i++) {
+      const normalizedKey = ParameterTranslator.normalizeKey(keys[i]);
+      keys_and_ids[normalizedKey] = String(ids[i]);
+    }
+    
+    // Build GLIDE options
+    const options: any = {};
+    if (countValue !== undefined) options.count = countValue;
+    if (blockValue !== undefined) options.block = blockValue;
+    if (noAck) options.noAck = true;
+    
+    // Use native GLIDE method instead of customCommand
+    const result = await client.xreadgroup(group, consumer, keys_and_ids, options);
+    
+    // TODO: Convert GLIDE result format to ioredis format
+    // For now, return as-is (will be improved in Phase 1.3 with ResultTranslator)
+    return result;
+  }
   
+  // Database management
+  async flushdb(): Promise<string> {
+    const client = await this.ensureConnected();
+    return await client.flushdb();
+  }
+
+  async flushall(): Promise<string> {
+    const client = await this.ensureConnected();
+    return await client.flushall();
+  }
+
   // Bull compatibility: additional Lua script support
   async script(subcommand: string, ...args: any[]): Promise<any> {
     const client = await this.ensureConnected();
@@ -482,6 +564,26 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     this.subscriberClient = await GlideClient.createClient(config);
     
     return this.subscriberClient;
+  }
+
+  /**
+   * Ensure message handler is initialized for proper message reception
+   */
+  private ensureMessageHandler(): PubSubMessageHandler {
+    if (!this.messageHandler) {
+      const config = {
+        addresses: [{ host: this._options.host || 'localhost', port: this._options.port || 6379 }],
+        ...(this._options.password && { 
+          credentials: { 
+            password: this._options.password 
+          } 
+        }),
+      };
+      
+      this.messageHandler = new PubSubMessageHandler(config, this);
+    }
+    
+    return this.messageHandler;
   }
 
 
@@ -1470,7 +1572,10 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   }
 
   async subscribe(...channels: string[]): Promise<number> {
-    // Create subscriber client if not exists
+    // Get message handler for proper message reception
+    const messageHandler = this.ensureMessageHandler();
+    
+    // Create subscriber client if not exists (for compatibility)
     if (!this.subscriberClient) {
       await this.createSubscriberConnection();
     }
@@ -1478,7 +1583,10 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     for (const channel of channels) {
       if (!this.subscribedChannels.has(channel)) {
         try {
-          // Use customCommand for SUBSCRIBE since GLIDE doesn't have native subscribe method
+          // Create message client for this channel (this enables message reception)
+          await messageHandler.createMessageClient(channel);
+          
+          // Also use customCommand for backward compatibility (will be removed in Phase 2)
           try {
             await this.subscriberClient!.customCommand(['SUBSCRIBE', channel]);
           } catch (subscribeError) {
@@ -1506,11 +1614,18 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       return 0;
     }
     
+    const messageHandler = this.messageHandler;
+    
     // If no channels specified, unsubscribe from all
     if (channels.length === 0) {
       const allChannels = Array.from(this.subscribedChannels);
       for (const channel of allChannels) {
         try {
+          // Clean up message client
+          if (messageHandler) {
+            await messageHandler.removeMessageClient(channel);
+          }
+          
           await this.subscriberClient.customCommand(['UNSUBSCRIBE', channel]);
           this.subscribedChannels.delete(channel);
           this.emit('unsubscribe', channel, this.subscribedChannels.size);
@@ -1523,6 +1638,11 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       for (const channel of channels) {
         if (this.subscribedChannels.has(channel)) {
           try {
+            // Clean up message client
+            if (messageHandler) {
+              await messageHandler.removeMessageClient(channel);
+            }
+            
             await this.subscriberClient.customCommand(['UNSUBSCRIBE', channel]);
             this.subscribedChannels.delete(channel);
             this.emit('unsubscribe', channel, this.subscribedChannels.size);
@@ -1542,7 +1662,10 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   }
 
   async psubscribe(...patterns: string[]): Promise<number> {
-    // Create subscriber client if not exists
+    // Get message handler for proper message reception
+    const messageHandler = this.ensureMessageHandler();
+    
+    // Create subscriber client if not exists (for compatibility)
     if (!this.subscriberClient) {
       await this.createSubscriberConnection();
     }
@@ -1550,7 +1673,10 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     for (const pattern of patterns) {
       if (!this.subscribedPatterns.has(pattern)) {
         try {
-          // Use customCommand for psubscribe
+          // Create pattern client for this pattern (this enables message reception)
+          await messageHandler.createPatternClient(pattern);
+          
+          // Also use customCommand for backward compatibility (will be removed in Phase 2)
           await this.subscriberClient!.customCommand(['PSUBSCRIBE', pattern]);
           
           this.subscribedPatterns.add(pattern);
@@ -1573,11 +1699,18 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       return 0;
     }
     
+    const messageHandler = this.messageHandler;
+    
     // If no patterns specified, unsubscribe from all
     if (patterns.length === 0) {
       const allPatterns = Array.from(this.subscribedPatterns);
       for (const pattern of allPatterns) {
         try {
+          // Clean up pattern client
+          if (messageHandler) {
+            await messageHandler.removePatternClient(pattern);
+          }
+          
           await this.subscriberClient.customCommand(['PUNSUBSCRIBE', pattern]);
           this.subscribedPatterns.delete(pattern);
           this.emit('punsubscribe', pattern, this.subscribedPatterns.size);
@@ -1590,6 +1723,11 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       for (const pattern of patterns) {
         if (this.subscribedPatterns.has(pattern)) {
           try {
+            // Clean up pattern client
+            if (messageHandler) {
+              await messageHandler.removePatternClient(pattern);
+            }
+            
             await this.subscriberClient.customCommand(['PUNSUBSCRIBE', pattern]);
             this.subscribedPatterns.delete(pattern);
             this.emit('punsubscribe', pattern, this.subscribedPatterns.size);

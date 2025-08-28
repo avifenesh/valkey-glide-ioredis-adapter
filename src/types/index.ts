@@ -349,6 +349,9 @@ export interface IRedisAdapter extends EventEmitter {
   bzpopmax(...args: any[]): Promise<[string, string, string] | null>;
   
   // Stream commands for BullMQ
+  xadd(key: RedisKey, id: string, ...fieldsAndValues: any[]): Promise<string>;
+  xread(...args: any[]): Promise<any>;
+  xreadgroup(group: string, consumer: string, ...args: any[]): Promise<any>;
   xack(key: RedisKey, group: string, ...ids: string[]): Promise<number>;
   xgroup(subcommand: string, ...args: any[]): Promise<any>;
   xpending(key: RedisKey, group: string, ...args: any[]): Promise<any>;

@@ -23,6 +23,8 @@ describe('Enhanced Features for Queue Compatibility', () => {
   beforeEach(async () => {
     redis = new RedisAdapter(config);
     await redis.connect();
+    // Clear all databases to ensure clean state for each test
+    await redis.flushall();
   });
 
   afterEach(async () => {
