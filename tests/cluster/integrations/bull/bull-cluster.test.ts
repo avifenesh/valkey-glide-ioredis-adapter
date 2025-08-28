@@ -3,7 +3,7 @@
  * Adapted from Bull's connection tests to validate cluster compatibility
  */
 
-import { expect } from 'chai';
+// Use Jest globals
 import { ClusterAdapter } from '../../../../src/adapters/ClusterAdapter';
 import { describe, it, beforeEach, afterEach } from 'mocha';
 
@@ -12,7 +12,6 @@ class MockBullQueue {
   private clients: { [key: string]: any } = {};
   private createClientFn: any;
   
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(name: string, options: any) {
     this.createClientFn = options.createClient;
     
@@ -58,13 +57,13 @@ describe('Bull Integration with ClusterAdapter', () => {
       
       const queue = new MockBullQueue('test-queue', { createClient });
       
-      expect(queue.client).to.be.instanceOf(ClusterAdapter);
-      expect(queue.subscriber).to.be.instanceOf(ClusterAdapter);
-      expect(queue.bclient).to.be.instanceOf(ClusterAdapter);
+      expect(queue.client).toBeInstanceOf(ClusterAdapter);
+      expect(queue.subscriber).toBeInstanceOf(ClusterAdapter);
+      expect(queue.bclient).toBeInstanceOf(ClusterAdapter);
       
-      expect((queue.client as any).clientType).to.equal('client');
-      expect((queue.subscriber as any).clientType).to.equal('subscriber');
-      expect((queue.bclient as any).clientType).to.equal('bclient');
+      expect((queue.client as any).clientType).toBe('client');
+      expect((queue.subscriber as any).clientType).toBe('subscriber');
+      expect((queue.bclient as any).clientType).toBe('bclient');
     });
 
     it('should enable blocking operations for bclient', () => {
@@ -74,9 +73,9 @@ describe('Bull Integration with ClusterAdapter', () => {
       
       const queue = new MockBullQueue('test-queue', { createClient });
       
-      expect((queue.bclient as any).enableBlockingOps).to.equal(true);
-      expect((queue.client as any).enableBlockingOps).to.not.equal(true);
-      expect((queue.subscriber as any).enableBlockingOps).to.not.equal(true);
+      expect((queue.bclient as any).enableBlockingOps).toBe(true);
+      expect((queue.client as any).enableBlockingOps).not.toBe(true);
+      expect((queue.subscriber as any).enableBlockingOps).not.toBe(true);
     });
 
     it('should create separate client instances', () => {
@@ -86,9 +85,9 @@ describe('Bull Integration with ClusterAdapter', () => {
       
       const queue = new MockBullQueue('test-queue', { createClient });
       
-      expect(queue.client).to.not.equal(queue.subscriber);
-      expect(queue.client).to.not.equal(queue.bclient);
-      expect(queue.subscriber).to.not.equal(queue.bclient);
+      expect(queue.client).not.toBe(queue.subscriber);
+      expect(queue.client).not.toBe(queue.bclient);
+      expect(queue.subscriber).not.toBe(queue.bclient);
     });
   });
 
@@ -112,10 +111,10 @@ describe('Bull Integration with ClusterAdapter', () => {
       
       const queue = new MockBullQueue('test-queue', { createClient });
       
-      expect((queue.client as any).options.enableReadFromReplicas).to.equal(true);
-      expect((queue.client as any).options.scaleReads).to.equal('all');
-      expect((queue.client as any).options.maxRedirections).to.equal(32);
-      expect((queue.client as any).options.retryDelayOnFailover).to.equal(200);
+      expect((queue.client as any).options.enableReadFromReplicas).toBe(true);
+      expect((queue.client as any).options.scaleReads).toBe('all');
+      expect((queue.client as any).options.maxRedirections).toBe(32);
+      expect((queue.client as any).options.retryDelayOnFailover).toBe(200);
     });
 
     it('should support single node cluster configuration', () => {
@@ -129,8 +128,8 @@ describe('Bull Integration with ClusterAdapter', () => {
       
       const queue = new MockBullQueue('test-queue', { createClient });
       
-      expect(queue.client).to.be.instanceOf(ClusterAdapter);
-      expect((queue.client as any).options.nodes).to.have.lengthOf(1);
+      expect(queue.client).toBeInstanceOf(ClusterAdapter);
+      expect((queue.client as any).options.nodes).toHaveLength(1);
     });
   });
 
@@ -153,66 +152,66 @@ describe('Bull Integration with ClusterAdapter', () => {
       const client = queue.client;
       
       // Basic Redis commands Bull uses
-      expect(client.set).to.be.a('function');
-      expect(client.get).to.be.a('function');
-      expect(client.del).to.be.a('function');
-      expect(client.exists).to.be.a('function');
+      expect(client.set).toBeInstanceOf(Function);
+      expect(client.get).toBeInstanceOf(Function);
+      expect(client.del).toBeInstanceOf(Function);
+      expect(client.exists).toBeInstanceOf(Function);
       
       // List commands for job queues
-      expect(client.lpush).to.be.a('function');
-      expect(client.rpush).to.be.a('function');
-      expect(client.lpop).to.be.a('function');
-      expect(client.rpop).to.be.a('function');
-      expect(client.llen).to.be.a('function');
-      expect(client.lrange).to.be.a('function');
+      expect(client.lpush).toBeInstanceOf(Function);
+      expect(client.rpush).toBeInstanceOf(Function);
+      expect(client.lpop).toBeInstanceOf(Function);
+      expect(client.rpop).toBeInstanceOf(Function);
+      expect(client.llen).toBeInstanceOf(Function);
+      expect(client.lrange).toBeInstanceOf(Function);
       
       // Sorted set commands for delayed jobs
-      expect(client.zadd).to.be.a('function');
-      expect(client.zrem).to.be.a('function');
-      expect(client.zcard).to.be.a('function');
-      expect(client.zrange).to.be.a('function');
-      expect(client.zrangebyscore).to.be.a('function');
+      expect(client.zadd).toBeInstanceOf(Function);
+      expect(client.zrem).toBeInstanceOf(Function);
+      expect(client.zcard).toBeInstanceOf(Function);
+      expect(client.zrange).toBeInstanceOf(Function);
+      expect(client.zrangebyscore).toBeInstanceOf(Function);
       
       // Hash commands for job data
-      expect(client.hset).to.be.a('function');
-      expect(client.hget).to.be.a('function');
-      expect(client.hmset).to.be.a('function');
-      expect(client.hgetall).to.be.a('function');
+      expect(client.hset).toBeInstanceOf(Function);
+      expect(client.hget).toBeInstanceOf(Function);
+      expect(client.hmset).toBeInstanceOf(Function);
+      expect(client.hgetall).toBeInstanceOf(Function);
       
       // Transaction commands
-      expect(client.multi).to.be.a('function');
-      expect(client.exec).to.be.a('function');
-      expect(client.watch).to.be.a('function');
-      expect(client.unwatch).to.be.a('function');
+      expect(client.multi).toBeInstanceOf(Function);
+      expect(client.exec).toBeInstanceOf(Function);
+      expect(client.watch).toBeInstanceOf(Function);
+      expect(client.unwatch).toBeInstanceOf(Function);
       
       // Script commands for Lua scripts
-      expect(client.eval).to.be.a('function');
-      expect(client.evalsha).to.be.a('function');
-      expect(client.script).to.be.a('function');
-      expect(client.defineCommand).to.be.a('function');
+      expect(client.eval).toBeInstanceOf(Function);
+      expect(client.evalsha).toBeInstanceOf(Function);
+      expect(client.script).toBeInstanceOf(Function);
+      expect(client.defineCommand).toBeInstanceOf(Function);
     });
 
     it('should have blocking commands on bclient', () => {
       const bclient = queue.bclient;
       
       // Blocking list operations Bull uses
-      expect(bclient.blpop).to.be.a('function');
-      expect(bclient.brpop).to.be.a('function');
-      expect(bclient.brpoplpush).to.be.a('function');
+      expect(bclient.blpop).toBeInstanceOf(Function);
+      expect(bclient.brpop).toBeInstanceOf(Function);
+      expect(bclient.brpoplpush).toBeInstanceOf(Function);
       
       // Blocking sorted set operations
-      expect(bclient.bzpopmin).to.be.a('function');
-      expect(bclient.bzpopmax).to.be.a('function');
+      expect(bclient.bzpopmin).toBeInstanceOf(Function);
+      expect(bclient.bzpopmax).toBeInstanceOf(Function);
     });
 
     it('should have pub/sub commands on subscriber', () => {
       const subscriber = queue.subscriber;
       
-      expect(subscriber.subscribe).to.be.a('function');
-      expect(subscriber.unsubscribe).to.be.a('function');
-      expect(subscriber.psubscribe).to.be.a('function');
-      expect(subscriber.punsubscribe).to.be.a('function');
-      expect(subscriber.publish).to.be.a('function');
+      expect(subscriber.subscribe).toBeInstanceOf(Function);
+      expect(subscriber.unsubscribe).toBeInstanceOf(Function);
+      expect(subscriber.psubscribe).toBeInstanceOf(Function);
+      expect(subscriber.punsubscribe).toBeInstanceOf(Function);
+      expect(subscriber.publish).toBeInstanceOf(Function);
     });
   });
 
@@ -245,7 +244,7 @@ describe('Bull Integration with ClusterAdapter', () => {
         lua: addJobScript
       });
       
-      expect((client as any).addJob).to.be.a('function');
+      expect((client as any).addJob).toBeInstanceOf(Function);
     });
 
     it('should support BullMQ-style array arguments', () => {
@@ -258,7 +257,7 @@ describe('Bull Integration with ClusterAdapter', () => {
         lua: testScript
       });
       
-      expect((client as any).testArrayArgs).to.be.a('function');
+      expect((client as any).testArrayArgs).toBeInstanceOf(Function);
     });
 
     it('should handle empty Lua script results', () => {
@@ -271,7 +270,7 @@ describe('Bull Integration with ClusterAdapter', () => {
         lua: emptyScript
       });
       
-      expect((client as any).emptyResult).to.be.a('function');
+      expect((client as any).emptyResult).toBeInstanceOf(Function);
     });
   });
 
@@ -284,9 +283,9 @@ describe('Bull Integration with ClusterAdapter', () => {
       const queue = new MockBullQueue('test-queue', { createClient });
       
       // All clients should start disconnected
-      expect(queue.client.status).to.equal('disconnected');
-      expect(queue.subscriber.status).to.equal('disconnected');
-      expect(queue.bclient.status).to.equal('disconnected');
+      expect(queue.client.status).toBe('disconnected');
+      expect(queue.subscriber.status).toBe('disconnected');
+      expect(queue.bclient.status).toBe('disconnected');
       
       await queue.close();
     });
@@ -305,9 +304,9 @@ describe('Bull Integration with ClusterAdapter', () => {
       
       const queue = new MockBullQueue('test-queue', { createClient });
       
-      expect((queue.client as any).options.username).to.equal('testuser');
-      expect((queue.client as any).options.password).to.equal('testpass');
-      expect((queue.client as any).options.db).to.equal(0);
+      expect((queue.client as any).options.username).toBe('testuser');
+      expect((queue.client as any).options.password).toBe('testpass');
+      expect((queue.client as any).options.db).toBe(0);
     });
   });
 
@@ -375,8 +374,8 @@ describe('Bull Integration with ClusterAdapter', () => {
       const queue = new MockBullQueue('test-queue', { createClient });
       
       // Should handle errors gracefully
-      queue.client.on('error', (_err: any) => {
-        expect(_err).to.be.instanceOf(Error);
+      queue.client.on('error', (err) => {
+        expect(err).toBeInstanceOf(Error);
       });
       
       await queue.close();
@@ -392,8 +391,8 @@ describe('Bull Integration with ClusterAdapter', () => {
       
       const client = ClusterAdapter.createClient('client', mixedConfig);
       
-      expect(client).to.be.instanceOf(ClusterAdapter);
-      expect((client as any).options.nodes).to.have.lengthOf(2);
+      expect(client).toBeInstanceOf(ClusterAdapter);
+      expect((client as any).options.nodes).toHaveLength(2);
     });
   });
 
@@ -407,9 +406,9 @@ describe('Bull Integration with ClusterAdapter', () => {
       const queue2 = new MockBullQueue('queue-2', { createClient });
       
       // Each queue should have its own client instances
-      expect(queue1.client).to.not.equal(queue2.client);
-      expect(queue1.subscriber).to.not.equal(queue2.subscriber);
-      expect(queue1.bclient).to.not.equal(queue2.bclient);
+      expect(queue1.client).not.toBe(queue2.client);
+      expect(queue1.subscriber).not.toBe(queue2.subscriber);
+      expect(queue1.bclient).not.toBe(queue2.bclient);
     });
 
     it('should support read scaling configuration', () => {
@@ -421,8 +420,8 @@ describe('Bull Integration with ClusterAdapter', () => {
       
       const client = ClusterAdapter.createClient('client', scalingConfig);
       
-      expect((client as any).options.enableReadFromReplicas).to.equal(true);
-      expect((client as any).options.scaleReads).to.equal('all');
+      expect((client as any).options.enableReadFromReplicas).toBe(true);
+      expect((client as any).options.scaleReads).toBe('all');
     });
   });
 });
