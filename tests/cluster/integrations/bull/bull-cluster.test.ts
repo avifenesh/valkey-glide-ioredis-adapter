@@ -5,7 +5,7 @@
 
 // Use Jest globals
 import { ClusterAdapter } from '../../../../src/adapters/ClusterAdapter';
-import { describe, it, beforeEach, afterEach } from 'mocha';
+
 
 // Mock Bull Queue for testing
 class MockBullQueue {
