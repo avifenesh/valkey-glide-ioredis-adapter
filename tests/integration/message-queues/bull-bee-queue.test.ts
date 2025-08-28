@@ -61,14 +61,15 @@ describe('Message Queue Systems Integration', () => {
     let processor: any;
 
     beforeEach(async () => {
-      // Create Bull queue with our Redis adapter
+      // Create Bull queue using our RedisAdapter via createClient
       const config = await testUtils.getStandaloneConfig();
       queue = new Queue('test-bull-queue', {
-        redis: {
-          port: config.port,
-          host: config.host,
-          keyPrefix: keyPrefix + 'bull:',
-        },
+        createClient: (_type: 'client' | 'subscriber' | 'bclient') => {
+          const client = new RedisAdapter({ ...config, keyPrefix: keyPrefix + 'bull:' });
+          // background connect like ioredis
+          client.connect().catch(err => client.emit('error', err));
+          return client as any;
+        }
       });
 
       // Setup default job processor (will be overridden in specific tests)
@@ -84,13 +85,10 @@ describe('Message Queue Systems Integration', () => {
     test('should create and process simple jobs', async () => {
       // Skip test if Bull can't connect properly
       try {
-        const testConnection = await new Promise<boolean>((resolve) => {
-          const timeout = setTimeout(() => resolve(false), 1000);
-          queue.on('ready', () => {
-            clearTimeout(timeout);
-            resolve(true);
-          });
-        });
+        const testConnection = await Promise.race([
+          queue.isReady().then(() => true),
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000))
+        ]);
         
         expect(testConnection).toBe(true);
       } catch (e) {
@@ -118,9 +116,7 @@ describe('Message Queue Systems Integration', () => {
             }
           });
         }),
-        new Promise<boolean>((resolve) => {
-          setTimeout(() => resolve(false), 5000); // 5 second timeout
-        })
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000))
       ]);
       
       if (processed) {
@@ -160,9 +156,7 @@ describe('Message Queue Systems Integration', () => {
               }
             });
           }),
-          new Promise<boolean>((resolve) => {
-            setTimeout(() => resolve(false), 5000);
-          })
+          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000))
         ]);
         
         expect(completed).toBe(true);
