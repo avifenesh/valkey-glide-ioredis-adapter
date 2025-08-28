@@ -12,6 +12,7 @@ class MockBullQueue {
   private clients: { [key: string]: any } = {};
   private createClientFn: any;
   
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   constructor(name: string, options: any) {
     this.createClientFn = options.createClient;
     
@@ -374,8 +375,8 @@ describe('Bull Integration with ClusterAdapter', () => {
       const queue = new MockBullQueue('test-queue', { createClient });
       
       // Should handle errors gracefully
-      queue.client.on('error', (err) => {
-        expect(err).to.be.instanceOf(Error);
+      queue.client.on('error', (_err: any) => {
+        expect(_err).to.be.instanceOf(Error);
       });
       
       await queue.close();
