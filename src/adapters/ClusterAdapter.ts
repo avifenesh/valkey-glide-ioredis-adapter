@@ -59,6 +59,7 @@ export class ClusterAdapter extends BaseClusterAdapter {
     
     // For Bull compatibility: return immediately, connect in background
     setImmediate(() => {
+      (adapter as any).suppressBackgroundErrors = true;
       adapter.connect().catch(err => {
         adapter.emit('error', err);
       });

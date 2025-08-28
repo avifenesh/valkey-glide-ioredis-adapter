@@ -28,6 +28,7 @@ export abstract class BaseClusterAdapter extends EventEmitter {
   protected watchedKeys: Set<string> = new Set();
   protected clientType?: 'client' | 'subscriber' | 'bclient';
   protected enableBlockingOps?: boolean;
+  protected suppressBackgroundErrors?: boolean;
 
   constructor(options: ClusterOptions = {}) {
     super();
@@ -74,8 +75,14 @@ export abstract class BaseClusterAdapter extends EventEmitter {
       this.emit('ready');
     } catch (error) {
       this.connectionStatus = 'disconnected';
-      this.emit('error', error);
-      throw error;
+      // Avoid crashing process on background connections without listeners
+      const hasErrorListeners = this.listenerCount('error') > 0;
+      if (!this.suppressBackgroundErrors || hasErrorListeners) {
+        this.emit('error', error);
+      }
+      if (!this.suppressBackgroundErrors) {
+        throw error;
+      }
     }
   }
 
