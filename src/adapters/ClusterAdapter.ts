@@ -160,6 +160,33 @@ export class ClusterAdapter extends BaseClusterAdapter {
     return this.stringCommands.psetex(key, milliseconds, value);
   }
 
+  // Key commands
+  async del(...keys: RedisKey[]): Promise<number> {
+    const client = await this.ensureConnected();
+    const keyStrings = ParameterTranslator.translateDelArgs(keys);
+    return await (client as any).del(keyStrings);
+  }
+
+  async exists(...keys: RedisKey[]): Promise<number> {
+    const client = await this.ensureConnected();
+    const keyStrings = ParameterTranslator.translateExistsArgs(keys);
+    return await (client as any).exists(keyStrings);
+  }
+
+  async expire(key: RedisKey, seconds: number): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const result = await (client as any).expire(normalizedKey, seconds);
+    return result ? 1 : 0;
+  }
+
+  async ttl(key: RedisKey): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const result = await (client as any).ttl(normalizedKey);
+    return typeof result === 'number' ? result : -2;
+  }
+
   // Hash Commands
   async hset(key: RedisKey, ...args: any[]): Promise<number> {
     return this.hashCommands.hset(key, ...args);
