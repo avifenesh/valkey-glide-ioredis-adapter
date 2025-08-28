@@ -9,10 +9,11 @@ import { describe, it, beforeEach, afterEach } from 'mocha';
 
 // Mock Bull Queue for testing
 class MockBullQueue {
+  // Using Jest; suppress unused name arg
   private clients: { [key: string]: any } = {};
   private createClientFn: any;
   
-  constructor(name: string, options: any) {
+  constructor(_name: string, options: any) {
     this.createClientFn = options.createClient;
     
     // Initialize clients using the createClient factory
@@ -374,8 +375,8 @@ describe('Bull Integration with ClusterAdapter', () => {
       const queue = new MockBullQueue('test-queue', { createClient });
       
       // Should handle errors gracefully
-      queue.client.on('error', (err) => {
-        expect(err).toBeInstanceOf(Error);
+      queue.client.on('error', (_err: any) => {
+                  expect(_err).toBeInstanceOf(Error);
       });
       
       await queue.close();
