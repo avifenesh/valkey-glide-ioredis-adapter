@@ -1,6 +1,6 @@
 {
   "name": "valkey-glide-ioredis-adapter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "🚀 Drop-in ioredis replacement powered by Valkey GLIDE's high-performance Rust core. 100% Valkey/Redis compatible with Bull, BullMQ, Socket.IO & Express Session.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
