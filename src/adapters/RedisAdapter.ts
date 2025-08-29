@@ -16,6 +16,7 @@ import {
   RedisValue,
 } from '../types';
 import { ParameterTranslator } from '../utils/ParameterTranslator';
+import { ResultTranslator } from '../utils/ResultTranslator';
 import { PubSubMessageHandler } from './PubSubMessageHandler';
 
 export class RedisAdapter extends EventEmitter implements IRedisAdapter {
@@ -270,6 +271,85 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return await client.info();
   }
 
+  async config(subcommand: string, ...args: any[]): Promise<any> {
+    const client = await this.ensureConnected();
+    const stringArgs = args.map(arg => String(arg));
+    const result = await client.customCommand(['CONFIG', subcommand, ...stringArgs]);
+    
+    if (Array.isArray(result)) {
+      return result.map(item => ParameterTranslator.convertGlideString(item) || '');
+    }
+    
+    return ParameterTranslator.convertGlideString(result) || '';
+  }
+
+  async dbsize(): Promise<number> {
+    const client = await this.ensureConnected();
+    const result = await client.customCommand(['DBSIZE']);
+    return typeof result === 'number' ? result : parseInt(String(result)) || 0;
+  }
+
+  async memory(subcommand: string, ...args: any[]): Promise<any> {
+    const client = await this.ensureConnected();
+    const stringArgs = args.map(arg => String(arg));
+    const result = await client.customCommand(['MEMORY', subcommand, ...stringArgs]);
+    
+    if (subcommand.toUpperCase() === 'USAGE') {
+      return typeof result === 'number' ? result : parseInt(String(result)) || 0;
+    }
+    
+    return result;
+  }
+
+  async echo(message: string): Promise<string> {
+    const client = await this.ensureConnected();
+    const result = await client.customCommand(['ECHO', message]);
+    return ParameterTranslator.convertGlideString(result) || '';
+  }
+
+  async time(): Promise<[string, string]> {
+    const client = await this.ensureConnected();
+    const result = await client.customCommand(['TIME']);
+    
+    if (Array.isArray(result) && result.length >= 2) {
+      return [
+        ParameterTranslator.convertGlideString(result[0]) || '0',
+        ParameterTranslator.convertGlideString(result[1]) || '0'
+      ];
+    }
+    
+    return ['0', '0'];
+  }
+
+  async debug(subcommand: string, ...args: any[]): Promise<any> {
+    const client = await this.ensureConnected();
+    const stringArgs = args.map(arg => String(arg));
+    const result = await client.customCommand(['DEBUG', subcommand, ...stringArgs]);
+    return ParameterTranslator.convertGlideString(result) || '';
+  }
+
+  async slowlog(subcommand: string, ...args: any[]): Promise<any[]> {
+    const client = await this.ensureConnected();
+    const stringArgs = args.map(arg => String(arg));
+    const result = await client.customCommand(['SLOWLOG', subcommand, ...stringArgs]);
+    
+    if (Array.isArray(result)) {
+      return result.map(entry => {
+        if (Array.isArray(entry)) {
+          return entry.map(item => {
+            if (typeof item === 'string' || typeof item === 'number') {
+              return item;
+            }
+            return ParameterTranslator.convertGlideString(item) || '';
+          });
+        }
+        return entry;
+      });
+    }
+    
+    return [];
+  }
+
   // ioredis compatibility: sendCommand method for arbitrary Redis commands
   async sendCommand(command: any): Promise<any> {
     const client = await this.ensureConnected();
@@ -374,9 +454,54 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     // Use native GLIDE method instead of customCommand
     const result = await client.xread(keys_and_ids, options);
     
-    // TODO: Convert GLIDE result format to ioredis format
-    // For now, return as-is (will be improved in Phase 1.3 with ResultTranslator)
-    return result;
+    // Convert GLIDE result format to ioredis format
+    return ResultTranslator.translateStreamReadResponse(result);
+  }
+
+  async xlen(key: RedisKey): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const result = await client.xlen(normalizedKey);
+    return result || 0;
+  }
+
+  async xrange(key: RedisKey, start: string, end: string, count?: number): Promise<any[]> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    const options = count !== undefined ? { count } : undefined;
+    const result = await client.xrange(normalizedKey, 
+      { value: start, isInclusive: true }, 
+      { value: end, isInclusive: true }, 
+      options);
+    
+    // Convert GLIDE result format to ioredis format
+    return ResultTranslator.translateStreamRangeResponse(result);
+  }
+
+  async xtrim(key: RedisKey, strategy: string, strategyModifier: string, threshold: string | number): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    // Convert ioredis XTRIM format to GLIDE format
+    let options: any = {};
+    
+    if (strategy.toUpperCase() === 'MAXLEN') {
+      if (strategyModifier === '~') {
+        options = { method: 'maxlen', exact: false, threshold: Number(threshold) };
+      } else {
+        options = { method: 'maxlen', exact: true, threshold: Number(threshold) };
+      }
+    } else if (strategy.toUpperCase() === 'MINID') {
+      if (strategyModifier === '~') {
+        options = { method: 'minid', exact: false, threshold: String(threshold) };
+      } else {
+        options = { method: 'minid', exact: true, threshold: String(threshold) };
+      }
+    }
+    
+    const result = await client.xtrim(normalizedKey, options);
+    return result || 0;
   }
 
   async xreadgroup(group: string, consumer: string, ...args: any[]): Promise<any> {
@@ -1452,13 +1577,24 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       }
       
       // Parse min/max boundaries for native GLIDE zrange
+      const parseScoreValue = (score: string | number): number => {
+        if (typeof score === 'number') return score;
+        const scoreStr = score.toString();
+        if (scoreStr === '+inf') return Infinity;
+        if (scoreStr === '-inf') return -Infinity;
+        if (scoreStr.startsWith('(+inf')) return Infinity;
+        if (scoreStr.startsWith('(-inf')) return -Infinity;
+        if (scoreStr.startsWith('(')) return parseFloat(scoreStr.slice(1));
+        return parseFloat(scoreStr);
+      };
+      
       const minBoundary: Boundary<number> = typeof min === 'string' && min.startsWith('(') 
-        ? { value: parseFloat(min.slice(1)), isInclusive: false }
-        : { value: typeof min === 'number' ? min : parseFloat(min.toString()), isInclusive: true };
+        ? { value: parseScoreValue(min.slice(1)), isInclusive: false }
+        : { value: parseScoreValue(min), isInclusive: true };
       
       const maxBoundary: Boundary<number> = typeof max === 'string' && max.startsWith('(')
-        ? { value: parseFloat(max.slice(1)), isInclusive: false }
-        : { value: typeof max === 'number' ? max : parseFloat(max.toString()), isInclusive: true };
+        ? { value: parseScoreValue(max.slice(1)), isInclusive: false }
+        : { value: parseScoreValue(max), isInclusive: true };
       
       const rangeQuery: RangeByScore = {
         type: "byScore",
@@ -1674,6 +1810,13 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return result;
   }
 
+  async persist(key: RedisKey): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const result = await client.persist(normalizedKey);
+    return result ? 1 : 0;
+  }
+
   async type(key: RedisKey): Promise<string> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
@@ -1688,6 +1831,74 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       return result.map(item => ParameterTranslator.convertGlideString(item) || '');
     }
     return [];
+  }
+
+  // Scan operations for safe iteration
+  async scan(cursor: string, ...args: string[]): Promise<[string, string[]]> {
+    const client = await this.ensureConnected();
+    const scanArgs = [cursor, ...args];
+    const result = await client.customCommand(['SCAN', ...scanArgs]);
+    
+    if (Array.isArray(result) && result.length === 2) {
+      const [nextCursor, keys] = result;
+      const cursorStr = ParameterTranslator.convertGlideString(nextCursor) || '0';
+      const keyArray = Array.isArray(keys) ? 
+        keys.map(k => ParameterTranslator.convertGlideString(k) || '') : [];
+      return [cursorStr, keyArray];
+    }
+    
+    return ['0', []];
+  }
+
+  async hscan(key: RedisKey, cursor: string, ...args: string[]): Promise<[string, string[]]> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const scanArgs = [normalizedKey, cursor, ...args];
+    const result = await client.customCommand(['HSCAN', ...scanArgs]);
+    
+    if (Array.isArray(result) && result.length === 2) {
+      const [nextCursor, fields] = result;
+      const cursorStr = ParameterTranslator.convertGlideString(nextCursor) || '0';
+      const fieldArray = Array.isArray(fields) ? 
+        fields.map(f => ParameterTranslator.convertGlideString(f) || '') : [];
+      return [cursorStr, fieldArray];
+    }
+    
+    return ['0', []];
+  }
+
+  async sscan(key: RedisKey, cursor: string, ...args: string[]): Promise<[string, string[]]> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const scanArgs = [normalizedKey, cursor, ...args];
+    const result = await client.customCommand(['SSCAN', ...scanArgs]);
+    
+    if (Array.isArray(result) && result.length === 2) {
+      const [nextCursor, members] = result;
+      const cursorStr = ParameterTranslator.convertGlideString(nextCursor) || '0';
+      const memberArray = Array.isArray(members) ? 
+        members.map(m => ParameterTranslator.convertGlideString(m) || '') : [];
+      return [cursorStr, memberArray];
+    }
+    
+    return ['0', []];
+  }
+
+  async zscan(key: RedisKey, cursor: string, ...args: string[]): Promise<[string, string[]]> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const scanArgs = [normalizedKey, cursor, ...args];
+    const result = await client.customCommand(['ZSCAN', ...scanArgs]);
+    
+    if (Array.isArray(result) && result.length === 2) {
+      const [nextCursor, membersAndScores] = result;
+      const cursorStr = ParameterTranslator.convertGlideString(nextCursor) || '0';
+      const dataArray = Array.isArray(membersAndScores) ? 
+        membersAndScores.map(item => ParameterTranslator.convertGlideString(item) || '') : [];
+      return [cursorStr, dataArray];
+    }
+    
+    return ['0', []];
   }
 
   // Blocking operations for Bull compatibility
@@ -2816,7 +3027,7 @@ class PipelineAdapter implements Pipeline {
         break;
       case 'zrevrange':
         const zrevrangeKey = ParameterTranslator.normalizeKey(args[0]);
-        batch.zrange(zrevrangeKey, { start: args[1], end: args[2] }, true); // reverse: true
+        batch.zrange(zrevrangeKey, { start: args[1], end: args[2] }, true);
         break;
       case 'zscore':
         batch.zscore(ParameterTranslator.normalizeKey(args[0]), ParameterTranslator.normalizeValue(args[1]));
@@ -3030,7 +3241,7 @@ class MultiAdapter implements Multi {
       for (const cmd of this.commands) {
         const validationError = await this.validateCommand(cmd.method, cmd.args);
         if (validationError) {
-          // Return null immediately - transaction is aborted
+          // Return null - transaction is discarded due to validation failure
           return null;
         }
       }
@@ -3050,9 +3261,9 @@ class MultiAdapter implements Multi {
       // Execute the atomic batch
       const results = await client.exec(batch, false); // raiseOnError = false
 
-      // Check if transaction was discarded due to WATCH violations
+      // Check if transaction was discarded due to WATCH violations or other failures
       if (results === null) {
-        return null; // ioredis convention for discarded transactions
+        return null; // ioredis convention: null indicates transaction was discarded
       }
 
       // Format results to match ioredis format: [Error | null, result]
@@ -3073,11 +3284,10 @@ class MultiAdapter implements Multi {
     } catch (error) {
       // Handle transaction failure (e.g., due to WATCH violations or connection issues)
       if (this.isWatchFailure(error)) {
-        return null; // ioredis convention
+        return null; // ioredis convention: null for discarded transactions
       }
       
-      // For other errors, we still want to return null for transaction failure
-      // as per ioredis behavior
+      // For other transaction failures, also return null
       return null;
     } finally {
       // Clear commands after execution
@@ -3327,6 +3537,16 @@ class MultiAdapter implements Multi {
         // For now, we'll implement it as a custom command
         const moveArgs = args.map(arg => ParameterTranslator.normalizeValue(arg));
         batch.customCommand(['EVAL', 'return 1', '0', ...moveArgs]);
+        break;
+        
+      // Sorted set commands
+      case 'zrange':
+        const zrangeKey = ParameterTranslator.normalizeKey(args[0]);
+        batch.zrange(zrangeKey, { start: args[1], end: args[2] });
+        break;
+      case 'zrevrange':
+        const zrevrangeKey = ParameterTranslator.normalizeKey(args[0]);
+        batch.zrange(zrevrangeKey, { start: args[1], end: args[2] }, true);
         break;
         
       default:
