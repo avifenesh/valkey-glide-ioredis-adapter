@@ -6,14 +6,11 @@
 [![GitHub stars](https://img.shields.io/github/stars/avifenesh/valkey-glide-ioredis-adapter?style=flat-square)](https://github.com/avifenesh/valkey-glide-ioredis-adapter/stargazers)
 
 [![CI Status](https://img.shields.io/github/actions/workflow/status/avifenesh/valkey-glide-ioredis-adapter/release.yml?branch=main&style=flat-square&label=CI)](https://github.com/avifenesh/valkey-glide-ioredis-adapter/actions)
-[![codecov](https://img.shields.io/codecov/c/github/avifenesh/valkey-glide-ioredis-adapter?style=flat-square)](https://codecov.io/gh/avifenesh/valkey-glide-ioredis-adapter)
 [![Node.js Version](https://img.shields.io/node/v/valkey-glide-ioredis-adapter?style=flat-square)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square)](https://www.typescriptlang.org)
 
-[![Bull](https://img.shields.io/badge/Bull-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/OptimalBits/bull)
-[![BullMQ](https://img.shields.io/badge/BullMQ-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/taskforcesh/bullmq)
 [![Socket.IO](https://img.shields.io/badge/Socket.IO-✅%20Compatible-brightgreen?style=flat-square)](https://socket.io)
-[![Express Session](https://img.shields.io/badge/Express%20Session-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/expressjs/session)
+[![Express Session](https://img.shields.io/badge/Express%20Session-🔄%20In%20Progress-yellow?style=flat-square)](https://github.com/expressjs/session)
 
 > **🚀 Drop-in ioredis replacement** powered by **Valkey GLIDE**'s high-performance Rust core
 
@@ -29,7 +26,7 @@ This project uses **exclusively Valkey GLIDE** - a high-performance, language-in
 - **ioredis-compatible API**: Drop-in replacement for most ioredis usage
 - **High Performance**: Leverages GLIDE's Rust core for optimal performance
 - **TypeScript Support**: Full type safety with GLIDE's native TypeScript interfaces
-- **Library Compatibility**: Works with popular Valkey/Redis-dependent libraries
+- **Socket.IO Compatible**: Full integration with Socket.IO Redis adapter
 
 ## 📋 **Pub/Sub Implementation**
 
@@ -212,7 +209,7 @@ MIT License - see [LICENSE](./LICENSE) file for details.
 
 - [Valkey GLIDE](https://github.com/valkey-io/valkey-glide) - The underlying high-performance client
 - [ioredis](https://github.com/luin/ioredis) - The API we're compatible with
-- [Bull](https://github.com/OptimalBits/bull) / [BullMQ](https://github.com/taskforcesh/bullmq) - Job queue libraries
+- [Bull](https://github.com/OptimalBits/bull) / [BullMQ](https://github.com/taskforcesh/bullmq) - Job queue libraries (integration in progress)
 - [connect-redis](https://github.com/tj/connect-redis) - Express session store
 - [rate-limit-redis](https://github.com/wyattjoh/rate-limit-redis) - Rate limiting store
 - [socket.io-redis-adapter](https://github.com/socketio/socket.io-redis-adapter) - Socket.IO scaling adapter
