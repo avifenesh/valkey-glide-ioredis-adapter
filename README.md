@@ -10,7 +10,8 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square)](https://www.typescriptlang.org)
 
 [![Socket.IO](https://img.shields.io/badge/Socket.IO-✅%20Compatible-brightgreen?style=flat-square)](https://socket.io)
-[![Express Session](https://img.shields.io/badge/Express%20Session-🔄%20In%20Progress-yellow?style=flat-square)](https://github.com/expressjs/session)
+[![Express Sessions](https://img.shields.io/badge/Express%20Sessions-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/expressjs/session)
+[![Rate Limiting](https://img.shields.io/badge/Rate%20Limiting-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/express-rate-limit/express-rate-limit)
 
 > **🚀 Drop-in ioredis replacement** powered by **Valkey GLIDE**'s high-performance Rust core
 
@@ -26,7 +27,7 @@ This project uses **exclusively Valkey GLIDE** - a high-performance, language-in
 - **ioredis-compatible API**: Drop-in replacement for most ioredis usage
 - **High Performance**: Leverages GLIDE's Rust core for optimal performance
 - **TypeScript Support**: Full type safety with GLIDE's native TypeScript interfaces
-- **Socket.IO Compatible**: Full integration with Socket.IO Redis adapter
+- **Production Integrations**: Socket.IO, Express Sessions, Rate Limiting, and Caching all fully working
 
 ## 📋 **Pub/Sub Implementation**
 
