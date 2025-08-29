@@ -56,7 +56,6 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       this._options = { port: 6379, host: 'localhost' };
     }
 
-    console.log('🔍 [BULL DEBUG] RedisAdapter constructor called with options:', JSON.stringify(this._options, null, 2));
 
     this._pubsubEmitter = new EventEmitter();
 
@@ -65,10 +64,8 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
 
     // Set initial status based on lazyConnect option
     if (this._options.lazyConnect) {
-      console.log('🔍 [BULL DEBUG] LazyConnect enabled, setting status to wait');
       this._status = 'wait' as ConnectionStatus;
     } else {
-      console.log('🔍 [BULL DEBUG] LazyConnect disabled, auto-connecting');
       // Auto-connect like ioredis default behavior
       setImmediate(() => {
         this._initializing = this.connect().catch(err => {
@@ -93,42 +90,29 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
 
   // Bull compatibility: isReady method
   async isReady(): Promise<this> {
-    const clientInfo = this._options.keyPrefix?.includes('bull:') ? 
-      (this._options.keyPrefix.includes('bclient') ? 'BCLIENT' :
-       this._options.keyPrefix.includes('subscriber') ? 'SUBSCRIBER' : 'CLIENT') : 'UNKNOWN';
-    
-    console.log('🔍 [BULL DEBUG] isReady() called on', clientInfo, 'status:', this._status, 'initializing:', !!this._initializing, 'keyPrefix:', this._options.keyPrefix);
     
     if (this._initializing) {
-      console.log('🔍 [BULL DEBUG]', clientInfo, 'Waiting for initialization...');
       await this._initializing;
-      console.log('🔍 [BULL DEBUG]', clientInfo, 'Initialization complete, status:', this._status);
     }
     
     if (this._status === 'wait') {
-      console.log('🔍 [BULL DEBUG]', clientInfo, 'Status is wait, calling connect()...');
       await this.connect();
-      console.log('🔍 [BULL DEBUG]', clientInfo, 'Connect completed, status:', this._status);
     }
     
     // Wait until we're actually ready
     let loopCount = 0;
     while (this._status !== 'ready' && this._status !== 'end' && this._status !== 'error') {
       if (loopCount % 100 === 0) { // Log every second (100 * 10ms)
-        console.log('🔍 [BULL DEBUG]', clientInfo, 'Waiting for ready state, current status:', this._status, 'loop:', loopCount);
       }
       await new Promise(resolve => setTimeout(resolve, 10));
       loopCount++;
     }
     
-    console.log('🔍 [BULL DEBUG]', clientInfo, 'isReady() completed, final status:', this._status);
     
     if (this._status === 'error' || this._status === 'end') {
-      console.log('🔍 [BULL DEBUG]', clientInfo, 'isReady() throwing error, status:', this._status);
       throw new Error('Redis client not ready');
     }
     
-    console.log('🔍 [BULL DEBUG]', clientInfo, 'isReady() returning this');
     return this;
   }
 
@@ -143,15 +127,12 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
 
   // Connection management
   async connect(): Promise<void> {
-    console.log('🔍 [BULL DEBUG] connect() called, current status:', this._status);
     
     if (this._status === 'ready' || this._status === 'connecting') {
-      console.log('🔍 [BULL DEBUG] Already connected/connecting, returning');
       return;
     }
 
     try {
-      console.log('🔍 [BULL DEBUG] Setting status to connecting');
       this._status = 'connecting';
       this.emit('connecting');
       this.emit('connect');
@@ -163,22 +144,18 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
         })
       };
       
-      console.log('🔍 [BULL DEBUG] Creating GlideClient with config:', config);
       
       // Create GlideClient
       this.redisClient = await GlideClient.createClient(config);
       
-      console.log('🔍 [BULL DEBUG] GlideClient created successfully');
       
       this._status = 'ready';
       this.emit('ready');
       
-      console.log('🔍 [BULL DEBUG] Status set to ready, ready event emitted');
       
       // Update initialization promise to be resolved
       this._initializing = Promise.resolve();
     } catch (error) {
-      console.log('🔍 [BULL DEBUG] Connection error:', error);
       this._status = 'error';
       this.emit('error', error);
       throw error;
@@ -780,14 +757,8 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     
-    const clientInfo = this._options.keyPrefix?.includes('bull:') ? 
-      (this._options.keyPrefix.includes('bclient') ? 'BCLIENT' :
-       this._options.keyPrefix.includes('subscriber') ? 'SUBSCRIBER' : 'CLIENT') : 'UNKNOWN';
-    console.log('🔍 [BULL DEBUG]', clientInfo, 'get() called for key:', normalizedKey);
-    
     const result = await client.get(normalizedKey);
     const converted = ParameterTranslator.convertGlideString(result);
-    console.log('🔍 [BULL DEBUG]', clientInfo, 'get() result:', converted ? 'DATA FOUND' : 'NULL');
     return converted;
   }
 
@@ -927,11 +898,6 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     
-    const clientInfo = this._options.keyPrefix?.includes('bull:') ? 
-      (this._options.keyPrefix.includes('bclient') ? 'BCLIENT' :
-       this._options.keyPrefix.includes('subscriber') ? 'SUBSCRIBER' : 'CLIENT') : 'UNKNOWN';
-    console.log('🔍 [BULL DEBUG]', clientInfo, 'hgetall() called for key:', normalizedKey);
-    
     const result = await client.hgetall(normalizedKey);
     const converted: Record<string, string> = {};
     
@@ -954,9 +920,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       }
     }
     
-    console.log('🔍 [BULL DEBUG]', clientInfo, 'hgetall() keys:', Object.keys(converted).join(','));
     if (normalizedKey.includes(':') && Object.keys(converted).length > 0) {
-      console.log('🔍 [BULL DEBUG]', clientInfo, 'job has data fields:', Object.keys(converted).includes('data'));
     }
     
     return converted;
@@ -1090,13 +1054,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     
-    const clientInfo = this._options.keyPrefix?.includes('bull:') ? 
-      (this._options.keyPrefix.includes('bclient') ? 'BCLIENT' :
-       this._options.keyPrefix.includes('subscriber') ? 'SUBSCRIBER' : 'CLIENT') : 'UNKNOWN';
-    console.log('🔍 [BULL DEBUG]', clientInfo, 'llen() called for key:', normalizedKey);
-    
     const result = await client.llen(normalizedKey);
-    console.log('🔍 [BULL DEBUG]', clientInfo, 'llen() result:', result);
     return result;
   }
 
@@ -1738,12 +1696,7 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const normalizedSource = ParameterTranslator.normalizeKey(source);
     const normalizedDest = ParameterTranslator.normalizeKey(destination);
     
-    const clientInfo = this._options.keyPrefix?.includes('bull:') ? 
-      (this._options.keyPrefix.includes('bclient') ? 'BCLIENT' :
-       this._options.keyPrefix.includes('subscriber') ? 'SUBSCRIBER' : 'CLIENT') : 'UNKNOWN';
-    
     try {
-      console.log('🔍 [BULL DEBUG]', clientInfo, 'BRPOPLPUSH called:', { source: normalizedSource, dest: normalizedDest, timeout });
       this.blocked = true; // Set blocked flag like ioredis
       
       const result = await client.customCommand([
@@ -1754,7 +1707,6 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       ]);
       
       this.blocked = false; // Clear blocked flag
-      console.log('🔍 [BULL DEBUG]', clientInfo, 'BRPOPLPUSH result:', result);
       return result ? ParameterTranslator.convertGlideString(result) : null;
     } catch (error: any) {
       // Handle timeout as expected behavior
