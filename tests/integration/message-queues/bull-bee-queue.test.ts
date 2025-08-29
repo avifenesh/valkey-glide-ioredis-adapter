@@ -143,7 +143,7 @@ describe('Message Queue Systems Integration', () => {
       
       // Setup processor for this test
       console.log('🔗 [BULL DEBUG] Setting up job processor');
-      queue.process(processor);
+      queue.process('test-job', processor);
       console.log('🔗 [BULL DEBUG] Processor set up successfully');
       
       const jobData = {
@@ -189,7 +189,7 @@ describe('Message Queue Systems Integration', () => {
       // Skip if Bull compatibility issues
       try {
         // Setup processor for this test
-        queue.process(processor);
+        queue.process('delayed-job', processor);
         
         const delayMs = 200;
         const startTime = Date.now();
@@ -226,10 +226,14 @@ describe('Message Queue Systems Integration', () => {
         const processedJobs: any[] = [];
 
         // Create processor that records order
-        queue.process(async job => {
+        const jobProcessor = async (job: any) => {
           processedJobs.push(job.data);
           return { processed: true };
-        });
+        };
+        
+        queue.process('low', jobProcessor);
+        queue.process('high', jobProcessor);
+        queue.process('medium', jobProcessor);
 
         // Add jobs with different priorities (higher number = higher priority)
         await queue.add('low', { priority: 'low' }, { priority: 1 });
@@ -328,8 +332,10 @@ describe('Message Queue Systems Integration', () => {
 
     test('should provide job statistics', async () => {
       try {
-        // Setup processor to handle jobs
-        queue.process(processor);
+        // Setup processor to handle jobs  
+        queue.process('job1', processor);
+        queue.process('job2', processor);
+        queue.process('job3', processor);
         
         // Add some jobs
         await queue.add('job1', { data: 'test1' });

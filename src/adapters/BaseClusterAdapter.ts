@@ -89,12 +89,14 @@ export abstract class BaseClusterAdapter extends EventEmitter {
       this.connectionStatus = 'disconnected';
       // Avoid crashing process on background connections without listeners
       const hasErrorListeners = this.listenerCount('error') > 0;
-      if (!this.suppressBackgroundErrors || hasErrorListeners) {
+      if (hasErrorListeners) {
+        // If there are error listeners, emit the error and don't throw
         this.emit('error', error);
-      }
-      if (!this.suppressBackgroundErrors) {
+      } else if (!this.suppressBackgroundErrors) {
+        // If no listeners and not suppressing errors, throw it
         throw error;
       }
+      // If suppressBackgroundErrors is true and no listeners, do nothing
     }
   }
 
