@@ -80,14 +80,14 @@ describe('Message Queue Systems Integration', () => {
         });
 
         // Add error event listener to debug issues
-        queue.on('error', (error) => {
+        queue.on('error', (_error) => {
         });
         
-        queue.on('failed', (job, err) => {
+        queue.on('failed', (_job, _err) => {
         });
 
         // Setup default job processor (will be overridden in specific tests)
-        processor = jest.fn(async (job) => {
+        processor = jest.fn(async (_job) => {
           return { processed: true };
         });
       } catch (error) {
