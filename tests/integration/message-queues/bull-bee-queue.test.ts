@@ -55,7 +55,6 @@ describe('Message Queue Systems Integration', () => {
       try {
         // Create Bull queue using our RedisAdapter via createClient with lazy connection
         const config = { host: 'localhost', port: 6379 }; // Direct config to avoid server discovery
-        console.log('🔍 Bull using config:', config);
         queue = new Queue('test-bull-queue', {
           createClient: (_type: 'client' | 'subscriber' | 'bclient') => {
             const options: any = { 
@@ -685,7 +684,6 @@ describe('Message Queue Systems Integration', () => {
 
       queue.process(async (job) => {
         processedJobs.push(job.data);
-        console.log(`📦 Processing job with custom Redis client:`, job.data);
         return { success: true, processedBy: 'customClient' };
       });
 
@@ -702,7 +700,6 @@ describe('Message Queue Systems Integration', () => {
         new Promise<boolean>((resolve) => {
           queue.on('completed', (completedJob) => {
             if (completedJob.id === job.id) {
-              console.log(`✅ Job completed using custom Redis client`);
               resolve(true);
             }
           });
@@ -725,7 +722,6 @@ describe('Message Queue Systems Integration', () => {
       if (processed) {
         expect(processedJobs.length).toBe(1);
         expect(processedJobs[0].message).toBe('Using custom Redis adapter!');
-        console.log('🎉 Bull successfully used our custom Redis adapter!');
       } else {
         throw new Error('Bull createClient integration test timed out - Bull compatibility issue with enhanced adapter');
         
@@ -735,7 +731,7 @@ describe('Message Queue Systems Integration', () => {
         const completed = await queue.getCompleted();
         const failed = await queue.getFailed();
         
-        console.log('Bull queue status:', {
+        // Bull queue status check: {
           waiting: waiting.length,
           active: active.length,
           completed: completed.length,
@@ -779,7 +775,6 @@ describe('Message Queue Systems Integration', () => {
       // Create Bull queue that uses the shared client  
       queue = new Queue('shared-client-queue', {
         createClient: (type: 'client' | 'subscriber') => {
-          console.log(`🔗 Bull using shared ${type} client with custom commands`);
           
           // For this test, return the same shared client for both types
           // In production, you'd want separate client instances
@@ -810,7 +805,6 @@ describe('Message Queue Systems Integration', () => {
             Date.now().toString()
           );
           
-          console.log(`📊 Job completion count: ${completionCount}`);
           
           return { 
             processed: true, 
@@ -843,7 +837,6 @@ describe('Message Queue Systems Integration', () => {
           
           queue.on('completed', (job, result) => {
             completedCount++;
-            console.log(`✅ Job ${job.id} completed:`, result);
             if (completedCount + failedCount >= 2) {
               resolve(true);
             }
@@ -870,7 +863,6 @@ describe('Message Queue Systems Integration', () => {
           const totalCompletions = await sharedClient.get('jobs:completed:count');
           if (totalCompletions) {
             expect(parseInt(totalCompletions as string)).toBeGreaterThanOrEqual(2);
-            console.log('🎯 Custom Redis commands successfully integrated with Bull!');
           } else {
             throw new Error('Custom command counter not found - compatibility issues detected');
           }
@@ -884,7 +876,6 @@ describe('Message Queue Systems Integration', () => {
         try {
           const waiting = await queue.getWaiting();
           const failed = await queue.getFailed();
-          console.log('Queue status - waiting:', waiting.length, 'failed:', failed.length);
           
           // Test passes if we can at least get queue status (basic functionality works)
           expect(typeof waiting.length).toBe('number');
