@@ -43,6 +43,18 @@ export abstract class BaseClusterAdapter extends EventEmitter {
       readOnly: false,
       ...options,
     };
+
+    // Set initial status based on lazyConnect option
+    if (this.options.lazyConnect) {
+      this.connectionStatus = 'wait' as any;
+    } else {
+      // Auto-connect like ioredis default behavior
+      setImmediate(() => {
+        this.connect().catch(err => {
+          this.emit('error', err);
+        });
+      });
+    }
   }
 
   // Connection management
@@ -169,6 +181,21 @@ export abstract class BaseClusterAdapter extends EventEmitter {
 
   // Core utility methods
   protected async ensureConnected(): Promise<GlideClusterClient> {
+    // If already connected, return immediately
+    if (this.glideClusterClient && this.connectionStatus === 'connected') {
+      return this.glideClusterClient;
+    }
+    
+    // If in wait status (lazyConnect), start connection now
+    if (this.connectionStatus === 'wait') {
+      await this.connect();
+      if (!this.glideClusterClient) {
+        throw new Error('Failed to establish cluster connection after lazy connect');
+      }
+      return this.glideClusterClient;
+    }
+    
+    // If not connected or connecting, connect now
     if (!this.glideClusterClient || this.connectionStatus !== 'connected') {
       await this.connect();
     }

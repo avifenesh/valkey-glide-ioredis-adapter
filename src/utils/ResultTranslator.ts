@@ -117,6 +117,30 @@ export class ResultTranslator {
   }
   
   /**
+   * Formats floating point numbers to match ioredis precision expectations.
+   * 
+   * JavaScript floating point arithmetic can introduce precision errors.
+   * This method normalizes the result to match expected Redis behavior.
+   * 
+   * @param value - Floating point number from GLIDE
+   * @returns Properly formatted number string
+   */
+  static formatFloatResult(value: number): string {
+    // Handle JavaScript floating point precision issues
+    // Round to 15 decimal places to eliminate floating point errors
+    const rounded = Math.round(value * 1e15) / 1e15;
+    
+    // Format with appropriate precision
+    if (Number.isInteger(rounded)) {
+      return rounded.toString();
+    }
+    
+    // Use toFixed only when needed, removing trailing zeros
+    const formatted = rounded.toString();
+    return formatted;
+  }
+
+  /**
    * Converts GLIDE error to ioredis-compatible error format.
    * 
    * @param glideError - GLIDE error object

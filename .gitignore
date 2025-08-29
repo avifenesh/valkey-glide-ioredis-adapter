@@ -95,8 +95,7 @@ config/development.*
 secrets/
 .secrets
 
-# Package manager files
-package-lock.json
+# Package manager files (keep package-lock.json for reproducible builds)
 yarn.lock
 pnpm-lock.yaml
 
@@ -104,3 +103,15 @@ pnpm-lock.yaml
 *~
 *.bak
 *.backup
+
+# Project-specific cleanup
+memory-bank/
+CLAUDE.md
+setup-cluster.sh
+stop-cluster.sh
+valkey-cluster/
+scripts/setup-cluster.sh
+scripts/stop-cluster.sh
+
+# Docker Compose files - legacy/unused (we use scripts/start-test-servers.sh instead)
+docker-compose*.yml

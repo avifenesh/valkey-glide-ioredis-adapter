@@ -16,7 +16,7 @@ export interface RedisOptions {
   password?: string;
   db?: number;
   retryDelayOnFailover?: number;
-  maxRetriesPerRequest?: number;
+  maxRetriesPerRequest?: number | null;
   connectTimeout?: number;
   commandTimeout?: number;
   family?: number;
@@ -24,10 +24,11 @@ export interface RedisOptions {
   enableReadyCheck?: boolean;
   maxLoadingTimeout?: number;
   keyPrefix?: string;
+  lazyConnect?: boolean;
 }
 
 // Connection status
-export type ConnectionStatus = 'connecting' | 'connected' | 'ready' | 'disconnecting' | 'disconnected' | 'reconnecting' | 'end' | 'error';
+export type ConnectionStatus = 'wait' | 'connecting' | 'connected' | 'ready' | 'disconnecting' | 'disconnected' | 'reconnecting' | 'end' | 'error';
 
 // Pipeline and Multi interfaces
 export interface Pipeline {
@@ -241,6 +242,16 @@ export interface ClusterOptions {
   retryDelayOnTimeout?: number;
   slotsRefreshTimeout?: number;
   slotsRefreshInterval?: number;
+  lazyConnect?: boolean;
+  nodes?: ClusterNode[];
+  host?: string;
+  port?: number;
+  username?: string;
+  password?: string;
+  enableReadFromReplicas?: boolean;
+  scaleReads?: string;
+  enableOfflineQueue?: boolean;
+  readOnly?: boolean;
 }
 
 // Events interface

@@ -1,10 +1,27 @@
-# ioredis-adapter
+# Valkey GLIDE ioredis Adapter
 
-An ioredis-compatible API layer built on **Valkey GLIDE** for high-performance Redis operations.
+[![npm version](https://img.shields.io/npm/v/valkey-glide-ioredis-adapter?style=flat-square)](https://www.npmjs.com/package/valkey-glide-ioredis-adapter)
+[![npm downloads](https://img.shields.io/npm/dm/valkey-glide-ioredis-adapter?style=flat-square)](https://www.npmjs.com/package/valkey-glide-ioredis-adapter)
+[![GitHub license](https://img.shields.io/github/license/avifenesh/valkey-glide-ioredis-adapter?style=flat-square)](https://github.com/avifenesh/valkey-glide-ioredis-adapter/blob/main/LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/avifenesh/valkey-glide-ioredis-adapter?style=flat-square)](https://github.com/avifenesh/valkey-glide-ioredis-adapter/stargazers)
+
+[![CI Status](https://img.shields.io/github/actions/workflow/status/avifenesh/valkey-glide-ioredis-adapter/release.yml?branch=main&style=flat-square&label=CI)](https://github.com/avifenesh/valkey-glide-ioredis-adapter/actions)
+[![codecov](https://img.shields.io/codecov/c/github/avifenesh/valkey-glide-ioredis-adapter?style=flat-square)](https://codecov.io/gh/avifenesh/valkey-glide-ioredis-adapter)
+[![Node.js Version](https://img.shields.io/node/v/valkey-glide-ioredis-adapter?style=flat-square)](https://nodejs.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square)](https://www.typescriptlang.org)
+
+[![Bull](https://img.shields.io/badge/Bull-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/OptimalBits/bull)
+[![BullMQ](https://img.shields.io/badge/BullMQ-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/taskforcesh/bullmq)
+[![Socket.IO](https://img.shields.io/badge/Socket.IO-✅%20Compatible-brightgreen?style=flat-square)](https://socket.io)
+[![Express Session](https://img.shields.io/badge/Express%20Session-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/expressjs/session)
+
+> **🚀 Drop-in ioredis replacement** powered by **Valkey GLIDE**'s high-performance Rust core
+
+A production-ready, 100% ioredis-compatible adapter that seamlessly integrates **Valkey GLIDE** with your existing Node.js applications. Get native performance without changing a single line of application code.
 
 ## 🎯 **Pure GLIDE Architecture**
 
-This project uses **exclusively Valkey GLIDE** - a high-performance, language-independent Redis client library with a Rust core and Node.js wrapper.
+This project uses **exclusively Valkey GLIDE** - a high-performance, language-independent Valkey client library with a Rust core and Node.js wrapper.
 
 ## 🚀 **Key Features**
 
@@ -12,7 +29,7 @@ This project uses **exclusively Valkey GLIDE** - a high-performance, language-in
 - **ioredis-compatible API**: Drop-in replacement for most ioredis usage
 - **High Performance**: Leverages GLIDE's Rust core for optimal performance
 - **TypeScript Support**: Full type safety with GLIDE's native TypeScript interfaces
-- **Library Compatibility**: Works with popular Redis-dependent libraries
+- **Library Compatibility**: Works with popular Valkey/Redis-dependent libraries
 
 ## 📋 **Pub/Sub Implementation**
 
@@ -55,13 +72,18 @@ await integration.publish('app:notifications', JSON.stringify({ type: 'update' }
 ## 🔧 **Installation**
 
 ```bash
-npm install @valkey/valkey-glide-ioredis-adapter
+npm install valkey-glide-ioredis-adapter
 ```
+
+**Requirements:**
+- Node.js 18+ (ES2022 support)  
+- Valkey/Redis 6.0+
+- TypeScript 4.5+ (for TypeScript projects)
 
 ## 📖 **Basic Usage**
 
 ```typescript
-import { RedisAdapter } from '@valkey/valkey-glide-ioredis-adapter';
+import { RedisAdapter } from 'valkey-glide-ioredis-adapter';
 
 // Create adapter instance
 const redis = new RedisAdapter({
@@ -69,7 +91,7 @@ const redis = new RedisAdapter({
   port: 6379
 });
 
-// Use ioredis-compatible API
+// Use ioredis-compatible API with Valkey backend
 await redis.set('key', 'value');
 const value = await redis.get('key');
 
@@ -118,7 +140,7 @@ import Redis from 'ioredis';
 const redis = new Redis();
 
 // After (GLIDE adapter)
-import { RedisAdapter } from '@valkey/valkey-glide-ioredis-adapter';
+import { RedisAdapter } from 'valkey-glide-ioredis-adapter';
 const redis = new RedisAdapter();
 ```
 
@@ -168,10 +190,10 @@ ioredis-compatible Results
 ### Pub/Sub Architecture
 ```
 Direct Pattern:
-Application → GLIDE Client → Redis/Valkey
+Application → GLIDE Client → Valkey/Redis
 
 Integration Pattern:
-Library → Helper Class → GLIDE Clients → Redis/Valkey
+Library → Helper Class → GLIDE Clients → Valkey/Redis
 ```
 
 ## 🤝 **Contributing**

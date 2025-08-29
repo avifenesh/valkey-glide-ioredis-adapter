@@ -1,0 +1,91 @@
+name: ✨ Feature Request
+description: Suggest a new feature or enhancement
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting a feature! Help us understand what you'd like to see added.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Description
+      description: What problem does this feature solve? What is the current limitation?
+      placeholder: I'm trying to do X, but currently there's no way to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: What would you like to see implemented?
+      placeholder: I would like to see...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Any alternative solutions or workarounds you've considered
+      placeholder: I considered...
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Feature Category
+      description: What type of feature is this?
+      options:
+        - Redis command support
+        - Library integration (Bull, BullMQ, etc.)
+        - Performance improvement
+        - Developer experience
+        - Documentation
+        - Testing infrastructure
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: compatibility
+    attributes:
+      label: ioredis Compatibility
+      description: Does this feature need to maintain ioredis API compatibility?
+      options:
+        - "Yes - must match ioredis behavior exactly"
+        - "Partial - similar API but can differ slightly"
+        - "No - new functionality not in ioredis"
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-cases
+    attributes:
+      label: Use Cases
+      description: Provide specific examples of how this feature would be used
+      placeholder: |
+        1. When building a job queue system...
+        2. For real-time applications that need...
+        3. In microservices that require...
+
+  - type: textarea
+    id: implementation
+    attributes:
+      label: Implementation Ideas
+      description: Any ideas on how this could be implemented? (Optional)
+      placeholder: This could be implemented by...
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues and discussions
+          required: true
+        - label: This feature maintains the "Pure GLIDE" architecture principle
+          required: true
+        - label: I have provided clear use cases for this feature
+          required: true

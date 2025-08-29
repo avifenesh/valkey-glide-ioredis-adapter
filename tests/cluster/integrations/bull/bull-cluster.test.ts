@@ -43,9 +43,12 @@ describe('Bull Integration with ClusterAdapter', () => {
   beforeEach(() => {
     clusterConfig = {
       nodes: [
-        { host: '127.0.0.1', port: 7000 },
-        { host: '127.0.0.1', port: 7001 },
-        { host: '127.0.0.1', port: 7002 }
+        { host: 'localhost', port: 7000 },
+        { host: 'localhost', port: 7001 },
+        { host: 'localhost', port: 7002 },
+        { host: 'localhost', port: 7003 },
+        { host: 'localhost', port: 7004 },
+        { host: 'localhost', port: 7005 }
       ]
     };
   });
@@ -363,8 +366,8 @@ describe('Bull Integration with ClusterAdapter', () => {
     it('should handle cluster connection errors', async () => {
       const invalidConfig = {
         nodes: [
-          { host: 'invalid-host-1', port: 9999 },
-          { host: 'invalid-host-2', port: 9998 }
+          { host: 'localhost', port: 9999 },
+          { host: 'localhost', port: 9998 }
         ]
       };
       
@@ -385,8 +388,8 @@ describe('Bull Integration with ClusterAdapter', () => {
     it('should handle individual node failures', () => {
       const mixedConfig = {
         nodes: [
-          { host: '127.0.0.1', port: 7000 },  // Valid
-          { host: 'invalid-host', port: 9999 } // Invalid
+          { host: 'localhost', port: 7000 },  // Valid
+          { host: 'localhost', port: 9999 }   // Invalid port
         ]
       };
       

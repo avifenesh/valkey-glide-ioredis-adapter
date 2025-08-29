@@ -1,0 +1,100 @@
+name: 🔌 Library Integration
+description: Request support for a specific Redis library
+title: "[Integration]: Support for "
+labels: ["integration", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Request integration support for a Redis-dependent library.
+
+  - type: input
+    id: library-name
+    attributes:
+      label: Library Name
+      description: Name of the library you want to integrate
+      placeholder: e.g., ioredis-lock, redis-om, etc.
+    validations:
+      required: true
+
+  - type: input
+    id: library-url
+    attributes:
+      label: Library Repository
+      description: GitHub or npm URL for the library
+      placeholder: https://github.com/username/library-name
+    validations:
+      required: true
+
+  - type: input
+    id: library-version
+    attributes:
+      label: Library Version
+      description: Which version should we target?
+      placeholder: e.g., ^2.1.0
+    validations:
+      required: true
+
+  - type: textarea
+    id: redis-usage
+    attributes:
+      label: Redis Usage Pattern
+      description: How does this library use Redis? What commands or features does it rely on?
+      placeholder: |
+        This library uses:
+        - Redis Sets for...
+        - Lua scripts for...
+        - Pub/Sub for...
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-issues
+    attributes:
+      label: Current Issues
+      description: What specific issues are you encountering when trying to use this library?
+      placeholder: |
+        When using this library with the adapter:
+        1. Error X occurs when...
+        2. Feature Y doesn't work because...
+
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority Level
+      description: How important is this integration for your project?
+      options:
+        - Critical - blocking production deployment
+        - High - needed for upcoming feature
+        - Medium - nice to have
+        - Low - future consideration
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use Case
+      description: Describe your specific use case for this library
+      placeholder: We need this library for...
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current Workaround
+      description: Any temporary solutions you're using? (Optional)
+      placeholder: Currently we're using...
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched for existing integration issues
+          required: true
+        - label: I have tested the library with the current adapter
+          required: true
+        - label: I can provide testing assistance for this integration
+          required: false

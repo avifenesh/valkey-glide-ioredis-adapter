@@ -50,20 +50,14 @@ export class ClusterAdapter extends BaseClusterAdapter {
 
   // Factory method for Bull compatibility
   static createClient(type: 'client' | 'subscriber' | 'bclient', options?: ClusterOptions): ClusterAdapter {
-    const adapter = new ClusterAdapter(options || {});
+    // Enable lazy connection for Bull compatibility
+    const lazyOptions = { ...options, lazyConnect: true };
+    const adapter = new ClusterAdapter(lazyOptions);
     (adapter as any).clientType = type;
     
     if (type === 'bclient') {
       (adapter as any).enableBlockingOps = true;
     }
-    
-    // For Bull compatibility: return immediately, connect in background
-    setImmediate(() => {
-      (adapter as any).suppressBackgroundErrors = true;
-      adapter.connect().catch(err => {
-        adapter.emit('error', err);
-      });
-    });
     
     return adapter;
   }

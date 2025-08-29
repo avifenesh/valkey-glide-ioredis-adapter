@@ -28,8 +28,8 @@ const DISCOVERY_CACHE_TTL = 30000; // 30 seconds
 // Cache for standalone config to avoid repeated discovery logs
 let cachedStandaloneConfig: ServerConfig | null = null;
 let lastStandaloneConfigTime = 0;
-const STANDALONE_CONFIG_CACHE_TTL = 30000; // 30 seconds
-let hasLoggedDiscovery = false; // Flag to prevent repeated discovery logs
+const STANDALONE_CONFIG_CACHE_TTL = 0; // Disable caching for now
+// Remove unused variable
 
 // Global test utilities
 export const testUtils = {
@@ -63,26 +63,9 @@ export const testUtils = {
         return envConfig;
       }
 
-      // First try to find any existing Redis server
-      const result = await portUtils.findRedisServerOrPort();
-      
-      let config: ServerConfig;
-      
-      if (result.server) {
-        if (!hasLoggedDiscovery) {
-          hasLoggedDiscovery = true;
-        }
-        config = { host: result.server.host, port: result.server.port };
-      } else if (process.env.VALKEY_STANDALONE_HOST && process.env.VALKEY_STANDALONE_PORT) {
-        // If no server found, check environment variables as fallback
-        config = {
-          host: process.env.VALKEY_STANDALONE_HOST,
-          port: parseInt(process.env.VALKEY_STANDALONE_PORT, 10)
-        };
-      } else {
-        // Default to standard Redis port
-        config = { host: 'localhost', port: 6379 };
-      }
+      // For Bull/BeeQueue tests, always use standalone Redis on port 6379
+      // These libraries are not designed for cluster mode
+      const config = { host: 'localhost', port: 6379 };
       
       // Cache the result
       cachedStandaloneConfig = config;

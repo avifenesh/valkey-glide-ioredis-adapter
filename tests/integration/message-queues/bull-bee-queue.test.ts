@@ -16,23 +16,16 @@ describe('Message Queue Systems Integration', () => {
   const keyPrefix = 'TEST:queues:';
 
   beforeAll(async () => {
-    // Check if test servers are available
-    const serversAvailable = await testUtils.checkTestServers();
-    if (!serversAvailable) {
-      throw new Error('Test servers not available - Redis connection required for message queue integration tests');
-      return;
-    }
+    console.log('🔍 [BULL DEBUG] beforeAll: Skipping server discovery for Bull tests');
+    // For Bull tests, we'll use direct standalone config and assume Redis is available
+    // This avoids the port discovery that creates multiple RedisAdapter instances
   });
 
   beforeEach(async () => {
-    // Fail tests if servers are not available
-    const serversAvailable = await testUtils.checkTestServers();
-    if (!serversAvailable) {
-      throw new Error('Test servers not available - Redis connection required for message queue integration tests');
-    }
-
-    // Setup Redis client
-    const config = await testUtils.getStandaloneConfig();
+    console.log('🔍 [BULL DEBUG] beforeEach: Using direct standalone config');
+    
+    // Use direct standalone config to avoid port discovery
+    const config = { host: 'localhost', port: 6379 };
     redisClient = new RedisAdapter({
       ...config,
       keyPrefix: keyPrefix
@@ -61,19 +54,61 @@ describe('Message Queue Systems Integration', () => {
     let processor: any;
 
     beforeEach(async () => {
-      // Create Bull queue using our RedisAdapter via createClient
-      const config = await testUtils.getStandaloneConfig();
-      queue = new Queue('test-bull-queue', {
-        createClient: (_type: 'client' | 'subscriber' | 'bclient') => {
-          const client = new RedisAdapter({ ...config, keyPrefix: keyPrefix + 'bull:' });
-          // background connect like ioredis
-          client.connect().catch(err => client.emit('error', err));
-          return client as any;
-        }
-      });
+      console.log('🔗 [BULL DEBUG] Bull beforeEach STARTING');
+      try {
+        // Create Bull queue using our RedisAdapter via createClient with lazy connection
+        const config = { host: 'localhost', port: 6379 }; // Direct config to avoid server discovery
+        console.log('🔍 Bull using config:', config);
+        console.log('🔗 [BULL DEBUG] About to create Bull queue with createClient function');
+        queue = new Queue('test-bull-queue', {
+          createClient: (_type: 'client' | 'subscriber' | 'bclient') => {
+            console.log('🔗 [BULL DEBUG] *** createClient called for', _type, 'client type ***');
+            console.log('🔗 [BULL DEBUG] Creating', _type, 'client with config:', JSON.stringify(config, null, 2));
+            const options: any = { 
+              host: config.host, 
+              port: config.port,
+              keyPrefix: keyPrefix + 'bull:',
+              // CRITICAL: ALL Bull clients need to connect immediately
+              lazyConnect: false // No lazy connections for Bull clients
+            };
+            
+            // Set maxRetriesPerRequest to null for bclient and subscriber types (Bull requirement)
+            if (_type === 'bclient' || _type === 'subscriber') {
+              options.maxRetriesPerRequest = null;
+              console.log('🔗 [BULL DEBUG]', _type, 'client: maxRetriesPerRequest set to null');
+            }
+            
+            if (_type === 'bclient') {
+              console.log('🔗 [BULL DEBUG] BCLIENT: Using immediate connection (not lazy)');
+            }
+            
+            const client = new RedisAdapter(options);
+            console.log('🔗 [BULL DEBUG]', _type, 'client created, initial status:', client.status);
+            return client as any;
+          }
+        });
+        console.log('🔗 [BULL DEBUG] Bull queue created successfully');
 
-      // Setup default job processor (will be overridden in specific tests)
-      processor = jest.fn().mockResolvedValue({ processed: true });
+        // Add error event listener to debug issues
+        queue.on('error', (error) => {
+          console.log('🔗 [BULL DEBUG] Queue ERROR event:', error.message || 'No message');
+          console.log('🔗 [BULL DEBUG] Queue ERROR details:', JSON.stringify(error, null, 2));
+        });
+        
+        queue.on('failed', (job, err) => {
+          console.log('🔗 [BULL DEBUG] Job FAILED event:', job.id, 'error:', err.message);
+        });
+
+        // Setup default job processor (will be overridden in specific tests)
+        processor = jest.fn(async (job) => {
+          console.log('🔗 [BULL DEBUG] *** PROCESSOR CALLED *** with job ID:', job.id, 'data:', JSON.stringify(job.data, null, 2));
+          return { processed: true };
+        });
+        console.log('🔗 [BULL DEBUG] Bull beforeEach COMPLETED');
+      } catch (error) {
+        console.log('🔗 [BULL DEBUG] Bull beforeEach ERROR:', error);
+        throw error;
+      }
     });
 
     afterEach(async () => {
@@ -83,20 +118,33 @@ describe('Message Queue Systems Integration', () => {
     });
 
     test('should create and process simple jobs', async () => {
+      console.log('🔗 [BULL DEBUG] TEST STARTING - Checking queue.isReady()');
+      
       // Skip test if Bull can't connect properly
       try {
+        console.log('🔗 [BULL DEBUG] Calling queue.isReady()...');
         const testConnection = await Promise.race([
-          queue.isReady().then(() => true),
-          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000))
+          queue.isReady().then(() => {
+            console.log('🔗 [BULL DEBUG] queue.isReady() resolved successfully');
+            return true;
+          }),
+          new Promise<boolean>((resolve) => setTimeout(() => {
+            console.log('🔗 [BULL DEBUG] queue.isReady() TIMEOUT after 3 seconds');
+            resolve(false);
+          }, 3000))
         ]);
         
+        console.log('🔗 [BULL DEBUG] testConnection result:', testConnection);
         expect(testConnection).toBe(true);
       } catch (e) {
+        console.log('🔗 [BULL DEBUG] queue.isReady() ERROR:', e);
         throw e;
       }
       
       // Setup processor for this test
+      console.log('🔗 [BULL DEBUG] Setting up job processor');
       queue.process(processor);
+      console.log('🔗 [BULL DEBUG] Processor set up successfully');
       
       const jobData = {
         message: 'Hello Bull!',
@@ -104,19 +152,27 @@ describe('Message Queue Systems Integration', () => {
       };
 
       // Add job to queue
+      console.log('🔗 [BULL DEBUG] Adding job to queue with data:', jobData);
       const job = await queue.add('test-job', jobData);
+      console.log('🔗 [BULL DEBUG] Job added with ID:', job.id);
       expect(job.id).toBeDefined();
 
       // Wait for job to be processed with timeout
+      console.log('🔗 [BULL DEBUG] Waiting for job to be processed...');
       const processed = await Promise.race([
         new Promise<boolean>((resolve) => {
           queue.on('completed', completedJob => {
+            console.log('🔗 [BULL DEBUG] Job completed event received for job ID:', completedJob.id);
             if (completedJob.id === job.id) {
+              console.log('🔗 [BULL DEBUG] Target job completed successfully!');
               resolve(true);
             }
           });
         }),
-        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000))
+        new Promise<boolean>((resolve) => setTimeout(() => {
+          console.log('🔗 [BULL DEBUG] Job processing TIMEOUT after 8 seconds');
+          resolve(false);
+        }, 8000))
       ]);
       
       if (processed) {

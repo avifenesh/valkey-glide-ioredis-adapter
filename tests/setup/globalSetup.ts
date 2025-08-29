@@ -18,11 +18,16 @@ async function ensureValkeyCluster(): Promise<void> {
   const checks = await Promise.all(ports.map((p) => isPortOpen(p)));
   const allUp = checks.every(Boolean);
   if (allUp) return;
+  
+  // Use our script instead of Docker Compose
   try {
-    execSync('docker compose -f docker-compose.valkey-cluster.yml up -d', { stdio: 'inherit' });
+    console.log('Starting test servers using script...');
+    execSync('./scripts/start-test-servers.sh --force', { stdio: 'inherit' });
   } catch (e) {
-    try { execSync('docker-compose -f docker-compose.valkey-cluster.yml up -d', { stdio: 'inherit' }); } catch {}
+    console.warn('Could not start test servers with script, cluster tests may not work');
+    return;
   }
+  
   const start = Date.now();
   while (Date.now() - start < 60000) {
     const ready = (await Promise.all(ports.map((p) => isPortOpen(p)))).every(Boolean);
@@ -37,14 +42,23 @@ module.exports = async () => {
     return;
   }
 
-  // Discover responsive server
+  // Discover responsive server, prioritizing standalone over cluster
   try {
     await ensureValkeyCluster();
     const servers = await PortDiscovery.discoverRedisServers();
-    const responsive = servers.find(s => s.responsive);
-    if (responsive) {
-      process.env.REDIS_HOST = responsive.host;
-      process.env.REDIS_PORT = String(responsive.port);
+    
+    // Filter out cluster ports to prioritize standalone servers for REDIS_HOST/REDIS_PORT
+    const clusterPorts = [7000, 7001, 7002, 7003, 7004, 7005];
+    const standaloneServers = servers.filter(s => s.responsive && !clusterPorts.includes(s.port));
+    
+    // Prefer standalone servers, but fall back to cluster if none available
+    const preferredServer = standaloneServers.length > 0 ? 
+      (standaloneServers.find(s => s.port === 6379) || standaloneServers[0]) : 
+      servers.find(s => s.responsive);
+    
+    if (preferredServer) {
+      process.env.REDIS_HOST = preferredServer.host;
+      process.env.REDIS_PORT = String(preferredServer.port);
       // Expose cluster ports for tests that need them
       process.env.VALKEY_CLUSTER_PORT_1 = '7000';
       process.env.VALKEY_CLUSTER_PORT_2 = '7001';

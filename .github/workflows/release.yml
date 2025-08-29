@@ -2,104 +2,98 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: read # for checkout
 
 jobs:
   test:
-    name: Test before release
+    name: Test and Build
     runs-on: ubuntu-latest
+    
+    services:
+      redis:
+        image: valkey/valkey:7.2
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
 
-    - name: Install dependencies
-      run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Build project
-      run: npm run build
+      - name: Run linter
+        run: npm run lint
 
-    - name: Start Redis server
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y redis-server
-        sudo systemctl start redis-server
+      - name: Run type checking
+        run: npm run build
 
-    - name: Wait for Redis
-      run: |
-        timeout 30 bash -c 'until redis-cli ping; do sleep 1; done'
+      - name: Run tests with coverage
+        run: npm run test:coverage
+        env:
+          VALKEY_STANDALONE_HOST: localhost
+          VALKEY_STANDALONE_PORT: 6379
 
-    - name: Run tests
-      run: npm test
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: ./coverage/lcov.info
+          fail_ci_if_error: false
 
-  publish:
-    name: Publish to NPM
+  release:
+    name: Release
     needs: test
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: write # to be able to publish a GitHub release
+      issues: write # to be able to comment on released issues
+      pull-requests: write # to be able to comment on released pull requests
+      id-token: write # to enable use of OIDC for npm provenance
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
-        registry-url: 'https://registry.npmjs.org'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+          cache: 'npm'
 
-    - name: Install dependencies
-      run: npm ci
+      - name: Install dependencies
+        run: npm ci
 
-    - name: Build project
-      run: npm run build
+      - name: Build package
+        run: npm run build
 
-    - name: Publish to NPM
-      run: npm publish
-      env:
-        NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-  github-release:
-    name: Create GitHub Release
-    needs: test
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Extract version from tag
-      id: version
-      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-    - name: Create Release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ github.ref }}
-        release_name: Release v${{ steps.version.outputs.VERSION }}
-        body: |
-          ## Changes in v${{ steps.version.outputs.VERSION }}
-          
-          ### Features
-          - BullMQ compatibility with full test coverage
-          - Complete ioredis API compatibility
-          - Valkey GLIDE backend integration
-          
-          ### Bug Fixes
-          - Fixed Bull v3 compatibility with quit() method alias
-          - Improved test cleanup and Jest exit handling
-          - Enhanced Lua script argument handling for message queues
-          
-          ### Performance
-          - Optimized Redis command execution
-          - Improved connection management
-          
-          See [CHANGELOG.md](CHANGELOG.md) for full details.
-        draft: false
-        prerelease: ${{ contains(steps.version.outputs.VERSION, 'alpha') || contains(steps.version.outputs.VERSION, 'beta') || contains(steps.version.outputs.VERSION, 'rc') }}
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npx semantic-release

@@ -329,7 +329,7 @@ describe('ClusterAdapter - Basic Tests', () => {
   describe('Error Handling', () => {
     it('should handle connection errors gracefully', async () => {
       const cluster = new ClusterAdapter({
-        nodes: [{ host: 'invalid-host', port: 9999 }]
+        nodes: [{ host: 'localhost', port: 9999 }] // Non-existent port
       });
       
       let errorEmitted = false;

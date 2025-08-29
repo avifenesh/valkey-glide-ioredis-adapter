@@ -1,0 +1,69 @@
+# Source files (only publish compiled JS and types)
+src/
+tests/
+*.test.ts
+*.test.js
+*.spec.ts
+*.spec.js
+
+# Configuration files
+.github/
+.vscode/
+.idea/
+.cursor/
+coursorules/
+tsconfig.json
+jest.config.js
+.eslintrc.*
+.prettierrc.*
+.releaserc.json
+
+# Development scripts
+scripts/
+setup-cluster.sh
+stop-cluster.sh
+
+# Documentation that shouldn't be in package
+docs/
+CONTRIBUTING.md
+CLAUDE.md
+memory-bank/
+
+# Environment and test files (exclude from npm package)
+.env*
+docker-compose*.yml
+valkey-cluster/
+
+# Development artifacts
+coverage/
+.nyc_output/
+*.log
+*.tmp
+*.temp
+
+# Version control
+.git/
+.gitignore
+
+# Development dependencies artifacts
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+*.bak
+
+# Only include in npm package:
+# - dist/ (compiled JS and type definitions)
+# - README.md
+# - LICENSE
+# - package.json
+# - CHANGELOG.md (auto-generated)

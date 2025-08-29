@@ -1,0 +1,110 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please provide as much detail as possible to help us resolve the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is
+      placeholder: Describe the issue...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction Code
+      description: Minimal code example that reproduces the issue
+      placeholder: |
+        ```typescript
+        import { RedisAdapter } from 'valkey-glide-ioredis-adapter';
+        
+        const redis = new RedisAdapter({ host: 'localhost', port: 6379 });
+        // Your reproduction code here
+        ```
+      render: typescript
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should happen?
+      placeholder: Expected behavior...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happens? Include full error messages and stack traces.
+      placeholder: Actual behavior...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: library
+    attributes:
+      label: Library Integration
+      description: Which Redis library are you using?
+      options:
+        - None (direct usage)
+        - Bull
+        - BullMQ
+        - Socket.IO Redis Adapter
+        - Express Session (connect-redis)
+        - Rate Limit Redis
+        - Other (please specify)
+    validations:
+      required: true
+
+  - type: input
+    id: library-version
+    attributes:
+      label: Library Version
+      description: Version of the Redis library you're using (if applicable)
+      placeholder: e.g., bull@4.16.5
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Your development environment details
+      value: |
+        - Node.js version: 
+        - npm/yarn version: 
+        - OS: 
+        - Redis/Valkey version: 
+        - valkey-glide-ioredis-adapter version: 
+        - TypeScript version (if applicable): 
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs and Stack Traces
+      description: Any relevant logs, error messages, or stack traces
+      placeholder: Paste logs here...
+      render: text
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I have searched existing issues and discussions
+          required: true
+        - label: I have provided a minimal reproduction case
+          required: true
+        - label: I have included environment information
+          required: true

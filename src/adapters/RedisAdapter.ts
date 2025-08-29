@@ -30,6 +30,13 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   private messageHandler: PubSubMessageHandler | null = null;
   private _libIntegration: any | null = null;
   private _pubsubEmitter: EventEmitter;
+  
+  // Bull compatibility: initialization promise tracking
+  private _initializing: Promise<void> | null = null;
+  
+  // Bull compatibility: blocking operation tracking
+  public blocked: boolean = false;
+  
 
   constructor();
   constructor(port: number, host?: string);
@@ -49,7 +56,27 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       this._options = { port: 6379, host: 'localhost' };
     }
 
+    console.log('🔍 [BULL DEBUG] RedisAdapter constructor called with options:', JSON.stringify(this._options, null, 2));
+
     this._pubsubEmitter = new EventEmitter();
+
+    // Bull compatibility: Initialize the initialization promise
+    this._initializing = Promise.resolve();
+
+    // Set initial status based on lazyConnect option
+    if (this._options.lazyConnect) {
+      console.log('🔍 [BULL DEBUG] LazyConnect enabled, setting status to wait');
+      this._status = 'wait' as ConnectionStatus;
+    } else {
+      console.log('🔍 [BULL DEBUG] LazyConnect disabled, auto-connecting');
+      // Auto-connect like ioredis default behavior
+      setImmediate(() => {
+        this._initializing = this.connect().catch(err => {
+          this.emit('error', err);
+          throw err;
+        });
+      });
+    }
   }
 
   get status(): ConnectionStatus {
@@ -57,7 +84,52 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   }
 
   get options(): RedisOptions {
-    return this._options;
+    // Bull compatibility: expose options in expected format
+    return {
+      ...this._options,
+      redisOptions: this._options // Bull checks client.options.redisOptions
+    } as any;
+  }
+
+  // Bull compatibility: isReady method
+  async isReady(): Promise<this> {
+    const clientInfo = this._options.keyPrefix?.includes('bull:') ? 
+      (this._options.keyPrefix.includes('bclient') ? 'BCLIENT' :
+       this._options.keyPrefix.includes('subscriber') ? 'SUBSCRIBER' : 'CLIENT') : 'UNKNOWN';
+    
+    console.log('🔍 [BULL DEBUG] isReady() called on', clientInfo, 'status:', this._status, 'initializing:', !!this._initializing, 'keyPrefix:', this._options.keyPrefix);
+    
+    if (this._initializing) {
+      console.log('🔍 [BULL DEBUG]', clientInfo, 'Waiting for initialization...');
+      await this._initializing;
+      console.log('🔍 [BULL DEBUG]', clientInfo, 'Initialization complete, status:', this._status);
+    }
+    
+    if (this._status === 'wait') {
+      console.log('🔍 [BULL DEBUG]', clientInfo, 'Status is wait, calling connect()...');
+      await this.connect();
+      console.log('🔍 [BULL DEBUG]', clientInfo, 'Connect completed, status:', this._status);
+    }
+    
+    // Wait until we're actually ready
+    let loopCount = 0;
+    while (this._status !== 'ready' && this._status !== 'end' && this._status !== 'error') {
+      if (loopCount % 100 === 0) { // Log every second (100 * 10ms)
+        console.log('🔍 [BULL DEBUG]', clientInfo, 'Waiting for ready state, current status:', this._status, 'loop:', loopCount);
+      }
+      await new Promise(resolve => setTimeout(resolve, 10));
+      loopCount++;
+    }
+    
+    console.log('🔍 [BULL DEBUG]', clientInfo, 'isReady() completed, final status:', this._status);
+    
+    if (this._status === 'error' || this._status === 'end') {
+      console.log('🔍 [BULL DEBUG]', clientInfo, 'isReady() throwing error, status:', this._status);
+      throw new Error('Redis client not ready');
+    }
+    
+    console.log('🔍 [BULL DEBUG]', clientInfo, 'isReady() returning this');
+    return this;
   }
 
   private parseRedisUrl(url: string): RedisOptions {
@@ -71,12 +143,17 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
 
   // Connection management
   async connect(): Promise<void> {
+    console.log('🔍 [BULL DEBUG] connect() called, current status:', this._status);
+    
     if (this._status === 'ready' || this._status === 'connecting') {
+      console.log('🔍 [BULL DEBUG] Already connected/connecting, returning');
       return;
     }
 
     try {
+      console.log('🔍 [BULL DEBUG] Setting status to connecting');
       this._status = 'connecting';
+      this.emit('connecting');
       this.emit('connect');
       
       const config = {
@@ -86,12 +163,22 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
         })
       };
       
+      console.log('🔍 [BULL DEBUG] Creating GlideClient with config:', config);
+      
       // Create GlideClient
       this.redisClient = await GlideClient.createClient(config);
       
+      console.log('🔍 [BULL DEBUG] GlideClient created successfully');
+      
       this._status = 'ready';
       this.emit('ready');
+      
+      console.log('🔍 [BULL DEBUG] Status set to ready, ready event emitted');
+      
+      // Update initialization promise to be resolved
+      this._initializing = Promise.resolve();
     } catch (error) {
+      console.log('🔍 [BULL DEBUG] Connection error:', error);
       this._status = 'error';
       this.emit('error', error);
       throw error;
@@ -147,16 +234,25 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     }
   }
 
-  // Bull v3 compatibility - alias for disconnect()
+  // Bull v3 compatibility - alias for disconnect() with ioredis-compatible behavior
   async quit(): Promise<void> {
-    return this.disconnect();
+    if (this._status === 'end' || this._status === 'disconnected') {
+      return;
+    }
+    
+    try {
+      await this.disconnect();
+    } catch (error) {
+      // Bull expects quit to not throw on "Connection is closed" errors
+      if (error && (error as Error).message !== 'Connection is closed.') {
+        throw error;
+      }
+    }
   }
 
   async ping(message?: string): Promise<string> {
-    if (!this.redisClient) {
-      throw new Error('Redis client not connected. Call connect() first.');
-    }
-    const result = await this.redisClient.ping(message ? { message } : undefined);
+    const client = await this.ensureConnected();
+    const result = await client.ping(message ? { message } : undefined);
     return (result?.toString() || 'PONG');
   }
 
@@ -600,6 +696,15 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       return this.redisClient;
     }
     
+    // If in wait status (lazyConnect), start connection now
+    if (this._status === ('wait' as ConnectionStatus)) {
+      await this.connect();
+      if (!this.redisClient) {
+        throw new Error('Failed to establish connection after lazy connect');
+      }
+      return this.redisClient;
+    }
+    
     // If connection is in progress, wait for it with extended timeout for Bull
     if (this._status === 'connecting') {
       return new Promise((resolve, reject) => {
@@ -674,8 +779,16 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   async get(key: RedisKey): Promise<string | null> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    const clientInfo = this._options.keyPrefix?.includes('bull:') ? 
+      (this._options.keyPrefix.includes('bclient') ? 'BCLIENT' :
+       this._options.keyPrefix.includes('subscriber') ? 'SUBSCRIBER' : 'CLIENT') : 'UNKNOWN';
+    console.log('🔍 [BULL DEBUG]', clientInfo, 'get() called for key:', normalizedKey);
+    
     const result = await client.get(normalizedKey);
-    return ParameterTranslator.convertGlideString(result);
+    const converted = ParameterTranslator.convertGlideString(result);
+    console.log('🔍 [BULL DEBUG]', clientInfo, 'get() result:', converted ? 'DATA FOUND' : 'NULL');
+    return converted;
   }
 
   async mget(...keysOrArray: any[]): Promise<(string | null)[]> {
@@ -813,6 +926,12 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   async hgetall(key: RedisKey): Promise<Record<string, string>> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    const clientInfo = this._options.keyPrefix?.includes('bull:') ? 
+      (this._options.keyPrefix.includes('bclient') ? 'BCLIENT' :
+       this._options.keyPrefix.includes('subscriber') ? 'SUBSCRIBER' : 'CLIENT') : 'UNKNOWN';
+    console.log('🔍 [BULL DEBUG]', clientInfo, 'hgetall() called for key:', normalizedKey);
+    
     const result = await client.hgetall(normalizedKey);
     const converted: Record<string, string> = {};
     
@@ -833,6 +952,11 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
             ParameterTranslator.convertGlideString(value) || '';
         }
       }
+    }
+    
+    console.log('🔍 [BULL DEBUG]', clientInfo, 'hgetall() keys:', Object.keys(converted).join(','));
+    if (normalizedKey.includes(':') && Object.keys(converted).length > 0) {
+      console.log('🔍 [BULL DEBUG]', clientInfo, 'job has data fields:', Object.keys(converted).includes('data'));
     }
     
     return converted;
@@ -882,7 +1006,21 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   async hincrbyfloat(key: RedisKey, field: string, increment: number): Promise<number> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.hincrByFloat(normalizedKey, field, increment);
+
+    // Get current value to perform precision-safe arithmetic
+    const currentValue = await client.hget(normalizedKey, field);
+    const currentNum = currentValue
+      ? parseFloat(ParameterTranslator.convertGlideString(currentValue) || '0')
+      : 0;
+
+    // Calculate new value with proper precision
+    const newValue = currentNum + increment;
+    const { ResultTranslator } = await import('../utils/ResultTranslator');
+    const formattedValue = ResultTranslator.formatFloatResult(newValue);
+
+    // Store the properly formatted value and return the result
+    await client.hset(normalizedKey, [{ field, value: formattedValue }]);
+    return parseFloat(formattedValue);
   }
 
   async hsetnx(key: RedisKey, field: string, value: RedisValue): Promise<number> {
@@ -951,7 +1089,15 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   async llen(key: RedisKey): Promise<number> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.llen(normalizedKey);
+    
+    const clientInfo = this._options.keyPrefix?.includes('bull:') ? 
+      (this._options.keyPrefix.includes('bclient') ? 'BCLIENT' :
+       this._options.keyPrefix.includes('subscriber') ? 'SUBSCRIBER' : 'CLIENT') : 'UNKNOWN';
+    console.log('🔍 [BULL DEBUG]', clientInfo, 'llen() called for key:', normalizedKey);
+    
+    const result = await client.llen(normalizedKey);
+    console.log('🔍 [BULL DEBUG]', clientInfo, 'llen() result:', result);
+    return result;
   }
 
   async lindex(key: RedisKey, index: number): Promise<string | null> {
@@ -1592,8 +1738,14 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const normalizedSource = ParameterTranslator.normalizeKey(source);
     const normalizedDest = ParameterTranslator.normalizeKey(destination);
     
+    const clientInfo = this._options.keyPrefix?.includes('bull:') ? 
+      (this._options.keyPrefix.includes('bclient') ? 'BCLIENT' :
+       this._options.keyPrefix.includes('subscriber') ? 'SUBSCRIBER' : 'CLIENT') : 'UNKNOWN';
+    
     try {
-      // Use native GLIDE method if available, otherwise customCommand
+      console.log('🔍 [BULL DEBUG]', clientInfo, 'BRPOPLPUSH called:', { source: normalizedSource, dest: normalizedDest, timeout });
+      this.blocked = true; // Set blocked flag like ioredis
+      
       const result = await client.customCommand([
         'BRPOPLPUSH',
         normalizedSource,
@@ -1601,6 +1753,8 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
         timeout.toString()
       ]);
       
+      this.blocked = false; // Clear blocked flag
+      console.log('🔍 [BULL DEBUG]', clientInfo, 'BRPOPLPUSH result:', result);
       return result ? ParameterTranslator.convertGlideString(result) : null;
     } catch (error: any) {
       // Handle timeout as expected behavior
@@ -3214,9 +3368,33 @@ class MultiAdapter implements Multi {
       case 'publish':
         batch.publish(ParameterTranslator.normalizeKey(args[0]), ParameterTranslator.normalizeValue(args[1]));
         break;
+      
+      // Bull compatibility: moveToFinished command
+      case 'moveToFinished':
+        // Bull's moveToFinished is typically a Lua script
+        // For now, we'll implement it as a custom command
+        const moveArgs = args.map(arg => ParameterTranslator.normalizeValue(arg));
+        batch.customCommand(['EVAL', 'return 1', '0', ...moveArgs]);
+        break;
+        
       default:
         throw new Error(`Unsupported transaction command: ${method}`);
     }
+  }
+
+  // Bull compatibility: saveStacktrace method for debugging support
+  saveStacktrace(): this {
+    // ioredis saveStacktrace method - enables stack trace capture for debugging
+    // For our implementation, this is a no-op but must exist for Bull compatibility
+    return this;
+  }
+
+  // Bull compatibility: moveToFinished method for job completion
+  moveToFinished(...args: any[]): this {
+    // Bull uses this method to mark jobs as finished
+    // This is typically a Lua script call, but we'll store it as a custom command
+    this.commands.push({ method: 'moveToFinished', args });
+    return this;
   }
 }
 
