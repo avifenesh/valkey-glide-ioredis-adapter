@@ -731,12 +731,7 @@ describe('Message Queue Systems Integration', () => {
         const completed = await queue.getCompleted();
         const failed = await queue.getFailed();
         
-        // Bull queue status check: {
-          waiting: waiting.length,
-          active: active.length,
-          completed: completed.length,
-          failed: failed.length
-        });
+        // Bull queue status check completed
         
         // Test passes if we can at least interact with Bull's APIs (shows basic compatibility)
         expect(typeof waiting.length).toBe('number');
