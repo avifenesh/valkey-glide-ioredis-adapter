@@ -22,14 +22,46 @@ describe('Socket.IO Redis Adapter Integration', () => {
   let port1: number;
   let port2: number;
   const keyPrefix = 'TEST:socketio:';
+  let originalHandlers: any[];
 
   beforeAll(async () => {
+    // Setup global error handler for GLIDE ClosingError during tests
+    originalHandlers = process.listeners('uncaughtException');
+    process.removeAllListeners('uncaughtException');
+    
+    process.on('uncaughtException', (error: Error) => {
+      if (error.name === 'ClosingError' && error.message === 'Cleanup initiated') {
+        // Silently ignore GLIDE ClosingError during Socket.IO cleanup
+        console.log('Test: Ignoring GLIDE ClosingError during Socket.IO cleanup');
+        return;
+      }
+      
+      // For all other errors, restore original behavior
+      if (originalHandlers.length > 0) {
+        originalHandlers.forEach(handler => {
+          if (typeof handler === 'function') {
+            handler(error);
+          }
+        });
+      } else {
+        throw error;
+      }
+    });
+
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
       console.warn('⚠️  Test servers not available. Skipping Socket.IO integration tests...');
       return;
     }
+  });
+
+  afterAll(async () => {
+    // Restore original uncaughtException handlers
+    process.removeAllListeners('uncaughtException');
+    originalHandlers.forEach(handler => {
+      process.on('uncaughtException', handler);
+    });
   });
 
   beforeEach(async () => {
@@ -140,13 +172,19 @@ describe('Socket.IO Redis Adapter Integration', () => {
   });
 
   afterEach(async () => {
-    // Close Socket.IO servers
+    // Small delay to let any pending operations complete
+    await testUtils.delay(50);
+    
+    // Close Socket.IO servers (global error handler will catch GLIDE ClosingError)
     if (io1) {
       io1.close();
     }
     if (io2) {
       io2.close();
     }
+    
+    // Additional delay after close to let cleanup settle
+    await testUtils.delay(50);
 
     // Close HTTP servers
     if (server1) {

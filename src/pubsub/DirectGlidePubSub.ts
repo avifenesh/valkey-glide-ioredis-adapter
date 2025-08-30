@@ -9,10 +9,10 @@
 import { 
   GlideClient, 
   GlideClientConfiguration, 
-  PubSubMsg, 
-  ProtocolVersion 
+  PubSubMsg
 } from '@valkey/valkey-glide';
 import { RedisOptions } from '../types';
+import { asyncClose } from '../utils/GlideUtils';
 
 export interface PubSubClients {
   publisher: GlideClient;
@@ -28,46 +28,107 @@ export interface PubSubMessage {
 /**
  * Create separate publisher and subscriber clients
  */
+// Store callback functions for subscribers
+const subscriberCallbacks = new Map<GlideClient, (msg: PubSubMessage) => void>();
+
 export async function createPubSubClients(
   options: RedisOptions,
   subscriptions: {
     channels?: string[];
     patterns?: string[];
-  }
+  },
+  messageCallback?: (msg: PubSubMessage) => void
 ): Promise<PubSubClients> {
-  const baseConfig: GlideClientConfiguration = {
+  // Create publisher config (simple, no subscriptions needed)
+  const publisherConfig: GlideClientConfiguration = {
     addresses: [{ host: options.host || 'localhost', port: options.port || 6379 }],
-    protocol: ProtocolVersion.RESP3,
+    clientName: `pubsub-publisher-${Date.now()}`,
+    databaseId: options.db || 0,
   };
-
-  // Create publisher client (regular client)
-  const publisher = await GlideClient.createClient(baseConfig);
-
-  // Create subscriber client with subscriptions
+  
+  // Create subscriber config (simple, with callback mechanism)
   const subscriberConfig: GlideClientConfiguration = {
-    ...baseConfig,
-    pubsubSubscriptions: {
-      channelsAndPatterns: {}
-    }
+    addresses: [{ host: options.host || 'localhost', port: options.port || 6379 }],
+    clientName: `pubsub-subscriber-${Date.now()}`,
+    databaseId: options.db || 0,
   };
+  
+  const hasChannels = subscriptions.channels && subscriptions.channels.length > 0;
+  const hasPatterns = subscriptions.patterns && subscriptions.patterns.length > 0;
+  
+  if (hasChannels || hasPatterns) {
+    // Use GLIDE's callback mechanism - the correct way!
+    subscriberConfig.pubsubSubscriptions = {
+      channelsAndPatterns: {},
+      callback: (msg: PubSubMsg, context: any) => {
+        // Convert GLIDE message format to our format
+        const convertedMessage: PubSubMessage = {
+          channel: String(msg.channel),
+          message: String(msg.message)
+        };
+        
+        if (msg.pattern) {
+          convertedMessage.pattern = String(msg.pattern);
+        }
+        
+        console.log(`📨 GLIDE Callback: ${convertedMessage.channel} -> ${convertedMessage.message}`);
+        
+        // Call the stored callback for this subscriber
+        const callback = subscriberCallbacks.get(context.subscriber);
+        if (callback) {
+          callback(convertedMessage);
+        }
+      },
+      context: {} // Will be set after subscriber creation
+    };
 
-  // Add exact channels
-  if (subscriptions.channels && subscriptions.channels.length > 0) {
-    subscriberConfig.pubsubSubscriptions!.channelsAndPatterns![
-      GlideClientConfiguration.PubSubChannelModes.Exact
-    ] = new Set(subscriptions.channels);
+    // Add exact channels
+    if (hasChannels) {
+      subscriberConfig.pubsubSubscriptions!.channelsAndPatterns![
+        GlideClientConfiguration.PubSubChannelModes.Exact
+      ] = new Set(subscriptions.channels);
+    }
+
+    // Add pattern channels
+    if (hasPatterns) {
+      subscriberConfig.pubsubSubscriptions!.channelsAndPatterns![
+        GlideClientConfiguration.PubSubChannelModes.Pattern
+      ] = new Set(subscriptions.patterns);
+    }
   }
 
-  // Add pattern channels
-  if (subscriptions.patterns && subscriptions.patterns.length > 0) {
-    subscriberConfig.pubsubSubscriptions!.channelsAndPatterns![
-      GlideClientConfiguration.PubSubChannelModes.Pattern
-    ] = new Set(subscriptions.patterns);
+  try {
+    // Create publisher first (no subscription dependencies)
+    const publisher = await GlideClient.createClient(publisherConfig);
+    
+    // For subscriber, we need to set up the context BEFORE creating the client
+    // Create a placeholder context that will hold the subscriber reference
+    const subscriberContext: { subscriber?: GlideClient } = {};
+    
+    if (subscriberConfig.pubsubSubscriptions) {
+      subscriberConfig.pubsubSubscriptions.context = subscriberContext;
+    }
+    
+    // Create subscriber client
+    const subscriber = await GlideClient.createClient(subscriberConfig);
+    
+    // Now set the subscriber reference in the context
+    subscriberContext.subscriber = subscriber;
+    
+    // Store the message callback for this subscriber
+    if (messageCallback) {
+      subscriberCallbacks.set(subscriber, messageCallback);
+    }
+    
+    // Simple connection validation
+    await publisher.ping();
+    await subscriber.ping();
+    
+    console.log('✅ PubSub clients created with GLIDE callback mechanism');
+    return { publisher, subscriber };
+  } catch (error) {
+    throw new Error(`GLIDE PubSub client creation failed: ${error instanceof Error ? error.message : String(error)}`);
   }
-
-  const subscriber = await GlideClient.createClient(subscriberConfig);
-
-  return { publisher, subscriber };
 }
 
 /**
@@ -98,6 +159,7 @@ export async function pollForMessage(
     ]);
 
     if (message) {
+      console.log(`🔍 GLIDE Message: ${message.channel} -> ${message.message}`);
       const result: PubSubMessage = {
         channel: String(message.channel),
         message: String(message.message)
@@ -118,7 +180,6 @@ export async function pollForMessage(
         return null; // Client is closing, stop polling
       }
     }
-    console.error('Error polling for message:', error);
     return null;
   }
 }
@@ -158,11 +219,13 @@ export async function createPollingLoop(
 }
 
 /**
- * Cleanup pub/sub clients
+ * Cleanup pub/sub clients with async close
  */
-export function cleanupPubSubClients(clients: PubSubClients): void {
-  clients.publisher.close();
-  clients.subscriber.close();
+export async function cleanupPubSubClients(clients: PubSubClients): Promise<void> {
+  await Promise.all([
+    asyncClose(clients.publisher, 'Publisher cleanup'),
+    asyncClose(clients.subscriber, 'Subscriber cleanup')
+  ]);
 }
 
 /**
@@ -219,10 +282,10 @@ async function example() {
  */
 export class LibraryGlideIntegration {
   private clients: PubSubClients | null = null;
-  private pollingActive = false;
   private channels = new Set<string>();
   private patterns = new Set<string>();
   private onMessageCallback: ((msg: PubSubMessage) => void) | null = null;
+  private isShuttingDown = false;
 
   constructor(onMessage?: (msg: PubSubMessage) => void) {
     if (onMessage) this.onMessageCallback = onMessage;
@@ -236,54 +299,28 @@ export class LibraryGlideIntegration {
     const channels = Array.isArray(subs) ? subs : (subs.channels || []);
     const patterns = Array.isArray(subs) ? [] : (subs.patterns || []);
 
+    console.log(`🔧 LibraryGlideIntegration initializing with GLIDE callback mechanism`);
+    console.log(`🔧 Channels: ${JSON.stringify(channels)}, patterns: ${JSON.stringify(patterns)}`);
+
     this.channels = new Set(channels.map(String));
     this.patterns = new Set(patterns.map(String));
 
+    // Use the GLIDE callback mechanism instead of polling
     this.clients = await createPubSubClients(options, {
       channels: Array.from(this.channels),
       patterns: Array.from(this.patterns),
+    }, (message: PubSubMessage) => {
+      // This callback will be called directly by GLIDE
+      console.log(`🎯 LibraryGlideIntegration callback: ${message.channel} -> ${message.message}`);
+      if (this.onMessageCallback) {
+        this.onMessageCallback(message);
+      }
     });
-    this.pollingActive = true;
-
-    // Start polling in background
-    this.startPolling();
+    
+    console.log(`✅ LibraryGlideIntegration initialized with GLIDE callbacks`);
   }
 
-  private async startPolling() {
-    if (!this.clients) return;
-
-    const poll = async () => {
-      if (!this.pollingActive || !this.clients) return;
-
-      try {
-        const message = await pollForMessage(this.clients.subscriber);
-        if (message && this.pollingActive) {
-          this.handleLibraryMessage(message);
-        }
-      } catch (error) {
-        // Stop polling if client is closing
-        if (error && typeof error === 'object' && 'name' in error && error.name === 'ClosingError') {
-          this.pollingActive = false;
-          return;
-        }
-        // Otherwise continue polling
-      }
-
-      if (this.pollingActive) {
-        setImmediate(poll);
-      }
-    };
-
-    setImmediate(poll);
-  }
-
-  private handleLibraryMessage(message: PubSubMessage) {
-    if (this.onMessageCallback) {
-      this.onMessageCallback(message);
-    } else {
-      console.log('Library message:', message.channel, message.message);
-    }
-  }
+  // Polling is no longer needed - GLIDE callbacks handle message delivery
 
   async publish(channel: string, message: string): Promise<number> {
     if (!this.clients) throw new Error('Not initialized');
@@ -298,17 +335,39 @@ export class LibraryGlideIntegration {
   }
 
   async updateSubscriptions(options: RedisOptions, updates: { addChannels?: string[]; removeChannels?: string[]; addPatterns?: string[]; removePatterns?: string[] }) {
+    // Skip updates during shutdown
+    if (this.isShuttingDown) {
+      return;
+    }
+
     // Update sets
     (updates.addChannels || []).forEach(c => this.channels.add(String(c)));
     (updates.removeChannels || []).forEach(c => this.channels.delete(String(c)));
     (updates.addPatterns || []).forEach(p => this.patterns.add(String(p)));
     (updates.removePatterns || []).forEach(p => this.patterns.delete(String(p)));
 
+    // For removal operations during cleanup (like punsubscribe), skip reinitialization 
+    // if we're only removing subscriptions and have no channels/patterns left
+    const hasRemainingSubscriptions = this.channels.size > 0 || this.patterns.size > 0;
+    const isRemovalOnly = (updates.removeChannels || updates.removePatterns) && 
+                          !updates.addChannels && !updates.addPatterns;
+    
+    if (isRemovalOnly && !hasRemainingSubscriptions) {
+      // Just mark for cleanup without recreating clients
+      console.log('🔧 Skipping reinitialization during cleanup - no subscriptions remain');
+      return;
+    }
+
     // Recreate clients to apply new subscriptions
     await this.reinitialize(options);
   }
 
   private async reinitialize(options: RedisOptions) {
+    // Skip reinitialization during shutdown
+    if (this.isShuttingDown) {
+      return;
+    }
+
     const currentHandler = this.onMessageCallback;
     await this.cleanup();
     this.onMessageCallback = currentHandler || null;
@@ -316,11 +375,16 @@ export class LibraryGlideIntegration {
   }
 
   async cleanup() {
-    this.pollingActive = false;
-    // Small delay to let polling complete
-    await new Promise(resolve => setTimeout(resolve, 10));
+    this.isShuttingDown = true;
     if (this.clients) {
-      cleanupPubSubClients(this.clients);
+      // Remove the callback from our storage
+      subscriberCallbacks.delete(this.clients.subscriber);
+      try {
+        await cleanupPubSubClients(this.clients);
+      } catch (error) {
+        // Ignore cleanup errors - this can happen during shutdown
+        console.log('🔧 Cleanup warning (ignored):', error instanceof Error ? error.constructor.name : 'Unknown');
+      }
       this.clients = null;
     }
   }

@@ -1,7 +1,7 @@
 {
   "name": "valkey-glide-ioredis-adapter",
   "version": "0.3.0",
-  "description": "🎯 TRUE Drop-in ioredis replacement with 100% compatibility. Powered by Valkey GLIDE's Rust core. Complete Valkey JSON/Search module support. Zero code changes required.",
+  "description": "🎯 TRUE Drop-in ioredis replacement with comprehensive compatibility. Powered by Valkey GLIDE's Rust core. Complete Valkey JSON/Search module support. Zero code changes required for most use cases.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {

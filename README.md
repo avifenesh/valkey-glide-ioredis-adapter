@@ -13,14 +13,14 @@
 [![Express Sessions](https://img.shields.io/badge/Express%20Sessions-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/expressjs/session)
 [![Rate Limiting](https://img.shields.io/badge/Rate%20Limiting-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/express-rate-limit/express-rate-limit)
 
-[![JSON Module](https://img.shields.io/badge/ValkeyJSON-✅%20100%25%20(31/31)-orange?style=flat-square)](https://github.com/valkey-io/valkey-json)
-[![Search Module](https://img.shields.io/badge/Valkey%20Search-✅%20100%25%20(21/21)-orange?style=flat-square)](https://github.com/valkey-io/valkey-search)
+[![JSON Module](https://img.shields.io/badge/ValkeyJSON-✅%20Complete%20(31/31)-orange?style=flat-square)](https://github.com/valkey-io/valkey-json)
+[![Search Module](https://img.shields.io/badge/Valkey%20Search-✅%20Complete%20(21/21)-orange?style=flat-square)](https://github.com/valkey-io/valkey-search)
 [![Vector Search](https://img.shields.io/badge/Vector%20Search-🤖%20AI%20Ready-purple?style=flat-square)](#vector-similarity-search)
-[![Real-World Patterns](https://img.shields.io/badge/Real--World%20Patterns-✅%20100%25%20(19/19)-brightgreen?style=flat-square)](#-real-world-compatibility-validation)
+[![Real-World Patterns](https://img.shields.io/badge/Real--World%20Patterns-✅%20Validated%20(19/19)-brightgreen?style=flat-square)](#-real-world-compatibility-validation)
 
 > **🎯 TRUE DROP-IN REPLACEMENT** powered by **Valkey GLIDE**'s high-performance Rust core
 > 
-> **100% Compatibility Validated** across JSON, Search, and real-world production patterns
+> **Comprehensive Compatibility Validated** across JSON, Search, and real-world production patterns
 
 A production-ready, **completely compatible** ioredis replacement that seamlessly integrates **Valkey GLIDE** with your existing Node.js applications. **Zero code changes required** - achieve superior performance while maintaining full API compatibility.
 
@@ -32,14 +32,14 @@ This project uses **exclusively Valkey GLIDE** - a high-performance, language-in
 
 | Feature | Status | Coverage | Tests |
 |---------|---------|----------|-------|
-| **Core Redis Commands** | ✅ **100%** | All major operations | 19/19 real-world patterns |
-| **ValkeyJSON Module** | ✅ **100%** | Complete RedisJSON v2 API | 31/31 commands |
-| **Valkey Search Module** | ✅ **100%** | Full RediSearch compatibility | 21/21 operations |
-| **Bull/BullMQ Integration** | ✅ **100%** | Job queues & scheduling | All integration tests |
-| **Express Sessions** | ✅ **100%** | Session store patterns | Validated |
-| **Socket.IO** | ✅ **100%** | Real-time applications | Validated |
-| **Rate Limiting** | ✅ **100%** | Express rate limiting | Validated |
-| **Vector Search** | ✅ **100%** | AI/ML applications | KNN & similarity |
+| **Core Redis Commands** | ✅ **Complete** | All major operations | 19/19 real-world patterns |
+| **ValkeyJSON Module** | ✅ **Complete** | Complete RedisJSON v2 API | 31/31 commands |
+| **Valkey Search Module** | ✅ **Complete** | Full RediSearch compatibility | 21/21 operations |
+| **Bull/BullMQ Integration** | ✅ **Validated** | Job queues & scheduling | All integration tests |
+| **Express Sessions** | ✅ **Validated** | Session store patterns | Validated |
+| **Socket.IO** | ✅ **Validated** | Real-time applications | Validated |
+| **Rate Limiting** | ✅ **Validated** | Express rate limiting | Validated |
+| **Vector Search** | ✅ **Complete** | AI/ML applications | KNN & similarity |
 
 ## 🚀 **Key Features**
 
@@ -51,7 +51,7 @@ This project uses **exclusively Valkey GLIDE** - a high-performance, language-in
 - **📄 JSON Module Support**: Native JSON document storage and querying (ValkeyJSON / RedisJSON v2 compatible)
 - **🔍 Search Module Support**: Full-text search, vector similarity, and aggregations (Valkey Search / RediSearch compatible)
 - **🤖 AI-Ready**: Vector embeddings and similarity search for machine learning applications
-- **📊 100% Tested**: Comprehensive validation across real-world usage patterns
+- **📊 Thoroughly Tested**: Comprehensive validation across real-world usage patterns
 
 ## 📋 **Pub/Sub Implementation**
 
@@ -240,16 +240,16 @@ We've validated our adapter against **19 real-world usage patterns** found in pr
 
 | Pattern Category | Examples | Status |
 |------------------|----------|---------|
-| **Basic Operations** | String operations, complex operations with `WITHSCORES` | ✅ 100% |
-| **Hash Operations** | Object-based `hset`, individual operations, analytics | ✅ 100% |
-| **Bull Queue Integration** | Job serialization, configuration patterns | ✅ 100% |
-| **Session Store** | Express sessions with TTL, user data storage | ✅ 100% |
-| **Caching Patterns** | JSON serialization, cache miss/hit patterns | ✅ 100% |
-| **Analytics & Counters** | Page views, user activity tracking | ✅ 100% |
-| **Task Queues** | List-based queues with `lpush`/`rpop` | ✅ 100% |
-| **Rate Limiting** | Sliding window with sorted sets | ✅ 100% |
-| **Pub/Sub** | Channel subscriptions and publishing | ✅ 100% |
-| **Error Handling** | Connection resilience, type mismatches | ✅ 100% |
+| **Basic Operations** | String operations, complex operations with `WITHSCORES` | ✅ Validated |
+| **Hash Operations** | Object-based `hset`, individual operations, analytics | ✅ Validated |
+| **Bull Queue Integration** | Job serialization, configuration patterns | ✅ Validated |
+| **Session Store** | Express sessions with TTL, user data storage | ✅ Validated |
+| **Caching Patterns** | JSON serialization, cache miss/hit patterns | ✅ Validated |
+| **Analytics & Counters** | Page views, user activity tracking | ✅ Validated |
+| **Task Queues** | List-based queues with `lpush`/`rpop` | ✅ Validated |
+| **Rate Limiting** | Sliding window with sorted sets | ✅ Validated |
+| **Pub/Sub** | Channel subscriptions and publishing | ✅ Validated |
+| **Error Handling** | Connection resilience, type mismatches | ✅ Validated |
 
 ### **📊 Test Coverage Breakdown**
 

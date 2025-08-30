@@ -555,6 +555,54 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
   });
 
   describe('Error Handling and Edge Cases', () => {
+    test('DEBUG: core subscription and publish test', async () => {
+      const messages: string[] = [];
+      
+      console.log('\n🔍 DEBUG: Starting core pubsub test');
+      console.log(`Publisher config: ${JSON.stringify(await getRedisTestConfig())}`);
+      console.log(`Subscriber config: ${JSON.stringify(await getRedisTestConfig())}`);
+      
+      // Test connection first
+      try {
+        console.log('📡 Testing publisher connection...');
+        const publisherPing = await publisher.ping();
+        console.log(`Publisher ping result: ${publisherPing}`);
+        
+        console.log('📡 Testing subscriber connection...');
+        const subscriberPing = await subscriber.ping();
+        console.log(`Subscriber ping result: ${subscriberPing}`);
+      } catch (error) {
+        console.error('❌ Connection test failed:', error);
+        throw error;
+      }
+      
+      // Subscribe to channels that may not receive messages
+      console.log('📞 Subscribing to channels...');
+      const subResult = await subscriber.subscribe('debug:test:1', 'debug:test:2');
+      console.log(`Subscription result: ${subResult}`);
+      
+      subscriber.on('message', (_channel: string, message: string) => {
+        console.log(`📨 Received message: ${_channel} -> ${message}`);
+        messages.push(message);
+      });
+
+      // Wait for subscription to settle
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Now send a message to verify subscription works
+      console.log('📤 Publishing test message...');
+      const publishResult = await publisher.publish('debug:test:1', 'test message');
+      console.log(`Publish result: ${publishResult}`);
+      
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      console.log(`Final messages received: ${messages.length}`);
+      console.log('Messages:', messages);
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).toBe('test message');
+    });
+
     test('should handle subscription to non-existent channels', async () => {
       const messages: string[] = [];
       

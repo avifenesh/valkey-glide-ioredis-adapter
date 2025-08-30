@@ -18,6 +18,7 @@ import {
 import { ParameterTranslator } from '../utils/ParameterTranslator';
 import { ResultTranslator } from '../utils/ResultTranslator';
 import { PubSubMessageHandler } from './PubSubMessageHandler';
+import { asyncClose } from '../utils/GlideUtils';
 import { JsonCommands } from './commands/JsonCommands';
 import { SearchCommands, SearchIndex, SearchQuery, SearchResult } from './commands/SearchCommands';
 
@@ -47,6 +48,9 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   constructor(url: string);
   constructor(portOrOptions?: number | RedisOptions | string, host?: string) {
     super();
+    
+    // Increase max listeners to handle multiple concurrent operations
+    this.setMaxListeners(50);
     
     // Parse constructor arguments (ioredis style)
     if (typeof portOrOptions === 'number') {
@@ -186,16 +190,26 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       // Clean up subscriber client
       if (this.subscriberClient) {
         try {
-          await this.subscriberClient.close();
+          await asyncClose(this.subscriberClient, 'Subscriber disconnect');
         } catch (error) {
           console.warn('Warning: Error closing subscriber client:', error);
         }
         this.subscriberClient = null;
       }
       
+      // Clean up LibraryGlideIntegration
+      if (this._libIntegration) {
+        try {
+          await this._libIntegration.cleanup();
+        } catch (error) {
+          console.warn('Warning: Error cleaning up LibraryGlideIntegration:', error);
+        }
+        this._libIntegration = null;
+      }
+      
       // Disconnect from Redis
       if (this.redisClient) {
-        await this.redisClient.close();
+        await asyncClose(this.redisClient, 'Main client disconnect');
         this.redisClient = null;
       }
       
@@ -1975,29 +1989,46 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     if (this._libIntegration) return;
     const { LibraryGlideIntegration } = await import('../pubsub/DirectGlidePubSub');
     this._libIntegration = new LibraryGlideIntegration((msg: any) => {
+      console.log(`🎯 RedisAdapter callback: ${msg.channel} -> ${msg.message}`);
       if (msg.pattern) {
+        console.log(`🎯 Emitting pmessage: ${msg.pattern}, ${msg.channel}, ${msg.message}`);
         this.emit('pmessage', msg.pattern, msg.channel, msg.message);
         this._pubsubEmitter.emit('pmessage', msg.pattern, msg.channel, msg.message);
       } else {
+        console.log(`🎯 Emitting message: ${msg.channel}, ${msg.message}`);
         this.emit('message', msg.channel, msg.message);
         this._pubsubEmitter.emit('message', msg.channel, msg.message);
       }
     });
+    console.log(`🎯 Initializing LibraryGlideIntegration with channels: ${JSON.stringify(Array.from(this.subscribedChannels))}`);
     await this._libIntegration.initialize(this._options, { channels: Array.from(this.subscribedChannels), patterns: Array.from(this.subscribedPatterns) });
   }
 
   // Pub/Sub
   async publish(channel: string, message: RedisValue): Promise<number> {
-    const client = await this.ensureConnected();
+    // Ensure LibraryGlideIntegration is available for PubSub publishing
+    await this.ensureLibIntegration();
+    if (!this._libIntegration) {
+      throw new Error('LibraryGlideIntegration not initialized');
+    }
+    
     const normalizedChannel = ParameterTranslator.normalizeKey(channel);
     const normalizedMessage = ParameterTranslator.normalizeValue(message);
-    return await client.publish(normalizedChannel, normalizedMessage);
+    const result = await this._libIntegration.publish(normalizedChannel, normalizedMessage);
+    console.log(`📡 Published to ${normalizedChannel}: ${normalizedMessage} (${result} subscribers)`);
+    return result;
   }
 
   async subscribe(...channels: string[]): Promise<number> {
-    await this.ensureLibIntegration();
+    const hadLibIntegration = !!this._libIntegration;
     channels.forEach(c => this.subscribedChannels.add(String(c)));
-    await this._libIntegration!.updateSubscriptions(this._options, { addChannels: channels });
+    await this.ensureLibIntegration();
+    
+    // If LibraryGlideIntegration already existed, update subscriptions
+    if (hadLibIntegration && this._libIntegration) {
+      await this._libIntegration.updateSubscriptions(this._options, { addChannels: channels });
+    }
+    
     channels.forEach((c, i) => this.emit('subscribe', c, this.subscribedChannels.size - i));
     return this.subscribedChannels.size;
   }
@@ -2006,15 +2037,35 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     if (!this._libIntegration) return this.subscribedChannels.size;
     const toRemove = channels.length ? channels : Array.from(this.subscribedChannels);
     toRemove.forEach(c => this.subscribedChannels.delete(String(c)));
-    await this._libIntegration.updateSubscriptions(this._options, { removeChannels: toRemove });
+    
+    // Skip updateSubscriptions during disconnect/cleanup to avoid GLIDE ClosingError
+    if (this._status !== ('disconnecting' as ConnectionStatus)) {
+      try {
+        await this._libIntegration.updateSubscriptions(this._options, { removeChannels: toRemove });
+      } catch (error) {
+        // Ignore errors during cleanup - they're expected during shutdown
+        if (this._status === ('disconnecting' as ConnectionStatus)) {
+          console.log('Ignoring unsubscribe error during shutdown:', error instanceof Error ? error.name : 'Unknown');
+        } else {
+          throw error;
+        }
+      }
+    }
+    
     toRemove.forEach((c, i) => this.emit('unsubscribe', c, this.subscribedChannels.size - i));
     return this.subscribedChannels.size;
   }
 
   async psubscribe(...patterns: string[]): Promise<number> {
-    await this.ensureLibIntegration();
+    const hadLibIntegration = !!this._libIntegration;
     patterns.forEach(p => this.subscribedPatterns.add(String(p)));
-    await this._libIntegration!.updateSubscriptions(this._options, { addPatterns: patterns });
+    await this.ensureLibIntegration();
+    
+    // If LibraryGlideIntegration already existed, update subscriptions
+    if (hadLibIntegration && this._libIntegration) {
+      await this._libIntegration.updateSubscriptions(this._options, { addPatterns: patterns });
+    }
+    
     patterns.forEach((p, i) => this.emit('psubscribe', p, this.subscribedPatterns.size - i));
     return this.subscribedPatterns.size;
   }
@@ -2023,7 +2074,21 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     if (!this._libIntegration) return this.subscribedPatterns.size;
     const toRemove = patterns.length ? patterns : Array.from(this.subscribedPatterns);
     toRemove.forEach(p => this.subscribedPatterns.delete(String(p)));
-    await this._libIntegration.updateSubscriptions(this._options, { removePatterns: toRemove });
+    
+    // Skip updateSubscriptions during disconnect/cleanup to avoid GLIDE ClosingError
+    if (this._status !== ('disconnecting' as ConnectionStatus)) {
+      try {
+        await this._libIntegration.updateSubscriptions(this._options, { removePatterns: toRemove });
+      } catch (error) {
+        // Ignore errors during cleanup - they're expected during shutdown
+        if (this._status === ('disconnecting' as ConnectionStatus)) {
+          console.log('Ignoring punsubscribe error during shutdown:', error instanceof Error ? error.name : 'Unknown');
+        } else {
+          throw error;
+        }
+      }
+    }
+    
     toRemove.forEach((p, i) => this.emit('punsubscribe', p, this.subscribedPatterns.size - i));
     return this.subscribedPatterns.size;
   }

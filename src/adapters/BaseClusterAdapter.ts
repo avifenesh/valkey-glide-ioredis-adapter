@@ -9,6 +9,7 @@ import {
   RedisOptions,
 } from '../types';
 import { ParameterTranslator } from '../utils/ParameterTranslator';
+import { asyncClose } from '../utils/GlideUtils';
 
 export interface ClusterOptions extends RedisOptions {
   enableReadFromReplicas?: boolean;
@@ -102,11 +103,11 @@ export abstract class BaseClusterAdapter extends EventEmitter {
 
   async disconnect(): Promise<void> {
     if (this.glideClusterClient) {
-      await this.glideClusterClient.close();
+      await asyncClose(this.glideClusterClient, 'Base cluster client disconnect');
       this.glideClusterClient = null;
     }
     if (this.subscriberClient) {
-      await this.subscriberClient.close();
+      await asyncClose(this.subscriberClient, 'Base cluster subscriber disconnect');
       this.subscriberClient = null;
     }
     this.connectionStatus = 'disconnected';

@@ -8,7 +8,9 @@ import { EventEmitter } from 'events';
 import {
   RedisOptions,
 } from '../types';
+import { createRobustGlideClient, validateStandaloneConnection } from '../utils/ConnectionUtils';
 import { ParameterTranslator } from '../utils/ParameterTranslator';
+import { asyncClose } from '../utils/GlideUtils';
 
 export abstract class BaseRedisAdapter extends EventEmitter {
   protected glideClient: GlideClient | null = null;
@@ -38,19 +40,16 @@ export abstract class BaseRedisAdapter extends EventEmitter {
     this.emit('connecting');
 
     try {
-      const config: GlideClientConfiguration = {
-        addresses: [{ host: this.options.host!, port: this.options.port! }],
-        databaseId: this.options.db || 0,
-      };
-
-      if (this.options.username || this.options.password) {
-        config.credentials = {
-          username: this.options.username || 'default',
-          password: this.options.password!,
-        };
-      }
-
-      this.glideClient = await GlideClient.createClient(config);
+      // Use robust connection utility to prevent cluster issues
+      this.glideClient = await createRobustGlideClient(
+        this.options,
+        'main-adapter',
+        { retryAttempts: 3, retryDelay: 1000, connectionTimeout: 5000 }
+      );
+      
+      // Validate the connection is really to a standalone server
+      await validateStandaloneConnection(this.glideClient, 'Main Redis Adapter');
+      
       this.connectionStatus = 'connected';
       this.emit('connect');
       this.emit('ready');
@@ -63,11 +62,11 @@ export abstract class BaseRedisAdapter extends EventEmitter {
 
   async disconnect(): Promise<void> {
     if (this.glideClient) {
-      await this.glideClient.close();
+      await asyncClose(this.glideClient, 'Base client disconnect');
       this.glideClient = null;
     }
     if (this.subscriberClient) {
-      await this.subscriberClient.close();
+      await asyncClose(this.subscriberClient, 'Base subscriber disconnect');
       this.subscriberClient = null;
     }
     this.connectionStatus = 'disconnected';
