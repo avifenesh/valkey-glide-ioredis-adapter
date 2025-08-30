@@ -72,10 +72,27 @@ describe('Socket.IO Redis Adapter Integration', () => {
       return;
     }
 
-    // Get available ports for Socket.IO servers to avoid conflicts in CI
-    const { PortDiscovery } = await import('../../utils/port-discovery');
-    port1 = await PortDiscovery.findAvailablePort(49152, 65535);
-    port2 = await PortDiscovery.findAvailablePort(port1 + 1, 65535);
+    // Get available ports for Socket.IO servers using system allocation
+    // This approach uses port 0 to let the OS choose available ports
+    const net = await import('net');
+    
+    // Get first available port
+    const tempServer1 = net.createServer();
+    await new Promise<void>((resolve) => {
+      tempServer1.listen(0, () => {
+        port1 = (tempServer1.address() as any)?.port || 0;
+        tempServer1.close(() => resolve());
+      });
+    });
+    
+    // Get second available port  
+    const tempServer2 = net.createServer();
+    await new Promise<void>((resolve) => {
+      tempServer2.listen(0, () => {
+        port2 = (tempServer2.address() as any)?.port || 0;
+        tempServer2.close(() => resolve());
+      });
+    });
 
     // Setup Redis clients for both Socket.IO instances
     const config = await testUtils.getStandaloneConfig();
