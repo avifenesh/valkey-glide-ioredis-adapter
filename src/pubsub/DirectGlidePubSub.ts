@@ -377,15 +377,18 @@ export class LibraryGlideIntegration {
   async cleanup() {
     this.isShuttingDown = true;
     if (this.clients) {
+      const clientsToClean = this.clients;
+      // Set clients to null first to prevent new operations
+      this.clients = null;
+      
       // Remove the callback from our storage
-      subscriberCallbacks.delete(this.clients.subscriber);
+      subscriberCallbacks.delete(clientsToClean.subscriber);
       try {
-        await cleanupPubSubClients(this.clients);
+        await cleanupPubSubClients(clientsToClean);
       } catch (error) {
         // Ignore cleanup errors - this can happen during shutdown
         console.log('🔧 Cleanup warning (ignored):', error instanceof Error ? error.constructor.name : 'Unknown');
       }
-      this.clients = null;
     }
   }
 }

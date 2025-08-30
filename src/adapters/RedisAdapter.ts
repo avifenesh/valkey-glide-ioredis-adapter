@@ -1985,8 +1985,18 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return new MultiAdapter(this, new Set(this.watchedKeys));
   }
 
+  private _libIntegrationPromise?: Promise<void>;
+  
   private async ensureLibIntegration(): Promise<void> {
     if (this._libIntegration) return;
+    if (this._libIntegrationPromise) return this._libIntegrationPromise;
+    
+    this._libIntegrationPromise = this._initializeLibIntegration();
+    await this._libIntegrationPromise;
+    delete this._libIntegrationPromise;
+  }
+  
+  private async _initializeLibIntegration(): Promise<void> {
     const { LibraryGlideIntegration } = await import('../pubsub/DirectGlidePubSub');
     this._libIntegration = new LibraryGlideIntegration((msg: any) => {
       console.log(`🎯 RedisAdapter callback: ${msg.channel} -> ${msg.message}`);
