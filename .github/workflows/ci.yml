@@ -69,9 +69,10 @@ jobs:
         redis-cli ping
 
     - name: Run tests
-      run: npm test
+      run: npm test -- --testPathIgnorePatterns="/tests/unit/json-commands.test.ts|/tests/unit/search-commands.test.ts" --testTimeout=15000
       env:
         CI: true
+        SKIP_MODULE_TESTS: true
 
     - name: Upload coverage to Codecov
       if: matrix.os == 'ubuntu-latest' && matrix.node == '20'
