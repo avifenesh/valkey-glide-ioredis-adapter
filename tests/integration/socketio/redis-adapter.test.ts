@@ -72,9 +72,10 @@ describe('Socket.IO Redis Adapter Integration', () => {
       return;
     }
 
-    // Get random ports for Socket.IO servers
-    port1 = testUtils.randomPort();
-    port2 = testUtils.randomPort();
+    // Get available ports for Socket.IO servers to avoid conflicts in CI
+    const { PortDiscovery } = await import('../../utils/port-discovery');
+    port1 = await PortDiscovery.findAvailablePort(49152, 65535);
+    port2 = await PortDiscovery.findAvailablePort(port1 + 1, 65535);
 
     // Setup Redis clients for both Socket.IO instances
     const config = await testUtils.getStandaloneConfig();
