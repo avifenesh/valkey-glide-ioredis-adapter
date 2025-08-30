@@ -88,7 +88,7 @@ describe('Bull Integration with ClusterAdapter', () => {
   describe('Bull createClient Pattern', () => {
     it('should work with Bull createClient factory', () => {
       const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
-        return ClusterAdapter.createClient(type, clusterConfig);
+        return ClusterAdapter.createClient(type, { ...clusterConfig, lazyConnect: true });
       };
       
       const queue = new MockBullQueue('test-queue', { createClient });
@@ -104,7 +104,7 @@ describe('Bull Integration with ClusterAdapter', () => {
 
     it('should enable blocking operations for bclient', () => {
       const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
-        return ClusterAdapter.createClient(type, clusterConfig);
+        return ClusterAdapter.createClient(type, { ...clusterConfig, lazyConnect: true });
       };
       
       const queue = new MockBullQueue('test-queue', { createClient });
@@ -116,7 +116,7 @@ describe('Bull Integration with ClusterAdapter', () => {
 
     it('should create separate client instances', () => {
       const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
-        return ClusterAdapter.createClient(type, clusterConfig);
+        return ClusterAdapter.createClient(type, { ...clusterConfig, lazyConnect: true });
       };
       
       const queue = new MockBullQueue('test-queue', { createClient });
@@ -142,7 +142,7 @@ describe('Bull Integration with ClusterAdapter', () => {
       };
       
       const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
-        return ClusterAdapter.createClient(type, clusterOptions);
+        return ClusterAdapter.createClient(type, { ...clusterOptions, lazyConnect: true });
       };
       
       const queue = new MockBullQueue('test-queue', { createClient });
@@ -159,7 +159,7 @@ describe('Bull Integration with ClusterAdapter', () => {
       };
       
       const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
-        return ClusterAdapter.createClient(type, singleNodeConfig);
+        return ClusterAdapter.createClient(type, { ...singleNodeConfig, lazyConnect: true });
       };
       
       const queue = new MockBullQueue('test-queue', { createClient });
@@ -174,7 +174,7 @@ describe('Bull Integration with ClusterAdapter', () => {
     
     beforeEach(() => {
       const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
-        return ClusterAdapter.createClient(type, clusterConfig);
+        return ClusterAdapter.createClient(type, { ...clusterConfig, lazyConnect: true });
       };
       
       queue = new MockBullQueue('test-queue', { createClient });
@@ -255,7 +255,7 @@ describe('Bull Integration with ClusterAdapter', () => {
     let client: ClusterAdapter;
     
     beforeEach(() => {
-      client = ClusterAdapter.createClient('client', clusterConfig);
+      client = ClusterAdapter.createClient('client', { ...clusterConfig, lazyConnect: true });
     });
     
     afterEach(async () => {
@@ -313,7 +313,7 @@ describe('Bull Integration with ClusterAdapter', () => {
   describe('Connection Management', () => {
     it('should handle connection lifecycle', async () => {
       const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
-        return ClusterAdapter.createClient(type, clusterConfig);
+        return ClusterAdapter.createClient(type, { ...clusterConfig, lazyConnect: true });
       };
       
       const queue = new MockBullQueue('test-queue', { createClient });
@@ -335,7 +335,7 @@ describe('Bull Integration with ClusterAdapter', () => {
       };
       
       const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
-        return ClusterAdapter.createClient(type, optionsConfig);
+        return ClusterAdapter.createClient(type, { ...optionsConfig, lazyConnect: true });
       };
       
       const queue = new MockBullQueue('test-queue', { createClient });
@@ -348,7 +348,7 @@ describe('Bull Integration with ClusterAdapter', () => {
 
   describe('Event Handling', () => {
     it('should emit connection events', (done) => {
-      const client = ClusterAdapter.createClient('client', clusterConfig);
+      const client = ClusterAdapter.createClient('client', { ...clusterConfig, lazyConnect: true });
       
       let eventCount = 0;
       const expectedEvents = ['connecting', 'connect', 'ready', 'error', 'end'];
@@ -371,7 +371,7 @@ describe('Bull Integration with ClusterAdapter', () => {
     });
 
     it('should forward pub/sub events', (done) => {
-      const subscriber = ClusterAdapter.createClient('subscriber', clusterConfig);
+      const subscriber = ClusterAdapter.createClient('subscriber', { ...clusterConfig, lazyConnect: true });
       
       let eventCount = 0;
       const pubsubEvents = ['message', 'pmessage', 'subscribe', 'unsubscribe'];
@@ -404,7 +404,7 @@ describe('Bull Integration with ClusterAdapter', () => {
       };
       
       const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
-        return ClusterAdapter.createClient(type, invalidConfig);
+        return ClusterAdapter.createClient(type, { ...invalidConfig, lazyConnect: true });
       };
       
       const queue = new MockBullQueue('test-queue', { createClient });
@@ -425,7 +425,7 @@ describe('Bull Integration with ClusterAdapter', () => {
         ]
       };
       
-      const client = ClusterAdapter.createClient('client', mixedConfig);
+      const client = ClusterAdapter.createClient('client', { ...mixedConfig, lazyConnect: true });
       
       expect(client).toBeInstanceOf(ClusterAdapter);
       expect((client as any).options.nodes).toHaveLength(2);
@@ -435,7 +435,7 @@ describe('Bull Integration with ClusterAdapter', () => {
   describe('Performance Considerations', () => {
     it('should support connection pooling', () => {
       const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
-        return ClusterAdapter.createClient(type, clusterConfig);
+        return ClusterAdapter.createClient(type, { ...clusterConfig, lazyConnect: true });
       };
       
       const queue1 = new MockBullQueue('queue-1', { createClient });
@@ -454,7 +454,7 @@ describe('Bull Integration with ClusterAdapter', () => {
         scaleReads: 'all' as const
       };
       
-      const client = ClusterAdapter.createClient('client', scalingConfig);
+      const client = ClusterAdapter.createClient('client', { ...scalingConfig, lazyConnect: true });
       
       expect((client as any).options.enableReadFromReplicas).toBe(true);
       expect((client as any).options.scaleReads).toBe('all');
