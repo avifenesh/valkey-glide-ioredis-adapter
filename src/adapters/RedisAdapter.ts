@@ -18,6 +18,8 @@ import {
 import { ParameterTranslator } from '../utils/ParameterTranslator';
 import { ResultTranslator } from '../utils/ResultTranslator';
 import { PubSubMessageHandler } from './PubSubMessageHandler';
+import { JsonCommands } from './commands/JsonCommands';
+import { SearchCommands, SearchIndex, SearchQuery, SearchResult } from './commands/SearchCommands';
 
 export class RedisAdapter extends EventEmitter implements IRedisAdapter {
   private _status: ConnectionStatus = 'disconnected';
@@ -1455,14 +1457,31 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return await client.zrem(normalizedKey, normalizedMembers);
   }
 
-  async zrange(key: RedisKey, start: number, stop: number, _options?: any): Promise<string[]> {
+  async zrange(key: RedisKey, start: number, stop: number, ...args: (string | any)[]): Promise<string[]> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     
-    // Handle ioredis-style options - note: withScores not supported in current Valkey GLIDE API
-    const result = await client.zrange(normalizedKey, { start, end: stop });
-    const converted = ParameterTranslator.convertGlideStringArray(result);
-    return converted ? converted.filter((val): val is string => val !== null) : [];
+    // Check if WITHSCORES is requested (ioredis style)
+    const withScores = args.includes('WITHSCORES') || (args.length > 0 && args[0]?.withScores === true);
+    
+    if (withScores) {
+      const result = await client.zrangeWithScores(normalizedKey, { start, end: stop });
+      if (!Array.isArray(result)) return [];
+      
+      // GLIDE returns SortedSetDataType: {element: string, score: number}[]
+      // ioredis WITHSCORES format: ['element1', 'score1', 'element2', 'score2', ...]
+      const converted: string[] = [];
+      result.forEach((item: any) => {
+        const element = ParameterTranslator.convertGlideString(item.element || item.member) || '';
+        const score = (item.score || 0).toString();
+        converted.push(element, score);
+      });
+      return converted;
+    } else {
+      const result = await client.zrange(normalizedKey, { start, end: stop });
+      const converted = ParameterTranslator.convertGlideStringArray(result);
+      return converted ? converted.filter((val): val is string => val !== null) : [];
+    }
   }
 
   async zrevrange(key: RedisKey, start: number, stop: number, _options?: any): Promise<string[]> {
@@ -2212,6 +2231,357 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
         return fallbackResult;
       }
     };
+  }
+
+  // ============================================
+  // JSON Commands (ValkeyJSON / RedisJSON v2 Compatible)
+  // ============================================
+
+  /**
+   * Set a JSON document
+   * JSON.SET key path value [NX|XX]
+   */
+  async jsonSet(key: RedisKey, path: string, value: any, options?: 'NX' | 'XX'): Promise<string | null> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonSet(client, key, path, value, options);
+  }
+
+  /**
+   * Get a JSON document or path
+   * JSON.GET key [path ...] [INDENT indent] [NEWLINE newline] [SPACE space]
+   */
+  async jsonGet(
+    key: RedisKey, 
+    path?: string | string[], 
+    options?: { indent?: string; newline?: string; space?: string; }
+  ): Promise<string | null> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonGet(client, key, path, options);
+  }
+
+  /**
+   * Delete a JSON path
+   * JSON.DEL key [path]
+   */
+  async jsonDel(key: RedisKey, path?: string): Promise<number> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonDel(client, key, path);
+  }
+
+  /**
+   * Clear a JSON path (set to null/empty)
+   * JSON.CLEAR key [path]
+   */
+  async jsonClear(key: RedisKey, path?: string): Promise<number> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonClear(client, key, path);
+  }
+
+  /**
+   * Get the type of a JSON path
+   * JSON.TYPE key [path]
+   */
+  async jsonType(key: RedisKey, path?: string): Promise<string | null> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonType(client, key, path);
+  }
+
+  /**
+   * Increment a numeric JSON value
+   * JSON.NUMINCRBY key path value
+   */
+  async jsonNumIncrBy(key: RedisKey, path: string, value: number): Promise<string | null> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonNumIncrBy(client, key, path, value);
+  }
+
+  /**
+   * Multiply a numeric JSON value
+   * JSON.NUMMULTBY key path value
+   */
+  async jsonNumMultBy(key: RedisKey, path: string, value: number): Promise<string | null> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonNumMultBy(client, key, path, value);
+  }
+
+  /**
+   * Append to a JSON string
+   * JSON.STRAPPEND key path value
+   */
+  async jsonStrAppend(key: RedisKey, path: string, value: string): Promise<number> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonStrAppend(client, key, path, value);
+  }
+
+  /**
+   * Get the length of a JSON string
+   * JSON.STRLEN key [path]
+   */
+  async jsonStrLen(key: RedisKey, path?: string): Promise<number | null> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonStrLen(client, key, path);
+  }
+
+  /**
+   * Append values to a JSON array
+   * JSON.ARRAPPEND key path value [value ...]
+   */
+  async jsonArrAppend(key: RedisKey, path: string, ...values: any[]): Promise<number> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonArrAppend(client, key, path, ...values);
+  }
+
+  /**
+   * Insert values into a JSON array
+   * JSON.ARRINSERT key path index value [value ...]
+   */
+  async jsonArrInsert(key: RedisKey, path: string, index: number, ...values: any[]): Promise<number> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonArrInsert(client, key, path, index, ...values);
+  }
+
+  /**
+   * Get the length of a JSON array
+   * JSON.ARRLEN key [path]
+   */
+  async jsonArrLen(key: RedisKey, path?: string): Promise<number | null> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonArrLen(client, key, path);
+  }
+
+  /**
+   * Remove and return element from JSON array
+   * JSON.ARRPOP key [path [index]]
+   */
+  async jsonArrPop(key: RedisKey, path?: string, index?: number): Promise<string | null> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonArrPop(client, key, path, index);
+  }
+
+  /**
+   * Trim a JSON array
+   * JSON.ARRTRIM key path start stop
+   */
+  async jsonArrTrim(key: RedisKey, path: string, start: number, stop: number): Promise<number> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonArrTrim(client, key, path, start, stop);
+  }
+
+  /**
+   * Get keys of a JSON object
+   * JSON.OBJKEYS key [path]
+   */
+  async jsonObjKeys(key: RedisKey, path?: string): Promise<string[] | null> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonObjKeys(client, key, path);
+  }
+
+  /**
+   * Get the number of keys in a JSON object
+   * JSON.OBJLEN key [path]
+   */
+  async jsonObjLen(key: RedisKey, path?: string): Promise<number | null> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonObjLen(client, key, path);
+  }
+
+  /**
+   * Toggle a boolean JSON value
+   * JSON.TOGGLE key path
+   */
+  async jsonToggle(key: RedisKey, path: string): Promise<number> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonToggle(client, key, path);
+  }
+
+  /**
+   * Get debug information about a JSON document
+   * JSON.DEBUG subcommand key [path]
+   */
+  async jsonDebug(subcommand: 'MEMORY' | 'DEPTH' | 'FIELDS', key: RedisKey, path?: string): Promise<any> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonDebug(client, subcommand, key, path);
+  }
+
+  /**
+   * Alias for JSON.DEL (RedisJSON v1 compatibility)
+   * JSON.FORGET key [path]
+   */
+  async jsonForget(key: RedisKey, path?: string): Promise<number> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonForget(client, key, path);
+  }
+
+  /**
+   * Convert JSON to RESP format
+   * JSON.RESP key [path]
+   */
+  async jsonResp(key: RedisKey, path?: string): Promise<any> {
+    const client = await this.ensureConnected();
+    return JsonCommands.jsonResp(client, key, path);
+  }
+
+  // ============================================
+  // Search Commands (Valkey Search / RediSearch Compatible)
+  // ============================================
+
+  /**
+   * Create a search index
+   * FT.CREATE index [options] SCHEMA field_name field_type [options] ...
+   */
+  async ftCreate(index: SearchIndex): Promise<string> {
+    const client = await this.ensureConnected();
+    return SearchCommands.ftCreate(client, index);
+  }
+
+  /**
+   * Search the index
+   * FT.SEARCH index query [options]
+   */
+  async ftSearch(indexName: string, searchQuery: SearchQuery): Promise<SearchResult> {
+    const client = await this.ensureConnected();
+    return SearchCommands.ftSearch(client, indexName, searchQuery);
+  }
+
+  /**
+   * Get information about an index
+   * FT.INFO index
+   */
+  async ftInfo(indexName: string): Promise<Record<string, any>> {
+    const client = await this.ensureConnected();
+    return SearchCommands.ftInfo(client, indexName);
+  }
+
+  /**
+   * Drop an index
+   * FT.DROP index [DD]
+   */
+  async ftDrop(indexName: string, deleteDocuments: boolean = false): Promise<string> {
+    const client = await this.ensureConnected();
+    return SearchCommands.ftDrop(client, indexName, deleteDocuments);
+  }
+
+  /**
+   * Add a document to the index
+   * FT.ADD index docId score [options] FIELDS field content [field content ...]
+   */
+  async ftAdd(
+    indexName: string,
+    docId: string,
+    score: number,
+    fields: Record<string, any>,
+    options?: {
+      NOSAVE?: boolean;
+      REPLACE?: boolean;
+      PARTIAL?: boolean;
+      LANGUAGE?: string;
+      PAYLOAD?: string;
+    }
+  ): Promise<string> {
+    const client = await this.ensureConnected();
+    return SearchCommands.ftAdd(client, indexName, docId, score, fields, options);
+  }
+
+  /**
+   * Delete a document from the index
+   * FT.DEL index docId [DD]
+   */
+  async ftDel(indexName: string, docId: string, deleteDocument: boolean = false): Promise<number> {
+    const client = await this.ensureConnected();
+    return SearchCommands.ftDel(client, indexName, docId, deleteDocument);
+  }
+
+  /**
+   * Get a document from the index
+   * FT.GET index docId
+   */
+  async ftGet(indexName: string, docId: string): Promise<Record<string, any> | null> {
+    const client = await this.ensureConnected();
+    return SearchCommands.ftGet(client, indexName, docId);
+  }
+
+  /**
+   * Get multiple documents from the index
+   * FT.MGET index docId [docId ...]
+   */
+  async ftMGet(indexName: string, ...docIds: string[]): Promise<Array<Record<string, any> | null>> {
+    const client = await this.ensureConnected();
+    return SearchCommands.ftMGet(client, indexName, ...docIds);
+  }
+
+  /**
+   * Perform aggregation query
+   * FT.AGGREGATE index query [options]
+   */
+  async ftAggregate(
+    indexName: string,
+    query: string,
+    options?: {
+      VERBATIM?: boolean;
+      LOAD?: string[];
+      GROUPBY?: {
+        fields: string[];
+        REDUCE?: Array<{
+          function: string;
+          args: string[];
+          AS?: string;
+        }>;
+      };
+      SORTBY?: Array<{
+        property: string;
+        direction?: 'ASC' | 'DESC';
+      }>;
+      APPLY?: Array<{
+        expression: string;
+        AS: string;
+      }>;
+      LIMIT?: {
+        offset: number;
+        num: number;
+      };
+      FILTER?: string;
+    }
+  ): Promise<any[]> {
+    const client = await this.ensureConnected();
+    return SearchCommands.ftAggregate(client, indexName, query, options);
+  }
+
+  /**
+   * Explain a query execution plan
+   * FT.EXPLAIN index query [DIALECT dialect]
+   */
+  async ftExplain(indexName: string, query: string, dialect?: number): Promise<string> {
+    const client = await this.ensureConnected();
+    return SearchCommands.ftExplain(client, indexName, query, dialect);
+  }
+
+  /**
+   * Get list of all indexes
+   * FT._LIST
+   */
+  async ftList(): Promise<string[]> {
+    const client = await this.ensureConnected();
+    return SearchCommands.ftList(client);
+  }
+
+  /**
+   * Vector similarity search
+   * Performs KNN search on vector fields
+   */
+  async ftVectorSearch(
+    indexName: string,
+    vectorField: string,
+    queryVector: number[] | Buffer,
+    options?: {
+      KNN?: number;
+      EF_RUNTIME?: number;
+      HYBRID_POLICY?: 'ADHOC_BF' | 'BATCHES';
+      LIMIT?: { offset: number; count: number };
+      FILTER?: string;
+    }
+  ): Promise<SearchResult> {
+    const client = await this.ensureConnected();
+    return SearchCommands.ftVectorSearch(client, indexName, vectorField, queryVector, options);
   }
       
   // Bull serialization helper methods  
