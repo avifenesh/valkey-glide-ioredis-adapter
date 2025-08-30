@@ -191,7 +191,7 @@ describe('Socket.IO Redis Adapter Integration', () => {
 
   afterEach(async () => {
     // Small delay to let any pending operations complete
-    await testUtils.delay(50);
+    await testUtils.delay(100);
     
     // Close Socket.IO servers (global error handler will catch GLIDE ClosingError)
     if (io1) {
@@ -201,8 +201,8 @@ describe('Socket.IO Redis Adapter Integration', () => {
       io2.close();
     }
     
-    // Additional delay after close to let cleanup settle
-    await testUtils.delay(50);
+    // Longer delay after close to let cleanup settle on macOS
+    await testUtils.delay(200);
 
     // Close HTTP servers
     if (server1) {
@@ -229,8 +229,8 @@ describe('Socket.IO Redis Adapter Integration', () => {
       await redisClient2.disconnect();
     }
 
-    // Wait for cleanup
-    await testUtils.delay(100);
+    // Wait longer for cleanup to complete on macOS (port limit issues)
+    await testUtils.delay(300);
   });
 
   describe('Basic Socket.IO Functionality', () => {
