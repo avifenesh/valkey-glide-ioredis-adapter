@@ -5,7 +5,6 @@
 
 import { ClusterAdapter } from '../../../src/adapters/ClusterAdapter';
 
-
 // Mock Redis cluster for testing
 class MockRedisCluster {
   private servers: Map<number, any> = new Map();
@@ -23,6 +22,39 @@ class MockRedisCluster {
 
 describe('ClusterAdapter - Basic Tests', () => {
   let mockCluster: MockRedisCluster;
+  
+  beforeAll(async () => {
+    // Check if cluster servers are available (ports 7000-7005)
+    const clusterPorts = [7000, 7001, 7002, 7003, 7004, 7005];
+    const net = await import('net');
+    
+    const isPortOpen = (port: number): Promise<boolean> => {
+      return new Promise((resolve) => {
+        const socket = new net.Socket();
+        const timeout = setTimeout(() => { socket.destroy(); resolve(false); }, 500);
+        socket.setTimeout(500);
+        socket.once('error', () => { clearTimeout(timeout); resolve(false); });
+        socket.once('timeout', () => { clearTimeout(timeout); socket.destroy(); resolve(false); });
+        socket.connect(port, '127.0.0.1', () => { 
+          clearTimeout(timeout); 
+          socket.end(); 
+          resolve(true); 
+        });
+      });
+    };
+    
+    const clusterPortChecks = await Promise.all(clusterPorts.map(isPortOpen));
+    const hasCluster = clusterPortChecks.some(Boolean); // At least one cluster port should be available
+    
+    if (!hasCluster) {
+      console.warn('⚠️  Cluster servers not available. Skipping cluster tests...');
+      console.warn('   To run cluster tests, start cluster with: ./scripts/start-test-servers.sh');
+      
+      // Skip all tests in this suite by marking as skipped
+      test.skip('Cluster tests skipped - no cluster servers available', () => {});
+      return;
+    }
+  });
   
   beforeEach(() => {
     mockCluster = new MockRedisCluster();
