@@ -7,17 +7,21 @@
  */
 
 import { RedisAdapter } from '../../src/adapters/RedisAdapter';
-import { getValkeyBundleTestConfig, waitForValkeyBundle } from '../utils/valkey-bundle-config';
+import { RedisOptions } from '../../src/types';
 
 describe('Real-World ioredis Usage Patterns', () => {
   let redis: RedisAdapter;
 
   beforeAll(async () => {
-    const config = await getValkeyBundleTestConfig();
+    const config: RedisOptions = {
+      host: process.env.REDIS_HOST || process.env.VALKEY_HOST || 'localhost',
+      port: parseInt(process.env.REDIS_PORT || process.env.VALKEY_PORT || '6379', 10),
+      connectTimeout: 5000
+    };
     redis = new RedisAdapter(config);
     
     // Wait for connection
-    await waitForValkeyBundle(redis, 5, 1000);
+    await redis.ping();
   });
 
   afterEach(async () => {
@@ -341,7 +345,7 @@ describe('Real-World ioredis Usage Patterns', () => {
         expect(result).toBeNull();
       } catch (error) {
         // Should not throw for missing keys
-        fail('Should not throw error for missing keys');
+        throw new Error('Should not throw error for missing keys');
       }
     });
 
@@ -352,7 +356,7 @@ describe('Real-World ioredis Usage Patterns', () => {
       try {
         // Try to perform a list operation on a string key
         await redis.lpush('string:key', 'item');
-        fail('Should throw error for type mismatch');
+        throw new Error('Should throw error for type mismatch');
       } catch (error) {
         // Should throw appropriate error for type mismatch
         expect(error).toBeDefined();
