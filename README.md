@@ -31,7 +31,7 @@ This project uses **exclusively Valkey GLIDE** - a high-performance, language-in
 
 [![CI Status](https://img.shields.io/github/actions/workflow/status/avifenesh/valkey-glide-ioredis-adapter/release.yml?branch=main&style=flat-square&label=CI)](https://github.com/avifenesh/valkey-glide-ioredis-adapter/actions)
 [![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square)](https://www.typescriptlang.org)
-[![npm downloads](https://img.shields.io/npm/dm/valkey-glide-ioredis-adapter?style=flat-square)](https://www.npmjs.com/package/valkey-glide-ioredis-adapter)
+[![npm downloads](https://img.shields.io/npm/dw/valkey-glide-ioredis-adapter?style=flat-square)](https://www.npmjs.com/package/valkey-glide-ioredis-adapter)
 [![GitHub stars](https://img.shields.io/github/stars/avifenesh/valkey-glide-ioredis-adapter?style=flat-square)](https://github.com/avifenesh/valkey-glide-ioredis-adapter/stargazers)
 
 ### Library Compatibility
