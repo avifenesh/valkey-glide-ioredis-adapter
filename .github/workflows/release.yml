@@ -2,8 +2,11 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
+      - 'v*.*'
+      - 'v*.*.*'
+      - 'v*.*.*-*'
   pull_request:
     branches:
       - main
@@ -64,7 +67,7 @@ jobs:
     name: Release
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
     permissions:
       contents: write # to be able to publish a GitHub release
       issues: write # to be able to comment on released issues
