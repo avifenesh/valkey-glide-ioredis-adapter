@@ -6,16 +6,25 @@ export interface RedisTestConfig {
 }
 
 export async function getRedisTestConfig(): Promise<RedisTestConfig> {
-  // Check for Valkey standalone configuration first (from test server script)
+  // PRIORITY 1: Check for CI Valkey Bundle configuration (highest priority in CI environments)
+  const valkeyBundleHost = process.env.VALKEY_BUNDLE_HOST?.trim();
+  const valkeyBundlePort = process.env.VALKEY_BUNDLE_PORT ? Number(process.env.VALKEY_BUNDLE_PORT) : undefined;
+
+  if (valkeyBundleHost && valkeyBundlePort) {
+    console.log(`Using CI Valkey Bundle server: ${valkeyBundleHost}:${valkeyBundlePort}`);
+    return { host: valkeyBundleHost, port: valkeyBundlePort };
+  }
+
+  // PRIORITY 2: Check for local Valkey standalone configuration (from test server script)
   const valkeyHost = process.env.VALKEY_STANDALONE_HOST?.trim();
   const valkeyPort = process.env.VALKEY_STANDALONE_PORT ? Number(process.env.VALKEY_STANDALONE_PORT) : undefined;
 
   if (valkeyHost && valkeyPort) {
-    console.log(`Using Valkey test server: ${valkeyHost}:${valkeyPort}`);
+    console.log(`Using local Valkey test server: ${valkeyHost}:${valkeyPort}`);
     return { host: valkeyHost, port: valkeyPort };
   }
 
-  // Check for legacy Redis configuration  
+  // PRIORITY 3: Check for legacy Redis configuration  
   const envHost = process.env.REDIS_HOST?.trim();
   const envPort = process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : undefined;
 

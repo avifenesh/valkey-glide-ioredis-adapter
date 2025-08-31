@@ -39,8 +39,20 @@ async function ensureValkeyCluster(): Promise<void> {
 }
 
 module.exports = async () => {
-  // If already provided via env, keep them (support both Redis and Valkey env vars for compatibility)
+  // PRIORITY 1: If CI Valkey Bundle is configured, use it and skip all server setup
+  if (process.env.VALKEY_BUNDLE_HOST && process.env.VALKEY_BUNDLE_PORT) {
+    console.log(`🎯 Using CI Valkey Bundle: ${process.env.VALKEY_BUNDLE_HOST}:${process.env.VALKEY_BUNDLE_PORT}`);
+    // Set compatibility env vars but don't override CI settings
+    process.env.REDIS_HOST = process.env.VALKEY_BUNDLE_HOST;
+    process.env.REDIS_PORT = process.env.VALKEY_BUNDLE_PORT;
+    process.env.VALKEY_HOST = process.env.VALKEY_BUNDLE_HOST;
+    process.env.VALKEY_PORT = process.env.VALKEY_BUNDLE_PORT;
+    return;
+  }
+
+  // PRIORITY 2: If already provided via env, keep them (support both Redis and Valkey env vars for compatibility)
   if ((process.env.REDIS_HOST && process.env.REDIS_PORT) || (process.env.VALKEY_HOST && process.env.VALKEY_PORT)) {
+    console.log('🔧 Using existing Redis/Valkey environment configuration');
     // Set both for backward compatibility
     process.env.REDIS_HOST = process.env.REDIS_HOST || process.env.VALKEY_HOST;
     process.env.REDIS_PORT = process.env.REDIS_PORT || process.env.VALKEY_PORT;
