@@ -22,14 +22,46 @@ describe('Socket.IO Redis Adapter Integration', () => {
   let port1: number;
   let port2: number;
   const keyPrefix = 'TEST:socketio:';
+  let originalHandlers: any[];
 
   beforeAll(async () => {
+    // Setup global error handler for GLIDE ClosingError during tests
+    originalHandlers = process.listeners('uncaughtException');
+    process.removeAllListeners('uncaughtException');
+    
+    process.on('uncaughtException', (error: Error) => {
+      if (error.name === 'ClosingError' && error.message === 'Cleanup initiated') {
+        // Silently ignore GLIDE ClosingError during Socket.IO cleanup
+        console.log('Test: Ignoring GLIDE ClosingError during Socket.IO cleanup');
+        return;
+      }
+      
+      // For all other errors, restore original behavior
+      if (originalHandlers.length > 0) {
+        originalHandlers.forEach(handler => {
+          if (typeof handler === 'function') {
+            handler(error);
+          }
+        });
+      } else {
+        throw error;
+      }
+    });
+
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
       console.warn('⚠️  Test servers not available. Skipping Socket.IO integration tests...');
       return;
     }
+  });
+
+  afterAll(async () => {
+    // Restore original uncaughtException handlers
+    process.removeAllListeners('uncaughtException');
+    originalHandlers.forEach(handler => {
+      process.on('uncaughtException', handler);
+    });
   });
 
   beforeEach(async () => {
@@ -40,9 +72,27 @@ describe('Socket.IO Redis Adapter Integration', () => {
       return;
     }
 
-    // Get random ports for Socket.IO servers
-    port1 = testUtils.randomPort();
-    port2 = testUtils.randomPort();
+    // Get available ports for Socket.IO servers using system allocation
+    // This approach uses port 0 to let the OS choose available ports
+    const net = await import('net');
+    
+    // Get first available port
+    const tempServer1 = net.createServer();
+    await new Promise<void>((resolve) => {
+      tempServer1.listen(0, () => {
+        port1 = (tempServer1.address() as any)?.port || 0;
+        tempServer1.close(() => resolve());
+      });
+    });
+    
+    // Get second available port  
+    const tempServer2 = net.createServer();
+    await new Promise<void>((resolve) => {
+      tempServer2.listen(0, () => {
+        port2 = (tempServer2.address() as any)?.port || 0;
+        tempServer2.close(() => resolve());
+      });
+    });
 
     // Setup Redis clients for both Socket.IO instances
     const config = await testUtils.getStandaloneConfig();
@@ -140,13 +190,19 @@ describe('Socket.IO Redis Adapter Integration', () => {
   });
 
   afterEach(async () => {
-    // Close Socket.IO servers
+    // Small delay to let any pending operations complete
+    await testUtils.delay(100);
+    
+    // Close Socket.IO servers (global error handler will catch GLIDE ClosingError)
     if (io1) {
       io1.close();
     }
     if (io2) {
       io2.close();
     }
+    
+    // Longer delay after close to let cleanup settle on macOS
+    await testUtils.delay(200);
 
     // Close HTTP servers
     if (server1) {
@@ -173,8 +229,8 @@ describe('Socket.IO Redis Adapter Integration', () => {
       await redisClient2.disconnect();
     }
 
-    // Wait for cleanup
-    await testUtils.delay(100);
+    // Wait longer for cleanup to complete on macOS (port limit issues)
+    await testUtils.delay(300);
   });
 
   describe('Basic Socket.IO Functionality', () => {

@@ -5,7 +5,6 @@
 import { 
   createPubSubClients, 
   publishMessage, 
-  pollForMessage, 
   cleanupPubSubClients,
   BullGlideIntegration
 } from '../../src/pubsub/DirectGlidePubSub';
@@ -14,10 +13,20 @@ import { getRedisTestConfig } from '../utils/redis-config';
 describe('Direct GLIDE Pub/Sub', () => {
   test('basic pub/sub with direct utilities', async () => {
     const cfg = await getRedisTestConfig();
-    // Create clients using the utility
+    
+    // Track received messages via callback
+    let messageReceived = false;
+    let receivedMessage: any = null;
+    
+    // Create clients using the utility with callback
     const clients = await createPubSubClients(
       { host: cfg.host, port: cfg.port },
-      { channels: ['direct-test'] }
+      { channels: ['direct-test'] },
+      (message) => {
+        console.log('📨 DIRECT: Callback received message:', message);
+        messageReceived = true;
+        receivedMessage = message;
+      }
     );
 
     try {
@@ -29,31 +38,18 @@ describe('Direct GLIDE Pub/Sub', () => {
       const publishResult = await publishMessage(clients.publisher, 'direct-test', 'hello direct world');
       console.log('📊 DIRECT: Publish result:', publishResult, 'subscribers');
 
-      // Poll for the message using the working pattern
-      console.log('🔄 DIRECT: Polling for message...');
-      let messageReceived = false;
-      let receivedMessage = null;
-
-      // Use the proven for-loop pattern
-      for (let i = 0; i < 10; i++) {
-        const message = await pollForMessage(clients.subscriber);
-        if (message) {
-          console.log('📨 DIRECT: Received message:', message);
-          messageReceived = true;
-          receivedMessage = message;
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
+      // Wait for callback to be triggered
+      console.log('🔄 DIRECT: Waiting for callback...');
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       console.log('📊 DIRECT: Message received:', messageReceived);
       if (messageReceived) {
-        console.log('✅ DIRECT: SUCCESS - Direct utilities work!');
+        console.log('✅ DIRECT: SUCCESS - Direct utilities work with callbacks!');
         expect(messageReceived).toBe(true);
         expect(receivedMessage?.channel).toBe('direct-test');
         expect(receivedMessage?.message).toBe('hello direct world');
       } else {
-        console.log('❌ DIRECT: FAILURE - Even direct utilities fail');
+        console.log('❌ DIRECT: FAILURE - Callback not triggered');
         expect(messageReceived).toBe(true);
       }
 
@@ -64,10 +60,20 @@ describe('Direct GLIDE Pub/Sub', () => {
 
   test('pattern subscription with direct utilities', async () => {
     const cfg = await getRedisTestConfig();
-    // Create clients with pattern subscription
+    
+    // Track received messages via callback
+    let patternMessageReceived = false;
+    let receivedMessage: any = null;
+    
+    // Create clients with pattern subscription and callback
     const clients = await createPubSubClients(
       { host: cfg.host, port: cfg.port },
-      { patterns: ['direct.*'] }
+      { patterns: ['direct.*'] },
+      (message) => {
+        console.log('📨 DIRECT: Pattern callback received message:', message);
+        patternMessageReceived = true;
+        receivedMessage = message;
+      }
     );
 
     try {
@@ -79,31 +85,19 @@ describe('Direct GLIDE Pub/Sub', () => {
       const publishResult = await publishMessage(clients.publisher, 'direct.news', 'pattern message');
       console.log('📊 DIRECT: Pattern publish result:', publishResult, 'subscribers');
 
-      // Poll for the pattern message
-      console.log('🔄 DIRECT: Polling for pattern message...');
-      let patternMessageReceived = false;
-      let receivedMessage = null;
-
-      for (let i = 0; i < 10; i++) {
-        const message = await pollForMessage(clients.subscriber);
-        if (message && message.pattern) {
-          console.log('📨 DIRECT: Received pattern message:', message);
-          patternMessageReceived = true;
-          receivedMessage = message;
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
+      // Wait for callback to be triggered
+      console.log('🔄 DIRECT: Waiting for pattern callback...');
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       console.log('📊 DIRECT: Pattern message received:', patternMessageReceived);
       if (patternMessageReceived) {
-        console.log('✅ DIRECT: SUCCESS - Pattern subscriptions work!');
+        console.log('✅ DIRECT: SUCCESS - Pattern subscriptions work with callbacks!');
         expect(patternMessageReceived).toBe(true);
         expect(receivedMessage?.pattern).toBe('direct.*');
         expect(receivedMessage?.channel).toBe('direct.news');
         expect(receivedMessage?.message).toBe('pattern message');
       } else {
-        console.log('❌ DIRECT: FAILURE - Pattern subscriptions fail');
+        console.log('❌ DIRECT: FAILURE - Pattern callback not triggered');
         expect(patternMessageReceived).toBe(true);
       }
 

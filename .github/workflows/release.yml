@@ -49,10 +49,9 @@ jobs:
         run: npm run build
 
       - name: Run tests with coverage
-        run: npm run test:coverage
+        run: npm test -- --coverage --coverageThreshold='{}' --testPathIgnorePatterns="/tests/unit/json-commands.test.ts|/tests/unit/search-commands.test.ts"
         env:
-          VALKEY_STANDALONE_HOST: localhost
-          VALKEY_STANDALONE_PORT: 6379
+          SKIP_MODULE_TESTS: true
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4

@@ -9,6 +9,7 @@ import {
   RedisOptions,
 } from '../types';
 import { ParameterTranslator } from '../utils/ParameterTranslator';
+import { asyncClose } from '../utils/GlideUtils';
 
 export interface ClusterOptions extends RedisOptions {
   enableReadFromReplicas?: boolean;
@@ -46,7 +47,7 @@ export abstract class BaseClusterAdapter extends EventEmitter {
 
     // Set initial status based on lazyConnect option
     if (this.options.lazyConnect) {
-      this.connectionStatus = 'wait' as any;
+      this.connectionStatus = 'disconnected'; // Start as disconnected with lazy connect
     } else {
       // Auto-connect like ioredis default behavior
       setImmediate(() => {
@@ -102,11 +103,11 @@ export abstract class BaseClusterAdapter extends EventEmitter {
 
   async disconnect(): Promise<void> {
     if (this.glideClusterClient) {
-      await this.glideClusterClient.close();
+      await asyncClose(this.glideClusterClient, 'Base cluster client disconnect');
       this.glideClusterClient = null;
     }
     if (this.subscriberClient) {
-      await this.subscriberClient.close();
+      await asyncClose(this.subscriberClient, 'Base cluster subscriber disconnect');
       this.subscriberClient = null;
     }
     this.connectionStatus = 'disconnected';
@@ -188,8 +189,8 @@ export abstract class BaseClusterAdapter extends EventEmitter {
       return this.glideClusterClient;
     }
     
-    // If in wait status (lazyConnect), start connection now
-    if (this.connectionStatus === 'wait') {
+    // If in lazy connect mode and disconnected, start connection now
+    if (this.options.lazyConnect && this.connectionStatus === 'disconnected') {
       await this.connect();
       if (!this.glideClusterClient) {
         throw new Error('Failed to establish cluster connection after lazy connect');
