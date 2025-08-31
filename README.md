@@ -106,39 +106,6 @@ await integration.publish('app:notifications', JSON.stringify({ type: 'update' }
 npm install valkey-glide-ioredis-adapter
 ```
 
-### **Prerelease Versions**
-
-To install prerelease versions (release candidates):
-
-```bash
-npm install valkey-glide-ioredis-adapter@prerelease
-```
-
-**If you encounter native dependency issues with prerelease versions:**
-
-```bash
-# Option 1: Force reinstall
-npm install valkey-glide-ioredis-adapter@prerelease --force
-
-# Option 2: Rebuild native dependencies
-npm install valkey-glide-ioredis-adapter@prerelease
-npm rebuild @valkey/valkey-glide
-
-# Option 3: Clear npm cache
-npm cache clean --force
-npm install valkey-glide-ioredis-adapter@prerelease
-```
-
-### **Installation Verification**
-
-To verify the installation is working correctly:
-
-```bash
-node -e "const { RedisAdapter } = require('valkey-glide-ioredis-adapter'); console.log('✅ Installation successful');"
-```
-
-If you see native module errors, the GLIDE native binaries weren't properly installed.
-
 **Requirements:**
 - Node.js 18+ (ES2022 support)  
 - Valkey/Redis 6.0+
