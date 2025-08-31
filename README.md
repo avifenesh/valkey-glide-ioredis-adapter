@@ -1,22 +1,8 @@
 # Valkey GLIDE ioredis Adapter
 
 [![npm version](https://img.shields.io/npm/v/valkey-glide-ioredis-adapter?style=flat-square)](https://www.npmjs.com/package/valkey-glide-ioredis-adapter)
-[![npm downloads](https://img.shields.io/npm/dm/valkey-glide-ioredis-adapter?style=flat-square)](https://www.npmjs.com/package/valkey-glide-ioredis-adapter)
 [![GitHub license](https://img.shields.io/github/license/avifenesh/valkey-glide-ioredis-adapter?style=flat-square)](https://github.com/avifenesh/valkey-glide-ioredis-adapter/blob/main/LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/avifenesh/valkey-glide-ioredis-adapter?style=flat-square)](https://github.com/avifenesh/valkey-glide-ioredis-adapter/stargazers)
-
-[![CI Status](https://img.shields.io/github/actions/workflow/status/avifenesh/valkey-glide-ioredis-adapter/release.yml?branch=main&style=flat-square&label=CI)](https://github.com/avifenesh/valkey-glide-ioredis-adapter/actions)
 [![Node.js Version](https://img.shields.io/node/v/valkey-glide-ioredis-adapter?style=flat-square)](https://nodejs.org)
-[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square)](https://www.typescriptlang.org)
-
-[![Socket.IO](https://img.shields.io/badge/Socket.IO-✅%20Compatible-brightgreen?style=flat-square)](https://socket.io)
-[![Express Sessions](https://img.shields.io/badge/Express%20Sessions-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/expressjs/session)
-[![Rate Limiting](https://img.shields.io/badge/Rate%20Limiting-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/express-rate-limit/express-rate-limit)
-
-[![JSON Module](https://img.shields.io/badge/ValkeyJSON-✅%20Complete%20(31/31)-orange?style=flat-square)](https://github.com/valkey-io/valkey-json)
-[![Search Module](https://img.shields.io/badge/Valkey%20Search-✅%20Complete%20(21/21)-orange?style=flat-square)](https://github.com/valkey-io/valkey-search)
-[![Vector Search](https://img.shields.io/badge/Vector%20Search-🤖%20AI%20Ready-purple?style=flat-square)](#vector-similarity-search)
-[![Real-World Patterns](https://img.shields.io/badge/Real--World%20Patterns-✅%20Validated%20(19/19)-brightgreen?style=flat-square)](#-real-world-compatibility-validation)
 
 > **🎯 TRUE DROP-IN REPLACEMENT** powered by **Valkey GLIDE**'s high-performance Rust core
 > 
@@ -40,6 +26,26 @@ This project uses **exclusively Valkey GLIDE** - a high-performance, language-in
 | **Socket.IO** | ✅ **Validated** | Real-time applications | Validated |
 | **Rate Limiting** | ✅ **Validated** | Express rate limiting | Validated |
 | **Vector Search** | ✅ **Complete** | AI/ML applications | KNN & similarity |
+
+### Status & Quality Assurance
+
+[![CI Status](https://img.shields.io/github/actions/workflow/status/avifenesh/valkey-glide-ioredis-adapter/release.yml?branch=main&style=flat-square&label=CI)](https://github.com/avifenesh/valkey-glide-ioredis-adapter/actions)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue?style=flat-square)](https://www.typescriptlang.org)
+[![npm downloads](https://img.shields.io/npm/dm/valkey-glide-ioredis-adapter?style=flat-square)](https://www.npmjs.com/package/valkey-glide-ioredis-adapter)
+[![GitHub stars](https://img.shields.io/github/stars/avifenesh/valkey-glide-ioredis-adapter?style=flat-square)](https://github.com/avifenesh/valkey-glide-ioredis-adapter/stargazers)
+
+### Library Compatibility
+
+[![Socket.IO](https://img.shields.io/badge/Socket.IO-✅%20Compatible-brightgreen?style=flat-square)](https://socket.io)
+[![Express Sessions](https://img.shields.io/badge/Express%20Sessions-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/expressjs/session)
+[![Rate Limiting](https://img.shields.io/badge/Rate%20Limiting-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/express-rate-limit/express-rate-limit)
+
+### Module Support
+
+[![JSON Module](https://img.shields.io/badge/ValkeyJSON-✅%20Complete%20(31/31)-orange?style=flat-square)](https://github.com/valkey-io/valkey-json)
+[![Search Module](https://img.shields.io/badge/Valkey%20Search-✅%20Complete%20(21/21)-orange?style=flat-square)](https://github.com/valkey-io/valkey-search)
+[![Vector Search](https://img.shields.io/badge/Vector%20Search-🤖%20AI%20Ready-purple?style=flat-square)](#vector-similarity-search)
+[![Real-World Patterns](https://img.shields.io/badge/Real--World%20Patterns-✅%20Validated%20(19/19)-brightgreen?style=flat-square)](#-real-world-compatibility-validation)
 
 ## 🚀 **Key Features**
 
@@ -410,7 +416,7 @@ This project follows **pure GLIDE** principles:
 
 ## 📄 **License**
 
-MIT License - see [LICENSE](./LICENSE) file for details.
+Apache-2.0 License - see [LICENSE](./LICENSE) file for details.
 
 ## 🔗 **Related Projects**
 
