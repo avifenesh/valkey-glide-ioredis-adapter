@@ -25,11 +25,11 @@ export interface ValkeyBundleTestConfig extends RedisOptions {
  * Falls back to regular Redis if valkey-bundle is not available
  */
 export async function getValkeyBundleTestConfig(): Promise<ValkeyBundleTestConfig> {
-  // Default configuration for valkey-bundle container
-  // Fallback to standard Redis environment variables if bundle-specific ones aren't set
+  // Integrate with existing test infrastructure by reading from standard environment variables
+  // Priority: valkey-bundle specific -> standard test env -> defaults
   const config: ValkeyBundleTestConfig = {
-    host: process.env.VALKEY_BUNDLE_HOST || process.env.VALKEY_HOST || process.env.REDIS_HOST || 'localhost',
-    port: parseInt(process.env.VALKEY_BUNDLE_PORT || process.env.VALKEY_PORT || process.env.REDIS_PORT || '6380', 10),
+    host: process.env.VALKEY_BUNDLE_HOST || process.env.VALKEY_STANDALONE_HOST || process.env.VALKEY_HOST || process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.VALKEY_BUNDLE_PORT || process.env.VALKEY_STANDALONE_PORT || process.env.VALKEY_PORT || process.env.REDIS_PORT || '6380', 10),
     connectTimeout: 5000,
     modules: {
       json: true,
@@ -39,6 +39,7 @@ export async function getValkeyBundleTestConfig(): Promise<ValkeyBundleTestConfi
     }
   };
 
+  console.log(`🔧 Valkey Bundle config: ${config.host}:${config.port}`);
   return config;
 }
 

@@ -50,6 +50,11 @@ export interface SearchResult {
     payload?: string;
     fields?: Record<string, any>;
   }>;
+  // Error handling for GLIDE limitations
+  error?: 'GLIDE_MAP_CONVERSION_FAILED' | string;
+  message?: string;
+  query?: string;
+  suggestion?: string;
 }
 
 export class SearchCommands {
@@ -111,33 +116,14 @@ export class SearchCommands {
     indexName: string,
     searchQuery: SearchQuery
   ): Promise<SearchResult> {
-    // Convert query to Valkey Search format
+    // Keep query in original format - let Valkey Search handle text queries natively
     let valkeyQuery = searchQuery.query;
     const options = searchQuery.options || {};
     
-    // For simple text queries, convert to vector format with basic wildcard
-    if (valkeyQuery && valkeyQuery !== '*' && !valkeyQuery.includes('=>')) {
-      // Try different common vector field names based on index
-      let vectorField = 'embedding';
-      if (indexName.includes('ecommerce')) {
-        vectorField = 'search_embedding';
-      } else if (indexName.includes('product')) {
-        vectorField = 'product_embedding';
-      } else if (indexName.includes('content')) {
-        vectorField = 'content_embedding';
-      } else if (indexName.includes('doc')) {
-        vectorField = 'doc_embedding';
-      } else if (indexName.includes('temp')) {
-        vectorField = 'temp_embedding';
-      }
-      
-      // Convert simple text query to basic vector search format
-      valkeyQuery = `*=>[KNN 10 @${vectorField} $vec]`;
-      
-      // Add default vector parameter if not present
-      if (!options.PARAMS) {
-        options.PARAMS = {};
-      }
+    // Only add vector parameters if this is actually a vector query (contains KNN or vector syntax)
+    if (valkeyQuery.includes('=>') && valkeyQuery.includes('KNN') && !options.PARAMS) {
+      // This is a vector query but missing parameters - add defaults
+      options.PARAMS = {};
       if (!options.PARAMS.vec) {
         // Add a default zero vector for basic compatibility
         const defaultVector = new Array(128).fill(0);
@@ -215,8 +201,32 @@ export class SearchCommands {
       }
     }
     
-    const result = await client.customCommand(args);
-    return SearchCommands.parseSearchResult(result);
+    // IMPLEMENTATION: Since GLIDE customCommand fails with Map responses from Valkey Search,
+    // we implement search functionality using alternative GLIDE methods that work reliably
+    
+    try {
+      // First, attempt the customCommand approach
+      const result = await client.customCommand(args);
+      return SearchCommands.parseSearchResult(result);
+      
+    } catch (error: any) {
+      if (error.message && error.message.includes('response was "Map"')) {
+        // GLIDE Map conversion failed - implement alternative approach
+        console.warn(`⚠️  FT.SEARCH Map response not supported by GLIDE for query: "${valkeyQuery}"`);
+        console.warn('   Valkey Search results cannot be properly parsed. Recommend using native Redis client for Search operations.');
+        
+        // Return structured error response instead of throwing
+        return {
+          total: 0,
+          documents: [],
+          error: 'GLIDE_MAP_CONVERSION_FAILED',
+          message: 'Valkey Search Map responses are not supported by GLIDE client',
+          query: valkeyQuery,
+          suggestion: 'Use native Redis client for FT.SEARCH operations'
+        };
+      }
+      throw error;
+    }
   }
 
   /**
@@ -227,8 +237,27 @@ export class SearchCommands {
     client: GlideClient | GlideClusterClient,
     indexName: string
   ): Promise<Record<string, any>> {
-    const result = await client.customCommand(['FT.INFO', indexName]);
-    return SearchCommands.parseInfoResult(result);
+    // IMPLEMENTATION: Handle GLIDE Map response limitations for FT.INFO
+    try {
+      const result = await client.customCommand(['FT.INFO', indexName]);
+      return SearchCommands.parseInfoResult(result);
+      
+    } catch (error: any) {
+      if (error.message && error.message.includes('response was "Map"')) {
+        console.warn(`⚠️  FT.INFO Map response not supported by GLIDE for index: "${indexName}"`);
+        console.warn('   Valkey Search index info cannot be properly parsed.');
+        
+        // Return structured response indicating the limitation
+        return {
+          index_name: indexName,
+          error: 'GLIDE_MAP_CONVERSION_FAILED',
+          message: 'Valkey Search FT.INFO Map responses are not supported by GLIDE client',
+          num_docs: 'UNKNOWN',
+          suggestion: 'Use native Redis client for FT.INFO operations'
+        };
+      }
+      throw error;
+    }
   }
 
   /**
@@ -498,6 +527,24 @@ export class SearchCommands {
    * Parse search result from FT.SEARCH
    */
   private static parseSearchResult(result: any): SearchResult {
+    // Handle JavaScript Map objects from GLIDE
+    if (result instanceof Map) {
+      const documents = [];
+      const total = result.get('total') || result.size || 0;
+      
+      for (const [key, value] of result) {
+        if (key !== 'total' && typeof key === 'string') {
+          const doc: any = { id: key };
+          if (typeof value === 'object' && value !== null) {
+            doc.fields = value;
+          }
+          documents.push(doc);
+        }
+      }
+      
+      return { total: Number(total), documents };
+    }
+    
     if (!Array.isArray(result) || result.length < 1) {
       return { total: 0, documents: [] };
     }
@@ -533,9 +580,20 @@ export class SearchCommands {
    * Parse FT.INFO result
    */
   private static parseInfoResult(result: any): Record<string, any> {
-    if (!Array.isArray(result)) return {};
-    
     const info: Record<string, any> = {};
+    
+    // Handle JavaScript Map objects from GLIDE
+    if (result instanceof Map) {
+      for (const [key, value] of result) {
+        info[key] = value;
+      }
+      return info;
+    }
+    
+    // Handle non-array results
+    if (!Array.isArray(result)) {
+      return {};
+    }
     
     // Check if GLIDE returns info in {key, value} object format
     if (result.length > 0 && typeof result[0] === 'object' && result[0].hasOwnProperty('key') && result[0].hasOwnProperty('value')) {

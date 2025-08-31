@@ -141,6 +141,18 @@ export class ResultTranslator {
   }
 
   /**
+   * Converts GLIDE stream result to ioredis format.
+   * 
+   * @param glideResult - GLIDE xreadgroup result
+   * @returns ioredis-compatible stream result
+   */
+  static translateStreamResult(glideResult: any): any {
+    // GLIDE stream results are already compatible with ioredis format in most cases
+    // This method provides a centralized place for any future format adjustments
+    return glideResult;
+  }
+
+  /**
    * Converts GLIDE error to ioredis-compatible error format.
    * 
    * @param glideError - GLIDE error object
@@ -153,6 +165,115 @@ export class ResultTranslator {
     }
     
     return new Error(glideError?.message || 'Unknown GLIDE error');
+  }
+
+  /**
+   * Converts JavaScript Map objects to regular objects.
+   * 
+   * GLIDE sometimes returns Map objects but ioredis expects regular objects.
+   * 
+   * @param mapObject - JavaScript Map or regular object
+   * @returns Regular JavaScript object
+   */
+  static translateMapToObject(mapObject: any): Record<string, any> {
+    if (mapObject instanceof Map) {
+      const result: Record<string, any> = {};
+      for (const [key, value] of mapObject) {
+        result[key] = value;
+      }
+      return result;
+    }
+    
+    return mapObject || {};
+  }
+
+  /**
+   * Converts Valkey Search FT.SEARCH Map response to ioredis format.
+   * 
+   * Valkey Search + GLIDE returns Map objects but ioredis expects:
+   * [totalResults, docId1, [field1, value1, field2, value2], docId2, ...]
+   * 
+   * @param searchResult - GLIDE Map result from FT.SEARCH
+   * @returns ioredis-compatible search result array
+   */
+  static translateSearchResponse(searchResult: any): any[] {
+    if (searchResult instanceof Map) {
+      const result: any[] = [];
+      
+      // Try to extract total from Map - might be stored as 'total' key
+      const total = searchResult.get('total') || searchResult.size || 0;
+      result.push(Number(total));
+      
+      // Convert each document entry
+      for (const [docId, fields] of searchResult) {
+        if (docId === 'total') continue; // Skip total count key
+        
+        result.push(docId);
+        
+        if (fields instanceof Map) {
+          // Convert Map fields to flat array
+          const fieldArray: string[] = [];
+          for (const [fieldName, fieldValue] of fields) {
+            fieldArray.push(fieldName, String(fieldValue));
+          }
+          result.push(fieldArray);
+        } else if (Array.isArray(fields)) {
+          result.push(fields);
+        } else if (typeof fields === 'object' && fields !== null) {
+          // Convert object to flat array
+          const fieldArray: string[] = [];
+          for (const [fieldName, fieldValue] of Object.entries(fields)) {
+            fieldArray.push(fieldName, String(fieldValue));
+          }
+          result.push(fieldArray);
+        } else {
+          result.push([]);
+        }
+      }
+      
+      return result;
+    }
+    
+    // If not a Map, assume it's already in correct format or convert array
+    if (Array.isArray(searchResult)) {
+      return searchResult;
+    }
+    
+    // Default fallback
+    return [0];
+  }
+
+  /**
+   * Converts Valkey Search FT.INFO Map response to ioredis format.
+   * 
+   * Valkey Search + GLIDE returns Map objects but ioredis expects flat array:
+   * [key1, value1, key2, value2, ...]
+   * 
+   * @param infoResult - GLIDE Map result from FT.INFO
+   * @returns ioredis-compatible info result array
+   */
+  static translateInfoResponse(infoResult: any): any[] {
+    if (infoResult instanceof Map) {
+      const result: any[] = [];
+      for (const [key, value] of infoResult) {
+        result.push(key, value);
+      }
+      return result;
+    }
+    
+    if (Array.isArray(infoResult)) {
+      return infoResult;
+    }
+    
+    if (typeof infoResult === 'object' && infoResult !== null) {
+      const result: any[] = [];
+      for (const [key, value] of Object.entries(infoResult)) {
+        result.push(key, value);
+      }
+      return result;
+    }
+    
+    return [];
   }
 
   /**

@@ -158,7 +158,11 @@ export class JsonCommands {
     
     const result = await client.customCommand(args);
     
-    if (result === null || result === undefined) {
+    // Handle all possible null/empty responses for non-existent keys
+    // GLIDE may return [null], null, undefined, or empty string for non-existent keys
+    if (result === null || result === undefined || result === '' || 
+        result === 'null' || String(result).trim() === '' ||
+        (Array.isArray(result) && result.length === 1 && result[0] === null)) {
       return null;
     }
     

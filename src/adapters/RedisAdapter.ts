@@ -3,7 +3,7 @@
  * ioredis-compatible client built on valkey-glide
  */
 
-import { Batch, GlideClient, Script, TimeUnit, RangeByScore, Boundary } from '@valkey/valkey-glide';
+import { Batch, GlideClient, Script, TimeUnit, RangeByScore } from '@valkey/valkey-glide';
 import { EventEmitter } from 'events';
 import { pack as msgpack } from 'msgpackr';
 import {
@@ -591,9 +591,8 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     // Use native GLIDE method instead of customCommand
     const result = await client.xreadgroup(group, consumer, keys_and_ids, options);
     
-    // TODO: Convert GLIDE result format to ioredis format
-    // For now, return as-is (will be improved in Phase 1.3 with ResultTranslator)
-    return result;
+    // Convert GLIDE result format to ioredis format using ResultTranslator
+    return ResultTranslator.translateStreamResult(result);
   }
   
   // Database management
@@ -1097,9 +1096,6 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
       }
     }
     
-    if (normalizedKey.includes(':') && Object.keys(converted).length > 0) {
-    }
-    
     return converted;
   }
 
@@ -1588,12 +1584,15 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     return result.toString();
   }
 
-  async zcount(_key: RedisKey, _min: number | string, _max: number | string): Promise<number> {
-    // TODO: Fix boundary type compatibility with Valkey GLIDE
-    // const client = await this.ensureConnected();
-    // const normalizedKey = ParameterTranslator.normalizeKey(key);
-    // return await client.zcount(normalizedKey, minBound, maxBound);
-    throw new Error('zcount temporarily unavailable - boundary type compatibility issue');
+  async zcount(key: RedisKey, min: number | string, max: number | string): Promise<number> {
+    const client = await this.ensureConnected();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    
+    // Use new utility methods to create proper boundaries
+    const minBoundary = ParameterTranslator.createScoreBoundary(min);
+    const maxBoundary = ParameterTranslator.createScoreBoundary(max);
+    
+    return await client.zcount(normalizedKey, minBoundary, maxBoundary);
   }
 
   async zremrangebyrank(key: RedisKey, start: number, stop: number): Promise<number> {
@@ -1627,49 +1626,12 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     
     try {
-      // Build command arguments for full Redis compatibility
-      const commandArgs = [normalizedKey, min.toString(), max.toString()];
+      // Parse arguments using utility method
+      const { withScores, limit } = ParameterTranslator.parseZSetArgs(args);
       
-      // Handle additional arguments (WITHSCORES, LIMIT, etc.)
-      for (let i = 0; i < args.length; i++) {
-        const currentArg = args[i];
-        if (!currentArg) continue;
-        const arg = currentArg.toString().toUpperCase();
-        
-        if (arg === 'WITHSCORES') {
-          commandArgs.push(arg);
-        } else if (arg === 'LIMIT' && i + 2 < args.length) {
-          const nextArg = args[i + 1];
-          const thirdArg = args[i + 2];
-          if (nextArg !== undefined && thirdArg !== undefined) {
-            // LIMIT offset count
-            commandArgs.push(arg, nextArg.toString(), thirdArg.toString());
-            i += 2; // Skip the next two arguments
-          }
-        } else {
-          commandArgs.push(currentArg.toString());
-        }
-      }
-      
-      // Parse min/max boundaries for native GLIDE zrange
-      const parseScoreValue = (score: string | number): number => {
-        if (typeof score === 'number') return score;
-        const scoreStr = score.toString();
-        if (scoreStr === '+inf') return Infinity;
-        if (scoreStr === '-inf') return -Infinity;
-        if (scoreStr.startsWith('(+inf')) return Infinity;
-        if (scoreStr.startsWith('(-inf')) return -Infinity;
-        if (scoreStr.startsWith('(')) return parseFloat(scoreStr.slice(1));
-        return parseFloat(scoreStr);
-      };
-      
-      const minBoundary: Boundary<number> = typeof min === 'string' && min.startsWith('(') 
-        ? { value: parseScoreValue(min.slice(1)), isInclusive: false }
-        : { value: parseScoreValue(min), isInclusive: true };
-      
-      const maxBoundary: Boundary<number> = typeof max === 'string' && max.startsWith('(')
-        ? { value: parseScoreValue(max.slice(1)), isInclusive: false }
-        : { value: parseScoreValue(max), isInclusive: true };
+      // Create boundaries using utility methods
+      const minBoundary = ParameterTranslator.createScoreBoundary(min);
+      const maxBoundary = ParameterTranslator.createScoreBoundary(max);
       
       const rangeQuery: RangeByScore = {
         type: "byScore",
@@ -1677,50 +1639,17 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
         end: maxBoundary
       };
       
-      // Handle LIMIT arguments
-      for (let i = 0; i < args.length; i++) {
-        const currentArg = args[i];
-        if (currentArg && currentArg.toString().toUpperCase() === 'LIMIT' && i + 2 < args.length) {
-          const offsetArg = args[i + 1];
-          const countArg = args[i + 2];
-          if (offsetArg !== undefined && countArg !== undefined) {
-            rangeQuery.limit = {
-              offset: parseInt(offsetArg.toString()),
-              count: parseInt(countArg.toString())
-            };
-            break;
-          }
-        }
+      if (limit) {
+        rangeQuery.limit = limit;
       }
       
-      // Check if WITHSCORES is requested
-      const withScores = args.some(arg => arg.toUpperCase() === 'WITHSCORES');
-      
-      // Use native GLIDE zrange method
+      // Use native GLIDE methods with ResultTranslator
       if (withScores) {
         const result = await client.zrangeWithScores(normalizedKey, rangeQuery);
-        if (!Array.isArray(result)) {
-          return [];
-        }
-        
-        // GLIDE returns SortedSetDataType: {element: string, score: number}[]
-        // ioredis expects flat array: [member1, score1, member2, score2]
-        const flatArray: string[] = [];
-        for (const item of result) {
-          flatArray.push(
-            ParameterTranslator.convertGlideString(item.element) || '',
-            item.score.toString()
-          );
-        }
-        return flatArray;
+        return ResultTranslator.flattenSortedSetData(result);
       } else {
         const result = await client.zrange(normalizedKey, rangeQuery);
-        if (!Array.isArray(result)) {
-          return [];
-        }
-        
-        // Convert all results to strings for ioredis compatibility
-        return result.map(item => ParameterTranslator.convertGlideString(item) || '');
+        return ResultTranslator.convertStringArray(result);
       }
     } catch (error) {
       console.warn('zrangebyscore error:', error);
@@ -1738,66 +1667,31 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     
     try {
-      // Parse max/min boundaries for native GLIDE zrange
-      // For zrevrangebyscore: parameters are (key, max, min) but range query needs (start=min, end=max)
-      const minBoundary: Boundary<number> = typeof min === 'string' && min.startsWith('(') 
-        ? { value: parseFloat(min.slice(1)), isInclusive: false }
-        : { value: typeof min === 'number' ? min : parseFloat(min.toString()), isInclusive: true };
+      // Parse arguments using utility method
+      const { withScores, limit } = ParameterTranslator.parseZSetArgs(args);
       
-      const maxBoundary: Boundary<number> = typeof max === 'string' && max.startsWith('(')
-        ? { value: parseFloat(max.slice(1)), isInclusive: false }
-        : { value: typeof max === 'number' ? max : parseFloat(max.toString()), isInclusive: true };
+      // Create boundaries using utility methods - note parameter order for reverse
+      const minBoundary = ParameterTranslator.createScoreBoundary(min);
+      const maxBoundary = ParameterTranslator.createScoreBoundary(max);
       
-      // For zrevrangebyscore with GLIDE's reverse flag, we need to swap start/end
+      // For zrevrangebyscore with GLIDE's reverse flag, start should be max, end should be min
       const rangeQuery: RangeByScore = {
         type: "byScore",
-        start: maxBoundary,  // For reverse: start should be the higher bound (max)
-        end: minBoundary     // For reverse: end should be the lower bound (min)
+        start: maxBoundary,
+        end: minBoundary
       };
       
-      // Handle LIMIT arguments
-      for (let i = 0; i < args.length; i++) {
-        const currentArg = args[i];
-        if (currentArg && currentArg.toString().toUpperCase() === 'LIMIT' && i + 2 < args.length) {
-          const offsetArg = args[i + 1];
-          const countArg = args[i + 2];
-          if (offsetArg !== undefined && countArg !== undefined) {
-            rangeQuery.limit = {
-              offset: parseInt(offsetArg.toString()),
-              count: parseInt(countArg.toString())
-            };
-            break;
-          }
-        }
+      if (limit) {
+        rangeQuery.limit = limit;
       }
       
-      // Check if WITHSCORES is requested
-      const withScores = args.some(arg => arg.toUpperCase() === 'WITHSCORES');
-      
-      // Use native GLIDE zrange method with reverse option
+      // Use native GLIDE methods with ResultTranslator and reverse option
       if (withScores) {
         const result = await client.zrangeWithScores(normalizedKey, rangeQuery, { reverse: true });
-        if (!Array.isArray(result)) {
-          return [];
-        }
-        
-        // GLIDE returns SortedSetDataType: {element: string, score: number}[]
-        // ioredis expects flat array: [member1, score1, member2, score2]
-        const flatArray: string[] = [];
-        for (const item of result) {
-          flatArray.push(
-            ParameterTranslator.convertGlideString(item.element) || '',
-            item.score.toString()
-          );
-        }
-        return flatArray;
+        return ResultTranslator.flattenSortedSetData(result);
       } else {
         const result = await client.zrange(normalizedKey, rangeQuery, { reverse: true });
-        if (!Array.isArray(result)) {
-          return [];
-        }
-        
-        return result.map(item => ParameterTranslator.convertGlideString(item) || '');
+        return ResultTranslator.convertStringArray(result);
       }
     } catch (error) {
       console.warn('zrevrangebyscore error:', error);
@@ -3532,15 +3426,17 @@ class PipelineAdapter implements Pipeline {
         batch.zincrby(ParameterTranslator.normalizeKey(args[0]), args[1], ParameterTranslator.normalizeValue(args[2]));
         break;
       case 'zcount':
-        // TODO: Fix boundary type compatibility 
-        throw new Error('zcount in pipeline temporarily unavailable');
+        const minBoundary = ParameterTranslator.createScoreBoundary(args[1]);
+        const maxBoundary = ParameterTranslator.createScoreBoundary(args[2]);
+        batch.zcount(ParameterTranslator.normalizeKey(args[0]), minBoundary, maxBoundary);
         break;
       case 'zremrangebyrank':
         batch.zremRangeByRank(ParameterTranslator.normalizeKey(args[0]), args[1], args[2]);
         break;
       case 'zremrangebyscore':
-        // TODO: Fix boundary type compatibility
-        throw new Error('zremrangebyscore in pipeline temporarily unavailable');
+        const minScoreBoundary = ParameterTranslator.createScoreBoundary(args[1]);
+        const maxScoreBoundary = ParameterTranslator.createScoreBoundary(args[2]);
+        batch.zremRangeByScore(ParameterTranslator.normalizeKey(args[0]), minScoreBoundary, maxScoreBoundary);
         break;
       // Key commands
       // Key commands

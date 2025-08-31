@@ -358,4 +358,71 @@ export class ParameterTranslator {
     }
     return result;
   }
+
+  /**
+   * Parse score boundary value for ZSET operations (eliminating duplication)
+   */
+  static parseScoreValue(score: string | number): number {
+    if (typeof score === 'number') return score;
+    const scoreStr = score.toString();
+    if (scoreStr === '+inf') return Infinity;
+    if (scoreStr === '-inf') return -Infinity;
+    if (scoreStr.startsWith('(+inf')) return Infinity;
+    if (scoreStr.startsWith('(-inf')) return -Infinity;
+    if (scoreStr.startsWith('(')) return parseFloat(scoreStr.slice(1));
+    return parseFloat(scoreStr);
+  }
+
+  /**
+   * Create boundary for ZSET range operations (eliminating duplication)
+   */
+  static createScoreBoundary(bound: string | number): { value: number; isInclusive: boolean } {
+    if (typeof bound === 'string' && bound.startsWith('(')) {
+      return { 
+        value: this.parseScoreValue(bound.slice(1)), 
+        isInclusive: false 
+      };
+    }
+    return { 
+      value: this.parseScoreValue(bound), 
+      isInclusive: true 
+    };
+  }
+
+  /**
+   * Parse ZSET command arguments for LIMIT, WITHSCORES, etc. (eliminating duplication)
+   */
+  static parseZSetArgs(args: string[]): {
+    withScores: boolean;
+    limit?: { offset: number; count: number };
+  } {
+    const withScores = args.some(arg => arg.toUpperCase() === 'WITHSCORES');
+    let limit: { offset: number; count: number } | undefined = undefined;
+
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      if (arg && arg.toUpperCase() === 'LIMIT' && i + 2 < args.length) {
+        const offsetArg = args[i + 1];
+        const countArg = args[i + 2];
+        if (offsetArg !== undefined && countArg !== undefined) {
+          limit = {
+            offset: parseInt(offsetArg.toString()),
+            count: parseInt(countArg.toString())
+          };
+          break;
+        }
+      }
+    }
+
+    const result: {
+      withScores: boolean;
+      limit?: { offset: number; count: number };
+    } = { withScores };
+    
+    if (limit !== undefined) {
+      result.limit = limit;
+    }
+    
+    return result;
+  }
 }
