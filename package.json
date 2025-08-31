@@ -46,6 +46,9 @@
     "valkey:test": "./scripts/start-valkey-bundle.sh --test",
     "release": "semantic-release",
     "release:dry": "semantic-release --dry-run",
+    "release:patch": "./scripts/release.sh patch",
+    "release:minor": "./scripts/release.sh minor", 
+    "release:major": "./scripts/release.sh major",
     "version:patch": "npm version patch --no-git-tag-version",
     "version:minor": "npm version minor --no-git-tag-version",
     "version:major": "npm version major --no-git-tag-version"
@@ -105,6 +108,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/avifenesh/valkey-glide-ioredis-adapter.git"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "bugs": {
     "url": "https://github.com/avifenesh/valkey-glide-ioredis-adapter/issues"

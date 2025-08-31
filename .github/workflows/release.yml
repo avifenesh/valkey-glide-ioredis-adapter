@@ -15,8 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     
     services:
-      redis:
-        image: valkey/valkey:7.2
+      valkey-bundle:
+        image: valkey/valkey-bundle:8.1-bookworm
         ports:
           - 6379:6379
         options: >-
@@ -34,7 +34,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
+          node-version: '20'
           cache: 'npm'
 
       - name: Install dependencies
@@ -46,10 +46,29 @@ jobs:
       - name: Run type checking
         run: npm run build
 
+      - name: Wait for Valkey Bundle and verify modules
+        run: |
+          echo "Waiting for Valkey Bundle with modules..."
+          # Install redis-cli for testing compatibility
+          sudo apt-get update && sudo apt-get install -y redis-tools
+          
+          for i in {1..30}; do
+            if redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
+              echo "✅ Valkey Bundle is ready!"
+              echo "📦 Checking loaded modules..."
+              redis-cli -h localhost -p 6379 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"
+              break
+            fi
+            echo "⏳ Waiting for Valkey Bundle... ($i/30)"
+            sleep 2
+          done
+
       - name: Run tests with coverage
-        run: npm test -- --coverage --coverageThreshold='{}' --testPathIgnorePatterns="/tests/unit/json-commands.test.ts|/tests/unit/search-commands.test.ts"
+        run: npm test -- --coverage --coverageThreshold='{}'
         env:
-          SKIP_MODULE_TESTS: true
+          CI: true
+          VALKEY_BUNDLE_HOST: localhost
+          VALKEY_BUNDLE_PORT: 6379
 
 
   release:
@@ -73,7 +92,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 'lts/*'
+          node-version: '20'
           registry-url: 'https://registry.npmjs.org'
           cache: 'npm'
 
@@ -87,10 +106,17 @@ jobs:
         id: tag_version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
         
-      - name: Update package.json version
+      - name: Validate version matches tag
         run: |
-          jq --arg version "${{ steps.tag_version.outputs.VERSION }}" '.version = $version' package.json > package.json.tmp
-          mv package.json.tmp package.json
+          TAG_VERSION="${{ steps.tag_version.outputs.VERSION }}"
+          PACKAGE_VERSION=$(node -p "require('./package.json').version")
+          echo "Tag version: $TAG_VERSION"
+          echo "Package version: $PACKAGE_VERSION"
+          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
+            echo "❌ Version mismatch: tag v$TAG_VERSION != package.json $PACKAGE_VERSION"
+            exit 1
+          fi
+          echo "✅ Version matches: v$TAG_VERSION"
         
       - name: Publish to NPM
         env:
@@ -102,13 +128,82 @@ jobs:
             npm publish --ignore-scripts
           fi
         
+      - name: Generate Release Notes
+        id: release_notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="v${{ steps.tag_version.outputs.VERSION }}"
+          
+          # Get the previous tag
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          echo "## 🚀 Release ${{ steps.tag_version.outputs.VERSION }}" > release_notes.md
+          echo "" >> release_notes.md
+          
+          if [ -n "$PREVIOUS_TAG" ]; then
+            echo "**Full Changelog:** [${PREVIOUS_TAG}...${TAG_NAME}](https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...${TAG_NAME})" >> release_notes.md
+            echo "" >> release_notes.md
+            
+            # Generate changelog sections
+            echo "### 🔧 Changes" >> release_notes.md
+            
+            # Get commits since last tag, categorize by conventional commit format
+            git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s" --no-merges | while read -r line; do
+              if [[ $line =~ ^-\ feat(\(.*\))?:\ (.*)$ ]]; then
+                echo "### ✨ Features" >> release_notes_features.md
+                echo "$line" | sed 's/^- feat[^:]*: /- /' >> release_notes_features.md
+              elif [[ $line =~ ^-\ fix(\(.*\))?:\ (.*)$ ]]; then
+                echo "### 🐛 Bug Fixes" >> release_notes_fixes.md  
+                echo "$line" | sed 's/^- fix[^:]*: /- /' >> release_notes_fixes.md
+              elif [[ $line =~ ^-\ docs(\(.*\))?:\ (.*)$ ]]; then
+                echo "### 📚 Documentation" >> release_notes_docs.md
+                echo "$line" | sed 's/^- docs[^:]*: /- /' >> release_notes_docs.md
+              elif [[ $line =~ ^-\ test(\(.*\))?:\ (.*)$ ]]; then
+                echo "### 🧪 Tests" >> release_notes_tests.md
+                echo "$line" | sed 's/^- test[^:]*: /- /' >> release_notes_tests.md
+              elif [[ $line =~ ^-\ ci(\(.*\))?:\ (.*)$ ]]; then
+                echo "### 🔄 CI/CD" >> release_notes_ci.md
+                echo "$line" | sed 's/^- ci[^:]*: /- /' >> release_notes_ci.md
+              else
+                echo "$line" >> release_notes_other.md
+              fi
+            done
+            
+            # Combine sections
+            [ -f release_notes_features.md ] && cat release_notes_features.md >> release_notes.md && echo "" >> release_notes.md
+            [ -f release_notes_fixes.md ] && cat release_notes_fixes.md >> release_notes.md && echo "" >> release_notes.md
+            [ -f release_notes_ci.md ] && cat release_notes_ci.md >> release_notes.md && echo "" >> release_notes.md
+            [ -f release_notes_docs.md ] && cat release_notes_docs.md >> release_notes.md && echo "" >> release_notes.md
+            [ -f release_notes_tests.md ] && cat release_notes_tests.md >> release_notes.md && echo "" >> release_notes.md
+            [ -f release_notes_other.md ] && echo "### 🔧 Other Changes" >> release_notes.md && cat release_notes_other.md >> release_notes.md && echo "" >> release_notes.md
+            
+            # Clean up temp files
+            rm -f release_notes_*.md
+          else
+            echo "🎉 Initial release of valkey-glide-ioredis-adapter" >> release_notes.md
+            echo "" >> release_notes.md
+            echo "A high-performance, drop-in replacement for ioredis powered by Valkey GLIDE's Rust core." >> release_notes.md
+          fi
+          
+          echo "" >> release_notes.md
+          echo "---" >> release_notes.md
+          echo "**Install:** \`npm install valkey-glide-ioredis-adapter\`" >> release_notes.md
+
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG_NAME="v${{ steps.tag_version.outputs.VERSION }}"
           if [[ "${{ steps.tag_version.outputs.VERSION }}" == *"-"* ]]; then
-            gh release create "$TAG_NAME" --title "$TAG_NAME" --notes "Pre-release $TAG_NAME" --prerelease --target "$GITHUB_SHA"
+            gh release create "$TAG_NAME" \
+              --title "$TAG_NAME" \
+              --notes-file release_notes.md \
+              --prerelease \
+              --target "$GITHUB_SHA"
           else
-            gh release create "$TAG_NAME" --title "$TAG_NAME" --notes "Release $TAG_NAME" --target "$GITHUB_SHA"
+            gh release create "$TAG_NAME" \
+              --title "$TAG_NAME" \
+              --notes-file release_notes.md \
+              --target "$GITHUB_SHA"
           fi
