@@ -89,8 +89,30 @@ jobs:
       - name: Build package
         run: npm run build
 
-      - name: Release
+      - name: Get tag version
+        id: tag_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+        
+      - name: Update package.json version
+        run: npm version ${{ steps.tag_version.outputs.VERSION }} --no-git-tag-version
+        
+      - name: Publish to NPM
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [[ "${{ steps.tag_version.outputs.VERSION }}" == *"-"* ]]; then
+            npm publish --tag prerelease
+          else
+            npm publish
+          fi
+        
+      - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npx semantic-release
+        run: |
+          TAG_NAME="v${{ steps.tag_version.outputs.VERSION }}"
+          if [[ "${{ steps.tag_version.outputs.VERSION }}" == *"-"* ]]; then
+            gh release create "$TAG_NAME" --title "$TAG_NAME" --notes "Pre-release $TAG_NAME" --prerelease --target "$GITHUB_SHA"
+          else
+            gh release create "$TAG_NAME" --title "$TAG_NAME" --notes "Release $TAG_NAME" --target "$GITHUB_SHA"
+          fi
