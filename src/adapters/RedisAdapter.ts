@@ -95,6 +95,23 @@ export class RedisAdapter extends EventEmitter implements IRedisAdapter {
     } as any;
   }
 
+  // BullMQ compatibility: Add missing ioredis client properties
+  get isCluster(): boolean {
+    return false; // We're emulating a standalone Redis client
+  }
+
+  // Mock cluster properties that BullMQ checks for to satisfy TypeScript
+  slots?: any = undefined;
+  _groupsIds?: any = undefined; 
+  _groupsBySlot?: any = undefined;
+  
+  // Additional ioredis client properties for full compatibility
+  connector?: any = undefined;
+  commandQueue?: any = undefined;
+  retryDelayOnClusterDown?: any = undefined;
+  retryDelayOnFailover?: any = undefined;
+  maxRetriesPerRequest?: number | null = null;
+
   // Bull compatibility: isReady method
   async isReady(): Promise<this> {
     
