@@ -122,7 +122,7 @@ const redis = new RedisAdapter({
   port: 6379
 });
 
-// Use ioredis-compatible API with Valkey backend
+// Use ioredis API with Valkey backend
 await redis.set('key', 'value');
 const value = await redis.get('key');
 
@@ -389,7 +389,7 @@ while (true) {
 ```
 Application Code
        ↓
-ioredis-compatible API
+ioredis API
        ↓
 Parameter Translation
        ↓
@@ -397,7 +397,7 @@ Native GLIDE Methods
        ↓
 Result Translation
        ↓
-ioredis-compatible Results
+ioredis Results
 ```
 
 ### Pub/Sub Architecture
@@ -438,9 +438,5 @@ Apache-2.0 License - see [LICENSE](./LICENSE) file for details.
 ### Module Ecosystems
 - **[ValkeyJSON](https://github.com/valkey-io/valkey-json)** - JSON document storage and manipulation module
 - **[Valkey Search](https://github.com/valkey-io/valkey-search)** - Full-text search and vector similarity module
-- **[Redis Stack](https://redis.io/docs/about/about-stack/)** - Collection of Redis modules (compatible via Valkey equivalents)
+- **[Valkey](https://github.com/valkey-io/valkey)** - High-performance server with module support
 
-### Alternative Redis Clients
-- **[redis](https://github.com/redis/node-redis)** - Official Node.js Redis client
-- **[tedis](https://github.com/silkjs/tedis)** - TypeScript Redis client
-- **[handy-redis](https://github.com/mmkal/handy-redis)** - TypeScript-friendly Redis client wrapper
