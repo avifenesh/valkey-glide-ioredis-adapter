@@ -1,7 +1,7 @@
 # Valkey GLIDE ioredis Adapter
 
 [![npm version](https://img.shields.io/npm/v/valkey-glide-ioredis-adapter?style=flat-square)](https://www.npmjs.com/package/valkey-glide-ioredis-adapter)
-[![GitHub license](https://img.shields.io/github/license/avifenesh/valkey-glide-ioredis-adapter?style=flat-square)](https://github.com/avifenesh/valkey-glide-ioredis-adapter/blob/main/LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](https://github.com/avifenesh/valkey-glide-ioredis-adapter/blob/main/LICENSE)
 [![Node.js Version](https://img.shields.io/node/v/valkey-glide-ioredis-adapter?style=flat-square)](https://nodejs.org)
 
 > **🎯 TRUE DROP-IN REPLACEMENT** powered by **Valkey GLIDE**'s high-performance Rust core
