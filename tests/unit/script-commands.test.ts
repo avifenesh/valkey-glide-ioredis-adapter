@@ -202,7 +202,8 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       const key = `fixed_rate:channel:${Math.random()}`;
       const windowSeconds = 10; // 10 second window
       const limit = 3; // 3 messages per 10 seconds
-      const currentTime = Date.now();
+      // Use fixed timestamp to avoid timing-related flakiness in CI
+      const baseTime = 1600000000000; // Fixed timestamp (2020-09-13)
       
       // Send 3 messages in the same window - all should be allowed
       for (let i = 0; i < 3; i++) {
@@ -212,7 +213,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
           key,
           windowSeconds.toString(),
           limit.toString(),
-          (currentTime + i * 100).toString()
+          (baseTime + i * 100).toString()
         );
         
         expect(result[0]).toBe(1); // Allowed
@@ -227,7 +228,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         key,
         windowSeconds.toString(),
         limit.toString(),
-        (currentTime + 400).toString()
+        (baseTime + 400).toString()
       );
       
       expect(result4[0]).toBe(0); // Denied
