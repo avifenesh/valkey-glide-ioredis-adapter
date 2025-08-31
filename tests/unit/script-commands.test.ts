@@ -186,15 +186,14 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         local window_start = math.floor(current_time / (window_seconds * 1000)) * (window_seconds * 1000)
         local window_key = key .. ":" .. window_start
         
-        -- Get current count for this window
-        local current_count = tonumber(redis.call('GET', window_key)) or 0
+        -- Increment counter first, then check if we exceeded the limit
+        local new_count = redis.call('INCR', window_key)
+        redis.call('EXPIRE', window_key, window_seconds * 2)
         
-        if current_count < limit then
-          -- Increment counter
-          local new_count = redis.call('INCR', window_key)
-          redis.call('EXPIRE', window_key, window_seconds * 2)
+        if new_count <= limit then
           return {1, limit - new_count, window_seconds * 1000 - (current_time - window_start)}  -- [allowed, remaining, reset_time]
         else
+          -- Exceeded limit, but counter was already incremented
           local reset_time = window_seconds * 1000 - (current_time - window_start)
           return {0, 0, reset_time}  -- [denied, remaining, reset_time]
         end
