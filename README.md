@@ -36,8 +36,11 @@ This project uses **exclusively Valkey GLIDE** - a high-performance, language-in
 
 ### Library Compatibility
 
+[![Bull](https://img.shields.io/badge/Bull-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/OptimalBits/bull)
+[![BullMQ](https://img.shields.io/badge/BullMQ-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/taskforcesh/bullmq)
+[![Bee Queue](https://img.shields.io/badge/Bee%20Queue-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/bee-queue/bee-queue)
 [![Socket.IO](https://img.shields.io/badge/Socket.IO-✅%20Compatible-brightgreen?style=flat-square)](https://socket.io)
-[![Express Sessions](https://img.shields.io/badge/Express%20Sessions-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/expressjs/session)
+[![Connect Redis](https://img.shields.io/badge/Connect%20Redis-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/tj/connect-redis)
 [![Rate Limiting](https://img.shields.io/badge/Rate%20Limiting-✅%20Compatible-brightgreen?style=flat-square)](https://github.com/express-rate-limit/express-rate-limit)
 
 ### Module Support
