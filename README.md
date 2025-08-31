@@ -423,9 +423,24 @@ Apache-2.0 License - see [LICENSE](./LICENSE) file for details.
 
 ## 🔗 **Related Projects**
 
-- [Valkey GLIDE](https://github.com/valkey-io/valkey-glide) - The underlying high-performance client
-- [ioredis](https://github.com/luin/ioredis) - The API we're compatible with
-- [Bull](https://github.com/OptimalBits/bull) / [BullMQ](https://github.com/taskforcesh/bullmq) - Job queue libraries (integration in progress)
-- [connect-redis](https://github.com/tj/connect-redis) - Express session store
-- [rate-limit-redis](https://github.com/wyattjoh/rate-limit-redis) - Rate limiting store
-- [socket.io-redis-adapter](https://github.com/socketio/socket.io-redis-adapter) - Socket.IO scaling adapter
+### Core Dependencies
+- **[Valkey GLIDE](https://github.com/valkey-io/valkey-glide)** - The underlying high-performance Rust-based client that powers this adapter
+- **[ioredis](https://github.com/luin/ioredis)** - The original Redis client whose API we maintain full compatibility with
+
+### Compatible Libraries (Tested & Validated)
+- **[Bull](https://github.com/OptimalBits/bull)** - Redis-based queue for Node.js, fully compatible
+- **[BullMQ](https://github.com/taskforcesh/bullmq)** - Modern Redis-based queue with advanced features
+- **[Bee Queue](https://github.com/bee-queue/bee-queue)** - Simple, fast, robust job/task queue for Node.js
+- **[connect-redis](https://github.com/tj/connect-redis)** - Redis session store for Express/Connect
+- **[express-rate-limit](https://github.com/express-rate-limit/express-rate-limit)** - Rate limiting middleware for Express
+- **[socket.io-redis-adapter](https://github.com/socketio/socket.io-redis-adapter)** - Socket.IO adapter for horizontal scaling
+
+### Module Ecosystems
+- **[ValkeyJSON](https://github.com/valkey-io/valkey-json)** - JSON document storage and manipulation module
+- **[Valkey Search](https://github.com/valkey-io/valkey-search)** - Full-text search and vector similarity module
+- **[Redis Stack](https://redis.io/docs/about/about-stack/)** - Collection of Redis modules (compatible via Valkey equivalents)
+
+### Alternative Redis Clients
+- **[redis](https://github.com/redis/node-redis)** - Official Node.js Redis client
+- **[tedis](https://github.com/silkjs/tedis)** - TypeScript Redis client
+- **[handy-redis](https://github.com/mmkal/handy-redis)** - TypeScript-friendly Redis client wrapper
