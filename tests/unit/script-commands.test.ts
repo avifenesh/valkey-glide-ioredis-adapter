@@ -615,7 +615,8 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         expect(true).toBe(false);
       } catch (error) {
         expect(error).toBeDefined();
-        expect(String(error)).toContain('Unknown Redis command');
+        // Valkey returns "Unknown command" while Redis returns "Unknown Redis command"
+        expect(String(error)).toMatch(/Unknown (Redis )?command/);
       }
     });
   });
