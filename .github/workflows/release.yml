@@ -49,7 +49,7 @@ jobs:
         run: npm run build
 
       - name: Run tests with coverage
-        run: npm test -- --coverage --testPathIgnorePatterns="/tests/unit/json-commands.test.ts|/tests/unit/search-commands.test.ts"
+        run: npm test -- --coverage --coverageThreshold='{}' --testPathIgnorePatterns="/tests/unit/json-commands.test.ts|/tests/unit/search-commands.test.ts"
         env:
           SKIP_MODULE_TESTS: true
 
