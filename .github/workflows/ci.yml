@@ -53,14 +53,18 @@ jobs:
     - name: Wait for Valkey Bundle and verify modules
       run: |
         echo "Waiting for Valkey Bundle with modules..."
-        # Install valkey-cli (native on Ubuntu 24.04)
-        sudo apt-get update && sudo apt-get install -y valkey-tools
+        # Install redis-cli for testing compatibility (valkey-cli has same protocol)
+        sudo apt-get update && sudo apt-get install -y redis-tools
         
         for i in {1..30}; do
-          if valkey-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
+          if redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
             echo "✅ Valkey Bundle is ready!"
             echo "📦 Checking loaded modules..."
-            valkey-cli -h localhost -p 6379 INFO modules | grep -E "(json|search)" || echo "⚠️  Module info not available"
+            redis-cli -h localhost -p 6379 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"
+            echo "🔍 Testing JSON command..."
+            redis-cli -h localhost -p 6379 JSON.SET test_ci_key '$' '"test"' || echo "⚠️  JSON module not available"
+            echo "🔍 Testing Search command..."
+            redis-cli -h localhost -p 6379 FT.CREATE test_ci_idx ON JSON PREFIX 1 "test:" SCHEMA name TEXT || echo "⚠️  Search module not available"
             break
           fi
           echo "⏳ Waiting for Valkey Bundle... ($i/30)"
