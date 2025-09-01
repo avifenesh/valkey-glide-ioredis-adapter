@@ -322,8 +322,8 @@ export abstract class BaseClient extends EventEmitter {
         // Keep Buffer as is for msgpack - GLIDE handles Buffer conversion
         if (a instanceof Buffer) return a;
         if (typeof a === 'object') {
-          // Don't stringify - let GLIDE handle object conversion
-          return a;
+          // JSON stringify objects for compatibility with ioredis
+          return JSON.stringify(a);
         }
         return String(a);
       });
@@ -1124,6 +1124,17 @@ export abstract class BaseClient extends EventEmitter {
         return [];
       }
       
+      if (withScores) {
+        // GLIDE returns [{element: 'key', score: 1}] format, convert to ['key', '1'] format
+        const flattened: string[] = [];
+        for (const item of result) {
+          if (typeof item === 'object' && item !== null && 'element' in item && 'score' in item) {
+            flattened.push(String(item.element), String(item.score));
+          }
+        }
+        return flattened;
+      }
+      
       return result.map((item: any) => ParameterTranslator.convertGlideString(item) || '');
     } catch (error) {
       console.warn('zrangebyscore error:', error);
@@ -1205,6 +1216,17 @@ export abstract class BaseClient extends EventEmitter {
       
       if (!Array.isArray(result)) {
         return [];
+      }
+      
+      if (withScores) {
+        // GLIDE returns [{element: 'key', score: 1}] format, convert to ['key', '1'] format
+        const flattened: string[] = [];
+        for (const item of result) {
+          if (typeof item === 'object' && item !== null && 'element' in item && 'score' in item) {
+            flattened.push(String(item.element), String(item.score));
+          }
+        }
+        return flattened;
       }
       
       return result.map((item: any) => ParameterTranslator.convertGlideString(item) || '');
@@ -3421,6 +3443,20 @@ export abstract class BaseClient extends EventEmitter {
     
     // Execute via customCommand
     return await client.customCommand([command.toUpperCase(), ...commandArgs]);
+  }
+
+  // ioredis compatibility - sendCommand
+  async sendCommand(command: any): Promise<any> {
+    const client = await this.ensureConnected();
+    
+    // Ensure connection is alive
+    await client.ping();
+    
+    if (Array.isArray(command)) {
+      return await client.customCommand(command);
+    } else {
+      throw new Error('sendCommand expects array format: [command, ...args]');
+    }
   }
 
   // TODO: Add remaining database commands as needed

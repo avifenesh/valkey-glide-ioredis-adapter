@@ -677,7 +677,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const eventIds = [];
       
       for (let i = 0; i < 15; i++) {
-        const eventType = eventTypes[i % eventTypes.length];
+        const eventType = eventTypes[i % eventTypes.length]!;
         const eventId = await redis.xadd(streamKey, '*',
           'event_type', eventType,
           'user_id', `USER-${Math.floor(i / 3) + 1}`,
