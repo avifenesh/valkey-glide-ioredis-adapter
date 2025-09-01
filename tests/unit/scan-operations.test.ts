@@ -10,11 +10,11 @@
  * - GitHub's repository metadata scanning
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { RedisOptions } from '../../src/types';
 
 describe('Scan Operations - Production Iteration Patterns', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
 
   beforeEach(async () => {
     const config: RedisOptions = {
@@ -22,7 +22,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       port: 6379,
       lazyConnect: true
     };
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
   });
 
   afterEach(async () => {

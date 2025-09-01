@@ -3,12 +3,12 @@
  * Tests current pub/sub implementation and validates incremental improvements
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { testUtils } from '../setup';
 
 describe('Basic Pub/Sub Functionality', () => {
-  let publisher: RedisAdapter;
-  let subscriber: RedisAdapter;
+  let publisher: Redis;
+  let subscriber: Redis;
   let config: any;
 
   beforeAll(async () => {
@@ -23,8 +23,8 @@ describe('Basic Pub/Sub Functionality', () => {
 
   beforeEach(async () => {
     // Create separate clients for publishing and subscribing
-    publisher = new RedisAdapter(config);
-    subscriber = new RedisAdapter(config);
+    publisher = new Redis(config);
+    subscriber = new Redis(config);
     
     await publisher.connect();
     await subscriber.connect();

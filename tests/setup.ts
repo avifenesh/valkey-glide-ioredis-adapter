@@ -52,11 +52,12 @@ export const testUtils = {
     }
     
     try {
-      // Highest priority: explicit env
-      if (process.env.REDIS_HOST && process.env.REDIS_PORT) {
+      // Highest priority: explicit env (support both REDIS_ and VALKEY_ prefixes)
+      if ((process.env.REDIS_HOST && process.env.REDIS_PORT) || 
+          (process.env.VALKEY_STANDALONE_HOST && process.env.VALKEY_STANDALONE_PORT)) {
         const envConfig = {
-          host: process.env.REDIS_HOST,
-          port: parseInt(process.env.REDIS_PORT, 10)
+          host: process.env.VALKEY_STANDALONE_HOST || process.env.REDIS_HOST || 'localhost',
+          port: parseInt(process.env.VALKEY_STANDALONE_PORT || process.env.REDIS_PORT || '6379', 10)
         } as ServerConfig;
         cachedStandaloneConfig = envConfig;
         lastStandaloneConfigTime = now;

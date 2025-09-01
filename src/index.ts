@@ -1,14 +1,13 @@
 /**
  * Main entry point for ioredis adapter
+ * Drop-in replacement for ioredis with Valkey GLIDE backend
  */
 
-// Export both the original monolithic adapter and the new modular ones
-export { RedisAdapter } from './adapters/RedisAdapter';
-export { ModularRedisAdapter } from './adapters/ModularRedisAdapter';
-export { ClusterAdapter } from './adapters/ClusterAdapter';
-export { BaseClusterAdapter, ClusterOptions } from './adapters/BaseClusterAdapter';
+// Primary exports - drop-in ioredis compatibility
+export { default as Redis } from './Redis';
+export { Cluster } from './Cluster';
 export * from './types';
 
-// Use the new modular adapter as the default export
-import { ModularRedisAdapter } from './adapters/ModularRedisAdapter';
-export default ModularRedisAdapter;
+// Default export (most common usage: import Redis from 'package')
+import Redis from './Redis';
+export default Redis;

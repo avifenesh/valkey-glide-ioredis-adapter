@@ -10,15 +10,15 @@
  * - Edge case parameter combinations
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { getRedisTestConfig } from '../utils/redis-config';
 
 describe('Redis Adapter Edge Cases & Production Scenarios', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
 
   beforeEach(async () => {
     const config = await getRedisTestConfig();
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
   });
 
   afterEach(async () => {
@@ -70,7 +70,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       const lazyConfig = await getRedisTestConfig();
       const configWithLazy = { ...lazyConfig, lazyConnect: true };
       
-      const lazyRedis = new RedisAdapter(configWithLazy);
+      const lazyRedis = new Redis(configWithLazy);
       
       // First operation should trigger connection
       await lazyRedis.set('lazy:test', 'connected');
@@ -84,7 +84,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       const invalidConfig = await getRedisTestConfig();
       invalidConfig.host = 'nonexistent.example.com';
       
-      const invalidRedis = new RedisAdapter(invalidConfig);
+      const invalidRedis = new Redis(invalidConfig);
       
       // Should handle connection errors gracefully
       await expect(async () => {
@@ -424,7 +424,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       await redis.set(key, '100');
       
       // Create second connection to modify watched key
-      const redis2 = new RedisAdapter(await getRedisTestConfig());
+      const redis2 = new Redis(await getRedisTestConfig());
       
       try {
         // Start watching
@@ -478,7 +478,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
         lazyConnect: true 
       };
       
-      const timeoutRedis = new RedisAdapter(timeoutConfig);
+      const timeoutRedis = new Redis(timeoutConfig);
       
       // Should still work for normal operations
       await timeoutRedis.set('timeout:test', 'value');

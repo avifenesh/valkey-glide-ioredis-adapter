@@ -333,4 +333,29 @@ export class ResultTranslator {
     
     return ioredisEntries;
   }
+
+  /**
+   * Convert GLIDE hash result to plain object
+   */
+  static convertHashResult(result: any): Record<string, string> {
+    const converted: Record<string, string> = {};
+    if (!result || typeof result !== 'object') {
+      return converted;
+    }
+    
+    for (const [key, value] of Object.entries(result)) {
+      converted[key] = ParameterTranslator.convertGlideString(value) || '';
+    }
+    return converted;
+  }
+
+  /**
+   * Convert GLIDE array result to string array
+   */
+  static convertArrayResult(result: any[]): string[] {
+    if (!Array.isArray(result)) {
+      return [];
+    }
+    return result.map(item => ParameterTranslator.convertGlideString(item) || '');
+  }
 }

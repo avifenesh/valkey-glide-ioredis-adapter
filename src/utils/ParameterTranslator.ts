@@ -40,7 +40,7 @@ export class ParameterTranslator {
   /**
    * Parse SET command options
    */
-  private static parseSetOptions(args: any[]): any {
+  static parseSetOptions(args: any[]): any {
     if (args.length === 0) return undefined;
     
     const options: any = {};
@@ -387,6 +387,32 @@ export class ParameterTranslator {
       value: this.parseScoreValue(bound), 
       isInclusive: true 
     };
+  }
+
+  /**
+   * Parse HSET command arguments to field-value pairs
+   */
+  static parseHashSetArgs(args: any[]): Record<string, string> {
+    const fieldValues: Record<string, string> = {};
+    
+    // Handle different argument patterns: hset(key, field, value, field2, value2, ...)
+    // or hset(key, {field: value, field2: value2})
+    if (args.length === 1 && typeof args[0] === 'object' && !Buffer.isBuffer(args[0])) {
+      // Object format
+      const obj = args[0];
+      for (const [field, value] of Object.entries(obj)) {
+        fieldValues[field] = String(value);
+      }
+    } else {
+      // Field-value pairs format
+      for (let i = 0; i < args.length; i += 2) {
+        if (i + 1 < args.length) {
+          fieldValues[String(args[i])] = String(args[i + 1]);
+        }
+      }
+    }
+    
+    return fieldValues;
   }
 
   /**

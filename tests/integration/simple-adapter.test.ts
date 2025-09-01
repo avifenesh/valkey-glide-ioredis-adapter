@@ -3,11 +3,11 @@
  * Tests that our ioredis adapter can connect and perform basic operations
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { testUtils } from '../setup';
 
 describe('Simple Adapter Integration Test', () => {
-  let adapter: RedisAdapter;
+  let adapter: Redis;
 
   beforeAll(async () => {
     // Check if test servers are available
@@ -25,7 +25,7 @@ describe('Simple Adapter Integration Test', () => {
     }
 
     const config = await testUtils.getStandaloneConfig();
-    adapter = new RedisAdapter(config);
+    adapter = new Redis(config);
     await adapter.connect();
   });
 

@@ -67,8 +67,7 @@ docs/internal/**
 .qoder/
 .cursor-tutor/
 
-# Test environment files
-.env.test
+# Test environment files  
 docker-compose.test.yml
 
 # Temporary files
@@ -76,6 +75,11 @@ docker-compose.test.yml
 *.temp
 .cache/
 **/*.test.js
+test-*.js
+test-results.txt
+*-test-results.txt
+dump.rdb
+bullmq-validation.js
 
 # Debug files
 debug-*.js
@@ -106,7 +110,6 @@ pnpm-lock.yaml
 
 # Project-specific cleanup
 memory-bank/
-CLAUDE.md
 setup-cluster.sh
 stop-cluster.sh
 valkey-cluster/

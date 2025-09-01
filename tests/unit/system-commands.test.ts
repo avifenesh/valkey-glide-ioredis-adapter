@@ -10,11 +10,11 @@
  * - GitHub's system diagnostics
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { RedisOptions } from '../../src/types';
 
 describe('System Commands - Monitoring & Metrics', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
 
   beforeEach(async () => {
     const config: RedisOptions = {
@@ -22,7 +22,7 @@ describe('System Commands - Monitoring & Metrics', () => {
       port: 6379,
       lazyConnect: true
     };
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
   });
 
   afterEach(async () => {

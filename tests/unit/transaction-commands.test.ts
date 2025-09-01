@@ -1,8 +1,8 @@
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { testUtils } from '../../tests/setup';
 
 describe('Transaction Commands', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
 
   beforeAll(async () => {
     // Check if test servers are available
@@ -12,7 +12,7 @@ describe('Transaction Commands', () => {
     }
 
     const config = await testUtils.getStandaloneConfig();
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
     await redis.connect();
   });
 

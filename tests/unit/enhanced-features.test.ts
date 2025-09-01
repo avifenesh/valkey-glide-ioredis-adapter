@@ -3,11 +3,11 @@
  * Tests the new implementations for Bull/Bee-Queue compatibility
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { testUtils } from '../setup';
 
 describe('Enhanced Features for Queue Compatibility', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
   let config: any;
 
   beforeAll(async () => {
@@ -21,7 +21,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
   });
 
   beforeEach(async () => {
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
     await redis.connect();
     // Clear all databases to ensure clean state for each test
     await redis.flushall();
@@ -78,30 +78,30 @@ describe('Enhanced Features for Queue Compatibility', () => {
 
   describe('Static createClient factory', () => {
     test('creates client type', () => {
-      const client = RedisAdapter.createClient('client', config);
-      expect(client).toBeInstanceOf(RedisAdapter);
+      const client = Redis.createClient('client', config);
+      expect(client).toBeInstanceOf(Redis);
       expect((client as any).clientType).toBe('client');
     });
 
     test('creates subscriber type', () => {
-      const subscriber = RedisAdapter.createClient('subscriber', config);
-      expect(subscriber).toBeInstanceOf(RedisAdapter);
+      const subscriber = Redis.createClient('subscriber', config);
+      expect(subscriber).toBeInstanceOf(Redis);
       expect((subscriber as any).clientType).toBe('subscriber');
     });
 
     test('creates bclient type with blocking ops enabled', () => {
-      const bclient = RedisAdapter.createClient('bclient', config);
-      expect(bclient).toBeInstanceOf(RedisAdapter);
+      const bclient = Redis.createClient('bclient', config);
+      expect(bclient).toBeInstanceOf(Redis);
       expect((bclient as any).clientType).toBe('bclient');
       expect((bclient as any).enableBlockingOps).toBe(true);
     });
 
     test('returns client immediately (Bull compatibility)', () => {
       const start = Date.now();
-      const client = RedisAdapter.createClient('client', config);
+      const client = Redis.createClient('client', config);
       const elapsed = Date.now() - start;
       
-      expect(client).toBeInstanceOf(RedisAdapter);
+      expect(client).toBeInstanceOf(Redis);
       expect(elapsed).toBeLessThan(100); // Should return immediately
     });
   });
@@ -190,7 +190,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
 
   describe('Enhanced duplicate method', () => {
     test('preserves client type when duplicating', async () => {
-      const original = RedisAdapter.createClient('bclient', config);
+      const original = Redis.createClient('bclient', config);
       const duplicated = await original.duplicate();
       
       expect((duplicated as any).clientType).toBe('bclient');
@@ -207,7 +207,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
       const duplicated = await redis.duplicate();
       const elapsed = Date.now() - start;
       
-      expect(duplicated).toBeInstanceOf(RedisAdapter);
+      expect(duplicated).toBeInstanceOf(Redis);
       expect(elapsed).toBeLessThan(100); // Should return immediately
     });
   });

@@ -1,4 +1,7 @@
 // Removed PortDiscovery import to avoid problematic server discovery
+import * as dotenv from 'dotenv';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export interface RedisTestConfig {
   host: string;
@@ -6,6 +9,12 @@ export interface RedisTestConfig {
 }
 
 export async function getRedisTestConfig(): Promise<RedisTestConfig> {
+  // Load .env.test if it exists to get dynamic test server configuration
+  const envTestPath = path.join(process.cwd(), '.env.test');
+  if (fs.existsSync(envTestPath)) {
+    dotenv.config({ path: envTestPath, override: true });
+  }
+
   // PRIORITY 1: Check for CI Valkey Bundle configuration (highest priority in CI environments)
   const valkeyBundleHost = process.env.VALKEY_BUNDLE_HOST?.trim();
   const valkeyBundlePort = process.env.VALKEY_BUNDLE_PORT ? Number(process.env.VALKEY_BUNDLE_PORT) : undefined;

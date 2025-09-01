@@ -8,23 +8,23 @@
 
 import Queue = require('bull');
 import BeeQueue = require('bee-queue');
-import { RedisAdapter } from '../../../src/adapters/RedisAdapter';
+import { Redis } from "../../../src";
 import { testUtils } from '../../setup';
 
 describe('Message Queue Systems Integration', () => {
-  let redisClient: RedisAdapter;
+  let redisClient: Redis;
   const keyPrefix = 'TEST:queues:';
 
   beforeAll(async () => {
     // For Bull tests, we'll use direct standalone config and assume Redis is available
-    // This avoids the port discovery that creates multiple RedisAdapter instances
+    // This avoids the port discovery that creates multiple Redis instances
   });
 
   beforeEach(async () => {
     
     // Use direct standalone config to avoid port discovery
     const config = { host: 'localhost', port: 6379 };
-    redisClient = new RedisAdapter({
+    redisClient = new Redis({
       ...config,
       keyPrefix: keyPrefix
     });
@@ -53,7 +53,7 @@ describe('Message Queue Systems Integration', () => {
 
     beforeEach(async () => {
       try {
-        // Create Bull queue using our RedisAdapter via createClient with lazy connection
+        // Create Bull queue using our Redis via createClient with lazy connection
         const config = { host: 'localhost', port: 6379 }; // Direct config to avoid server discovery
         queue = new Queue('test-bull-queue', {
           createClient: (_type: 'client' | 'subscriber' | 'bclient') => {
@@ -73,7 +73,7 @@ describe('Message Queue Systems Integration', () => {
             if (_type === 'bclient') {
             }
             
-            const client = new RedisAdapter(options);
+            const client = new Redis(options);
             return client as any;
           }
         });
@@ -316,7 +316,7 @@ describe('Message Queue Systems Integration', () => {
               options.maxRetriesPerRequest = null;
             }
             
-            return new RedisAdapter(options) as any;
+            return new Redis(options) as any;
           },
           defaultJobOptions: {
             removeOnComplete: false,  // Keep completed jobs for statistics
@@ -632,11 +632,11 @@ describe('Message Queue Systems Integration', () => {
 
   describe('Advanced Bull Integration - defineCommand & createClient', () => {
     let queue: Queue.Queue;
-    let customRedisClient: RedisAdapter;
+    let customRedisClient: Redis;
 
     beforeEach(async () => {
       const config = await testUtils.getStandaloneConfig();
-      customRedisClient = new RedisAdapter({
+      customRedisClient = new Redis({
         ...config,
         keyPrefix: keyPrefix + 'custom:'
       });
@@ -703,7 +703,7 @@ describe('Message Queue Systems Integration', () => {
         createClient: (type: 'client' | 'subscriber') => {
           
           // Create our enhanced Redis adapter
-          const client = new RedisAdapter({
+          const client = new Redis({
             ...config,
             keyPrefix: keyPrefix + `bull-${type}:`
           });
@@ -787,7 +787,7 @@ describe('Message Queue Systems Integration', () => {
       const config = await testUtils.getStandaloneConfig();
       
       // Create a shared Redis client with custom commands
-      const sharedClient = new RedisAdapter({
+      const sharedClient = new Redis({
         ...config,
         keyPrefix: keyPrefix + 'shared:'
       });
@@ -819,7 +819,7 @@ describe('Message Queue Systems Integration', () => {
           // In production, you'd want separate client instances
           if (type === 'subscriber') {
             // Create a separate client for subscriber to avoid conflicts
-            const subClient = new RedisAdapter({
+            const subClient = new Redis({
               ...config,
               keyPrefix: keyPrefix + 'shared-sub:'
             });

@@ -3,11 +3,11 @@
  * These tests are adapted from ioredis patterns to ensure compatibility
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { testUtils } from '../setup';
 
 describe('Connection Management (ioredis compatibility)', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
 
   beforeAll(async () => {
     // Check if test servers are available
@@ -32,7 +32,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new RedisAdapter(config);
+      redis = new Redis(config);
       await redis.connect();
 
       // Basic connectivity test
@@ -48,7 +48,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new RedisAdapter(config.port, config.host);
+      redis = new Redis(config.port, config.host);
       await redis.connect();
 
       const result = await redis.ping();
@@ -63,7 +63,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new RedisAdapter({
+      redis = new Redis({
         port: config.port,
         host: config.host,
         retryDelayOnFailover: 100,
@@ -83,7 +83,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new RedisAdapter(`redis://${config.host}:${config.port}/0`);
+      redis = new Redis(`redis://${config.host}:${config.port}/0`);
       await redis.connect();
 
       const result = await redis.ping();
@@ -98,7 +98,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new RedisAdapter({ port: config.port, host: config.host, db: 1 });
+      redis = new Redis({ port: config.port, host: config.host, db: 1 });
       await redis.connect();
 
       // Test that we're using the correct database
@@ -116,7 +116,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new RedisAdapter(config);
+      redis = new Redis(config);
 
       const readyPromise = new Promise<void>(resolve => {
         redis.on('ready', resolve);
@@ -136,7 +136,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new RedisAdapter(config);
+      redis = new Redis(config);
 
       const connectPromise = new Promise<void>(resolve => {
         redis.on('connect', resolve);
@@ -154,7 +154,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new RedisAdapter(config);
+      redis = new Redis(config);
       await redis.connect();
 
       const endPromise = new Promise<void>(resolve => {
@@ -175,7 +175,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new RedisAdapter({ ...config, retryDelayOnFailover: 10 });
+      redis = new Redis({ ...config, retryDelayOnFailover: 10 });
       await redis.connect();
 
       // Simulate connection loss and recovery
@@ -192,7 +192,7 @@ describe('Connection Management (ioredis compatibility)', () => {
 
   describe('Error handling', () => {
     test('should emit error events', async () => {
-      redis = new RedisAdapter({ port: 9999 }); // Non-existent port
+      redis = new Redis({ port: 9999 }); // Non-existent port
 
       const errorPromise = new Promise<Error>(resolve => {
         redis.on('error', resolve);
@@ -216,7 +216,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new RedisAdapter(config);
+      redis = new Redis(config);
       await redis.connect();
 
       // Try to increment a non-numeric value
@@ -230,7 +230,7 @@ describe('Connection Management (ioredis compatibility)', () => {
 });
 
 describe('Pipeline Operations (ioredis compatibility)', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
 
   beforeAll(async () => {
     // Check if test servers are available
@@ -249,7 +249,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
 
     // Use test server configuration
     const config = await testUtils.getStandaloneConfig();
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
     await redis.connect();
 
     // Clean up any existing test data
@@ -409,16 +409,21 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       await redis.set('existing_string', 'text_value');
 
       const multi = redis.multi();
-      multi.incr('existing_string'); // This will cause transaction to fail
+      multi.incr('existing_string'); // This will cause command to fail
       multi.set('should_not_be_set', 'value');
 
       const results = await multi.exec();
 
-      // Transaction should be aborted, results should indicate failure
-      expect(results).toBeNull(); // Or handle according to ioredis behavior
+      // Redis transactions don't rollback on runtime errors
+      // Commands execute, errors are returned in results
+      expect(results).not.toBeNull();
+      expect(results).toHaveLength(2);
+      expect(results?.[0]?.[0]).toBeInstanceOf(Error); // incr error
+      expect(results?.[1]?.[0]).toBeNull(); // set success
+      expect(results?.[1]?.[1]).toBe('OK');
 
-      // Verify no changes were made
-      expect(await redis.exists('should_not_be_set')).toBe(0);
+      // Second command should have executed successfully
+      expect(await redis.exists('should_not_be_set')).toBe(1);
     });
 
     test('should support WATCH for optimistic locking', async () => {
@@ -429,7 +434,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
 
       // Simulate concurrent modification
       const config = await testUtils.getStandaloneConfig();
-      const otherClient = new RedisAdapter(config);
+      const otherClient = new Redis(config);
       await otherClient.connect();
       await otherClient.set('watched_key', '20');
       await otherClient.disconnect();

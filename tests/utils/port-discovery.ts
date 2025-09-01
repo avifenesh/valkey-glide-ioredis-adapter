@@ -150,9 +150,9 @@ export class PortDiscovery {
   static async validateRedisServer(config: ServerConfig): Promise<DiscoveredServer | null> {
     try {
       // Dynamic import to avoid circular dependency
-      const { RedisAdapter } = await import('../../src/adapters/RedisAdapter');
+      const { default: Redis } = await import('../../src/Redis');
       
-      const testAdapter = new RedisAdapter(config);
+      const testAdapter = new Redis(config);
       
       // Test connection with timeout
       const connectionPromise = testAdapter.connect();

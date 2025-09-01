@@ -3,15 +3,15 @@
  * Real-world patterns: Message queues, task queues, activity logs, job processing
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { getRedisTestConfig } from '../utils/redis-config';
 
 describe('List Commands - Real-World Patterns', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
 
   beforeEach(async () => {
     const config = await getRedisTestConfig();
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
   });
 
   afterEach(async () => {

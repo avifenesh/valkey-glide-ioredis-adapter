@@ -1,9 +1,9 @@
 /**
  * Cluster Basic Tests - Adapted from ioredis cluster tests
- * Tests basic cluster functionality with our ClusterAdapter
+ * Tests basic cluster functionality with our Cluster
  */
 
-import { ClusterAdapter } from '../../../src/adapters/ClusterAdapter';
+import { Cluster } from "../../../src";
 
 // Mock Redis cluster for testing
 class MockRedisCluster {
@@ -20,7 +20,7 @@ class MockRedisCluster {
   }
 }
 
-describe('ClusterAdapter - Basic Tests', () => {
+describe('Cluster - Basic Tests', () => {
   let mockCluster: MockRedisCluster;
   
   
@@ -34,125 +34,125 @@ describe('ClusterAdapter - Basic Tests', () => {
 
   describe('Basic Operations', () => {
     it('should create cluster adapter with single node', async () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        { lazyConnect: true }
+      );
       
-      expect(cluster).toBeInstanceOf(ClusterAdapter);
+      expect(cluster).toBeInstanceOf(Cluster);
       expect(cluster.status).toBe('disconnected');
     });
 
     it('should create cluster adapter with multiple nodes', async () => {
-      const cluster = new ClusterAdapter({
-        nodes: [
+      const cluster = new Cluster(
+        [
           { host: '127.0.0.1', port: 7000 },
           { host: '127.0.0.1', port: 7001 },
           { host: '127.0.0.1', port: 7002 }
         ],
-        lazyConnect: true
-      });
+        { lazyConnect: true }
+      );
       
-      expect(cluster).toBeInstanceOf(ClusterAdapter);
+      expect(cluster).toBeInstanceOf(Cluster);
       expect(cluster.status).toBe('disconnected');
     });
 
     it('should support createClient factory method', () => {
-      const cluster = ClusterAdapter.createClient('client', {
+      const cluster = Cluster.createClient('client', {
         nodes: [{ host: '127.0.0.1', port: 7000 }],
         lazyConnect: true
       });
       
-      expect(cluster).toBeInstanceOf(ClusterAdapter);
+      expect(cluster).toBeInstanceOf(Cluster);
       expect((cluster as any).clientType).toBe('client');
     });
 
     it('should support createClient with bclient type', () => {
-      const cluster = ClusterAdapter.createClient('bclient', {
+      const cluster = Cluster.createClient('bclient', {
         nodes: [{ host: '127.0.0.1', port: 7000 }],
         lazyConnect: true
       });
       
-      expect(cluster).toBeInstanceOf(ClusterAdapter);
+      expect(cluster).toBeInstanceOf(Cluster);
       expect((cluster as any).clientType).toBe('bclient');
       expect((cluster as any).enableBlockingOps).toBe(true);
     });
 
     it('should support createClient with subscriber type', () => {
-      const cluster = ClusterAdapter.createClient('subscriber', {
+      const cluster = Cluster.createClient('subscriber', {
         nodes: [{ host: '127.0.0.1', port: 7000 }],
         lazyConnect: true
       });
       
-      expect(cluster).toBeInstanceOf(ClusterAdapter);
+      expect(cluster).toBeInstanceOf(Cluster);
       expect((cluster as any).clientType).toBe('subscriber');
     });
   });
 
   describe('Configuration Options', () => {
     it('should accept cluster-specific options', () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        enableReadFromReplicas: true,
-        scaleReads: 'all',
-        maxRedirections: 32,
-        retryDelayOnFailover: 200,
-        enableOfflineQueue: false,
-        readOnly: true,
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        {
+          enableReadFromReplicas: true,
+          scaleReads: 'all',
+          maxRedirections: 32,
+          retryDelayOnFailover: 200,
+          enableOfflineQueue: false,
+          readOnly: true,
+          lazyConnect: true
+        }
+      );
       
-      expect(cluster).toBeInstanceOf(ClusterAdapter);
-      expect((cluster as any).options.enableReadFromReplicas).toBe(true);
-      expect((cluster as any).options.scaleReads).toBe('all');
-      expect((cluster as any).options.maxRedirections).toBe(32);
-      expect((cluster as any).options.retryDelayOnFailover).toBe(200);
-      expect((cluster as any).options.enableOfflineQueue).toBe(false);
-      expect((cluster as any).options.readOnly).toBe(true);
+      expect(cluster).toBeInstanceOf(Cluster);
+      expect((cluster as any).clusterOptions.enableReadFromReplicas).toBe(true);
+      expect((cluster as any).clusterOptions.scaleReads).toBe('all');
+      expect((cluster as any).clusterOptions.maxRedirections).toBe(32);
+      expect((cluster as any).clusterOptions.retryDelayOnFailover).toBe(200);
+      expect((cluster as any).clusterOptions.enableOfflineQueue).toBe(false);
+      expect((cluster as any).clusterOptions.readOnly).toBe(true);
     });
 
     it('should use default cluster options', () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        { lazyConnect: true }
+      );
       
-      expect((cluster as any).options.enableReadFromReplicas).toBe(false);
-      expect((cluster as any).options.scaleReads).toBe('master');
-      expect((cluster as any).options.maxRedirections).toBe(16);
-      expect((cluster as any).options.retryDelayOnFailover).toBe(100);
-      expect((cluster as any).options.enableOfflineQueue).toBe(true);
-      expect((cluster as any).options.readOnly).toBe(false);
+      expect((cluster as any).clusterOptions.enableReadFromReplicas).toBeUndefined();
+      expect((cluster as any).clusterOptions.scaleReads).toBeUndefined();
+      expect((cluster as any).clusterOptions.maxRedirections).toBeUndefined();
+      expect((cluster as any).clusterOptions.retryDelayOnFailover).toBeUndefined();
+      expect((cluster as any).clusterOptions.enableOfflineQueue).toBeUndefined();
+      expect((cluster as any).clusterOptions.readOnly).toBeUndefined();
     });
   });
 
   describe('Duplicate Method', () => {
-    it('should create duplicate cluster adapter', async () => {
-      const original = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        enableReadFromReplicas: true,
-        lazyConnect: true
-      });
+    it('should create duplicate cluster adapter', () => {
+      const original = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        {
+          enableReadFromReplicas: true,
+          lazyConnect: true
+        }
+      );
       
-      const duplicate = await original.duplicate({
-        enableReadFromReplicas: false,
-        scaleReads: 'all'
-      });
+      const duplicate = original.duplicate();
       
-      expect(duplicate).toBeInstanceOf(ClusterAdapter);
+      expect(duplicate).toBeInstanceOf(Cluster);
       expect(duplicate).not.toBe(original);
-      expect((duplicate as any).options.enableReadFromReplicas).toBe(false);
-      expect((duplicate as any).options.scaleReads).toBe('all');
+      expect((duplicate as any).clusterOptions.enableReadFromReplicas).toBe(true);
     });
 
-    it('should preserve blocking operations in duplicate', async () => {
-      const original = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        lazyConnect: true
-      });
+    it('should preserve blocking operations in duplicate', () => {
+      const original = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        { lazyConnect: true }
+      );
       (original as any).enableBlockingOps = true;
       
-      const duplicate = await original.duplicate();
+      const duplicate = original.duplicate();
       
       expect((duplicate as any).enableBlockingOps).toBe(true);
     });
@@ -160,20 +160,20 @@ describe('ClusterAdapter - Basic Tests', () => {
 
   describe('Pipeline and Multi', () => {
     it('should create pipeline', () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        { lazyConnect: true }
+      );
       
       const pipeline = cluster.pipeline();
       expect(pipeline).toBeTruthy();
     });
 
     it('should create multi transaction', () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        { lazyConnect: true }
+      );
       
       const multi = cluster.multi();
       expect(multi).toBeTruthy();
@@ -181,13 +181,13 @@ describe('ClusterAdapter - Basic Tests', () => {
   });
 
   describe('Command Delegation', () => {
-    let cluster: ClusterAdapter;
+    let cluster: Cluster;
     
     beforeEach(() => {
-      cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        lazyConnect: true
-      });
+      cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        { lazyConnect: true }
+      );
     });
 
     it('should have string command methods', () => {
@@ -263,10 +263,10 @@ describe('ClusterAdapter - Basic Tests', () => {
 
   describe('Event Handling', () => {
     it('should forward pub/sub events', (done) => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        { lazyConnect: true }
+      );
       
       let eventCount = 0;
       const expectedEvents = ['message', 'pmessage', 'subscribe', 'unsubscribe', 'psubscribe', 'punsubscribe'];
@@ -291,10 +291,10 @@ describe('ClusterAdapter - Basic Tests', () => {
 
   describe('Connection Management', () => {
     it('should have connection methods', () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        { lazyConnect: true }
+      );
       
       expect(cluster.connect).toBeInstanceOf(Function);
       expect(cluster.disconnect).toBeInstanceOf(Function);
@@ -304,10 +304,10 @@ describe('ClusterAdapter - Basic Tests', () => {
     });
 
     it('should have sendCommand method', () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        { lazyConnect: true }
+      );
       
       expect(cluster.sendCommand).toBeInstanceOf(Function);
       expect(cluster.call).toBeInstanceOf(Function);
@@ -317,7 +317,7 @@ describe('ClusterAdapter - Basic Tests', () => {
   describe('Bull Compatibility', () => {
     it('should work with Bull createClient pattern', () => {
       const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
-        return ClusterAdapter.createClient(type, {
+        return Cluster.createClient(type, {
           nodes: [
             { host: '127.0.0.1', port: 7000 },
             { host: '127.0.0.1', port: 7001 },
@@ -331,9 +331,9 @@ describe('ClusterAdapter - Basic Tests', () => {
       const subscriber = createClient('subscriber');
       const bclient = createClient('bclient');
       
-      expect(client).toBeInstanceOf(ClusterAdapter);
-      expect(subscriber).toBeInstanceOf(ClusterAdapter);
-      expect(bclient).toBeInstanceOf(ClusterAdapter);
+      expect(client).toBeInstanceOf(Cluster);
+      expect(subscriber).toBeInstanceOf(Cluster);
+      expect(bclient).toBeInstanceOf(Cluster);
       
       expect((client as any).clientType).toBe('client');
       expect((subscriber as any).clientType).toBe('subscriber');
@@ -344,10 +344,10 @@ describe('ClusterAdapter - Basic Tests', () => {
 
   describe('Error Handling', () => {
     it('should handle connection errors gracefully', async () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: 'localhost', port: 9999 }], // Non-existent port
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: 'localhost', port: 9999 }], // Non-existent port
+        { lazyConnect: true }
+      );
       
       let errorEmitted = false;
       cluster.on('error', (err) => {
@@ -367,90 +367,106 @@ describe('ClusterAdapter - Basic Tests', () => {
 });
 
 // Additional test for cluster-specific scenarios
-describe('ClusterAdapter - Cluster Specific Features', () => {
+describe('Cluster - Cluster Specific Features', () => {
   describe('Read Scaling', () => {
     it('should support master read scaling', () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        scaleReads: 'master',
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        {
+          scaleReads: 'master',
+          lazyConnect: true
+        }
+      );
       
-      expect((cluster as any).options.scaleReads).toBe('master');
+      expect((cluster as any).clusterOptions.scaleReads).toBe('master');
     });
 
     it('should support slave read scaling', () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        scaleReads: 'slave',
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        {
+          scaleReads: 'slave',
+          lazyConnect: true
+        }
+      );
       
-      expect((cluster as any).options.scaleReads).toBe('slave');
+      expect((cluster as any).clusterOptions.scaleReads).toBe('slave');
     });
 
     it('should support all nodes read scaling', () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        scaleReads: 'all',
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        {
+          scaleReads: 'all',
+          lazyConnect: true
+        }
+      );
       
-      expect((cluster as any).options.scaleReads).toBe('all');
+      expect((cluster as any).clusterOptions.scaleReads).toBe('all');
     });
   });
 
   describe('Replica Configuration', () => {
     it('should support reading from replicas', () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        enableReadFromReplicas: true,
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        {
+          enableReadFromReplicas: true,
+          lazyConnect: true
+        }
+      );
       
-      expect((cluster as any).options.enableReadFromReplicas).toBe(true);
+      expect((cluster as any).clusterOptions.enableReadFromReplicas).toBe(true);
     });
 
     it('should support read-only mode', () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        readOnly: true,
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        {
+          readOnly: true,
+          lazyConnect: true
+        }
+      );
       
-      expect((cluster as any).options.readOnly).toBe(true);
+      expect((cluster as any).clusterOptions.readOnly).toBe(true);
     });
   });
 
   describe('Cluster Resilience', () => {
     it('should configure max redirections', () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        maxRedirections: 32,
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        {
+          maxRedirections: 32,
+          lazyConnect: true
+        }
+      );
       
-      expect((cluster as any).options.maxRedirections).toBe(32);
+      expect((cluster as any).clusterOptions.maxRedirections).toBe(32);
     });
 
     it('should configure retry delay on failover', () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        retryDelayOnFailover: 500,
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        {
+          retryDelayOnFailover: 500,
+          lazyConnect: true
+        }
+      );
       
-      expect((cluster as any).options.retryDelayOnFailover).toBe(500);
+      expect((cluster as any).clusterOptions.retryDelayOnFailover).toBe(500);
     });
 
     it('should support offline queue configuration', () => {
-      const cluster = new ClusterAdapter({
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
-        enableOfflineQueue: false,
-        lazyConnect: true
-      });
+      const cluster = new Cluster(
+        [{ host: '127.0.0.1', port: 7000 }],
+        {
+          enableOfflineQueue: false,
+          lazyConnect: true
+        }
+      );
       
-      expect((cluster as any).options.enableOfflineQueue).toBe(false);
+      expect((cluster as any).clusterOptions.enableOfflineQueue).toBe(false);
     });
   });
 });

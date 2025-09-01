@@ -3,15 +3,15 @@
  * Real-world patterns: Cache manager, decorators, TTL management, invalidation
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { getRedisTestConfig } from '../utils/redis-config';
 
 describe('NestJS Cache Integration Patterns', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
 
   beforeEach(async () => {
     const config = await getRedisTestConfig();
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
   });
 
   afterEach(async () => {

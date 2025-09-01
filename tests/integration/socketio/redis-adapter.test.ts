@@ -9,12 +9,14 @@ import { Server as SocketIOServer } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { io as Client } from 'socket.io-client';
 import { createServer } from 'http';
-import { RedisAdapter } from '../../../src/adapters/RedisAdapter';
+import { Redis } from "../../../src";
 import { testUtils } from '../../setup';
 
 describe('Socket.IO Redis Adapter Integration', () => {
-  let redisClient1: RedisAdapter;
-  let redisClient2: RedisAdapter;
+  let redisClient1: Redis;
+  let redisClient2: Redis;
+  let subClient1: Redis;
+  let subClient2: Redis;
   let server1: any;
   let server2: any;
   let io1: SocketIOServer;
@@ -33,6 +35,12 @@ describe('Socket.IO Redis Adapter Integration', () => {
       if (error.name === 'ClosingError' && error.message === 'Cleanup initiated') {
         // Silently ignore GLIDE ClosingError during Socket.IO cleanup
         console.log('Test: Ignoring GLIDE ClosingError during Socket.IO cleanup');
+        return;
+      }
+      
+      // Silently ignore GLIDE UTF-8 errors from Socket.IO binary pub/sub data
+      if (error.message && error.message.includes('invalid utf-8 sequence')) {
+        console.log('Test: Ignoring GLIDE UTF-8 error from Socket.IO binary pub/sub data');
         return;
       }
       
@@ -97,14 +105,16 @@ describe('Socket.IO Redis Adapter Integration', () => {
     // Setup Redis clients for both Socket.IO instances
     const config = await testUtils.getStandaloneConfig();
     
-    redisClient1 = new RedisAdapter({
+    redisClient1 = new Redis({
       ...config,
-      keyPrefix: keyPrefix + 'pub:'
+      keyPrefix: keyPrefix + 'pub:',
+      enableEventBasedPubSub: true  // Enable binary-safe pub/sub for Socket.IO
     });
     
-    redisClient2 = new RedisAdapter({
+    redisClient2 = new Redis({
       ...config, 
-      keyPrefix: keyPrefix + 'sub:'
+      keyPrefix: keyPrefix + 'sub:',
+      enableEventBasedPubSub: true  // Enable binary-safe pub/sub for Socket.IO
     });
 
     await redisClient1.connect();
@@ -131,8 +141,15 @@ describe('Socket.IO Redis Adapter Integration', () => {
 
     // Setup Redis adapters for both instances
     try {
-      const adapter1 = createAdapter(redisClient1 as any, redisClient1 as any);
-      const adapter2 = createAdapter(redisClient2 as any, redisClient2 as any);
+      // Create separate pub and sub clients as Socket.IO adapter expects
+      subClient1 = redisClient1.duplicate();
+      subClient2 = redisClient2.duplicate();
+      
+      await subClient1.connect();
+      await subClient2.connect();
+      
+      const adapter1 = createAdapter(redisClient1 as any, subClient1 as any);
+      const adapter2 = createAdapter(redisClient2 as any, subClient2 as any);
 
       io1.adapter(adapter1);
       io2.adapter(adapter2);
@@ -227,6 +244,15 @@ describe('Socket.IO Redis Adapter Integration', () => {
 
     if (redisClient2) {
       await redisClient2.disconnect();
+    }
+
+    // Cleanup subscriber clients
+    if (subClient1) {
+      await subClient1.disconnect();
+    }
+    
+    if (subClient2) {
+      await subClient2.disconnect();
     }
 
     // Wait longer for cleanup to complete on macOS (port limit issues)

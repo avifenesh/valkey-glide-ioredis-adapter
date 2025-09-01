@@ -10,11 +10,11 @@
  * - Discord's temporary data cleanup
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { RedisOptions } from '../../src/types';
 
 describe('Key Management - TTL & Persistence Patterns', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
 
   beforeEach(async () => {
     const config: RedisOptions = {
@@ -22,7 +22,7 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       port: 6379,
       lazyConnect: true
     };
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
   });
 
   afterEach(async () => {

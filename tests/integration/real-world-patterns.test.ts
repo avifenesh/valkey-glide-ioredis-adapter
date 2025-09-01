@@ -6,11 +6,11 @@
  * and Stack Overflow.
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { RedisOptions } from '../../src/types';
 
 describe('Real-World ioredis Usage Patterns', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
 
   beforeAll(async () => {
     const config: RedisOptions = {
@@ -18,7 +18,7 @@ describe('Real-World ioredis Usage Patterns', () => {
       port: parseInt(process.env.REDIS_PORT || process.env.VALKEY_PORT || '6379', 10),
       connectTimeout: 5000
     };
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
     
     // Wait for connection
     await redis.ping();
@@ -67,7 +67,7 @@ describe('Real-World ioredis Usage Patterns', () => {
     test('should handle complex operations with multiple arguments', async () => {
       // Pattern: redis.zadd("sortedSet", 1, "one", 2, "dos")
       await redis.zadd('sortedSet', 1, 'one', 2, 'dos');
-      const result = await redis.zrange('sortedSet', 0, 2, 'WITHSCORES');
+      const result = await redis.zrange('sortedSet', 0, 2, true);
       expect(result).toEqual(['one', '1', 'dos', '2']);
     });
 

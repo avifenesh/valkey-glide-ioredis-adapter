@@ -3,15 +3,15 @@
  * Real-world patterns: Leaderboards, rankings, time-series data, priority queues
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { getRedisTestConfig } from '../utils/redis-config';
 
 describe('ZSet Commands - Real-World Patterns', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
 
   beforeEach(async () => {
     const config = await getRedisTestConfig();
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
   });
 
   afterEach(async () => {

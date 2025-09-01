@@ -2,17 +2,63 @@
 
 ## 🎯 **Complete ioredis Replacement - No Code Changes Required**
 
-This guide demonstrates how to migrate from ioredis to our Valkey GLIDE adapter with **absolute zero code changes** to your application logic.
+This guide demonstrates how to migrate from ioredis to our Valkey GLIDE adapter with **absolute zero code changes** to your application logic. **All critical features validated** including BullMQ, Socket.IO, Express Sessions, and all Valkey data types.
 
-## 📋 **Quick Migration Checklist**
+## 📋 **5-Minute Migration Checklist**
 
-- [ ] Install the adapter: `npm install valkey-glide-ioredis-adapter`
-- [ ] Change import statement (only change needed!)
-- [ ] Verify existing code works unchanged
-- [ ] Run your existing tests (they should all pass)
-- [ ] Deploy with confidence
+### **For Most Applications (Complete Drop-in)**
+- [ ] **Install**: `npm install valkey-glide-ioredis-adapter`
+- [ ] **Replace import**: Change `import Redis from 'ioredis'` → `import { Redis } from 'valkey-glide-ioredis-adapter'`
+- [ ] **Test**: Run your existing tests - they should pass
+- [ ] **Deploy**: Your app now runs on high-performance GLIDE
 
-**That's it!** Your entire application continues to work exactly as before, but now with Valkey GLIDE's high-performance Rust core.
+### **For Advanced Use Cases (High Compatibility)**
+- [ ] **Test cluster operations**: Core functionality works, check advanced features  
+- [ ] **Validate Lua scripts**: Basic scripts work, complex patterns may need adjustment
+- [ ] **Check WITHSCORES usage**: Core works, some formatting edge cases being refined
+
+**Result**: **Immediate performance boost** with Rust-powered Valkey operations, validated Bull/BullMQ job queues, Express sessions, and Socket.IO real-time features.
+
+## 🎯 **Build Your Migration Confidence**
+
+### **✅ What Definitely Works (Battle-Tested)**
+```javascript
+// These patterns are validated and working in production scenarios:
+
+// 1. Basic Database Operations
+await redis.set('key', 'value');
+await redis.get('key');
+await redis.incr('counter');
+
+// 2. Job Queues (Bull/BullMQ)
+const queue = new Bull('jobs', { redis: { host: 'localhost', port: 6379 } });
+
+// 3. Express Sessions
+app.use(session({ store: new RedisStore({ client: redis }) }));
+
+// 4. Socket.IO Real-time
+io.adapter(createAdapter(redis));
+
+// 5. All Valkey Data Types
+await redis.hset('user:1', { name: 'John', age: 30 });
+await redis.lpush('tasks', 'process-email');
+await redis.sadd('tags', 'nodejs', 'valkey', 'performance');
+```
+
+### **🔧 What Might Need Attention**
+```javascript
+// These patterns work but may have minor edge cases:
+
+// 1. Complex WITHSCORES formatting (core works fine)
+const scores = await redis.zrange('leaderboard', 0, -1, 'WITHSCORES');
+
+// 2. Advanced Lua scripts (basic defineCommand works perfectly)
+redis.defineCommand('complexScript', { lua: '...', numberOfKeys: 1 });
+
+// 3. Cluster sendCommand (use direct commands instead)
+// await cluster.sendCommand(['GET', 'key']);  // Minor TypeScript issue
+await cluster.get('key');  // This works perfectly
+```
 
 ## 🚀 **Step 1: Installation**
 
@@ -31,8 +77,8 @@ npm install valkey-glide-ioredis-adapter
 // ❌ Before (ioredis)
 import Redis from 'ioredis';
 
-// ✅ After (our adapter)
-import { RedisAdapter as Redis } from 'valkey-glide-ioredis-adapter';
+// ✅ After (our adapter) - Just change the import!
+import { Redis } from 'valkey-glide-ioredis-adapter';
 
 // Everything else stays exactly the same!
 const redis = new Redis({
@@ -40,6 +86,11 @@ const redis = new Redis({
   port: 6379,
   password: 'your-password'
 });
+
+// All ioredis constructor patterns work:
+const redis1 = new Redis(6379);                    // port only
+const redis2 = new Redis(6379, 'localhost');       // port, host
+const redis3 = new Redis('redis://localhost:6379'); // URL
 ```
 
 ### **ES5/CommonJS**
@@ -49,7 +100,7 @@ const redis = new Redis({
 const Redis = require('ioredis');
 
 // ✅ After (our adapter)
-const { RedisAdapter: Redis } = require('valkey-glide-ioredis-adapter');
+const { Redis } = require('valkey-glide-ioredis-adapter');
 
 // Everything else identical!
 ```
@@ -129,7 +180,7 @@ app.use(session({
 // ✅ After - ONLY IMPORT CHANGES
 import session from 'express-session';
 import RedisStore from 'connect-redis';
-import { RedisAdapter as Redis } from 'valkey-glide-ioredis-adapter';
+import { Redis } from 'valkey-glide-ioredis-adapter';
 
 const redisClient = new Redis(); // Same constructor!
 app.use(session({

@@ -10,17 +10,17 @@
  * - Geospatial search and filtering
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { getValkeyBundleTestConfig, checkAvailableModules, waitForValkeyBundle, TEST_DATA } from '../utils/valkey-bundle-config';
-import { SearchIndex, SearchQuery } from '../../src/adapters/commands/SearchCommands';
+import { SearchIndex, SearchQuery } from '../../src/BaseClient';
 
 describe('Search Commands - Valkey Search Compatibility', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
   let searchAvailable: boolean = false;
 
   beforeAll(async () => {
     const config = await getValkeyBundleTestConfig();
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
     
     try {
       // Wait for valkey-bundle to be ready

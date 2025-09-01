@@ -3,11 +3,11 @@
  * These tests are adapted from ioredis patterns to ensure compatibility
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { testUtils } from '../setup';
 
 describe('String Commands (ioredis compatibility)', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
 
   beforeAll(async () => {
     // Check if test servers are available
@@ -26,7 +26,7 @@ describe('String Commands (ioredis compatibility)', () => {
 
     // Use test server configuration
     const config = await testUtils.getStandaloneConfig();
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
     await redis.connect();
 
     // Clean up any existing test data

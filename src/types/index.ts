@@ -8,7 +8,13 @@ import { EventEmitter } from 'events';
 export type RedisValue = string | number | Buffer;
 export type RedisKey = string | Buffer;
 
-// Connection options (ioredis compatible)
+// Import GLIDE's ReadFrom type directly to ensure compatibility
+import { ReadFrom } from '@valkey/valkey-glide';
+
+// Re-export for convenience
+export type { ReadFrom };
+
+// Connection options (ioredis compatible + GLIDE extensions)
 export interface RedisOptions {
   port?: number;
   host?: string;
@@ -19,12 +25,25 @@ export interface RedisOptions {
   maxRetriesPerRequest?: number | null;
   connectTimeout?: number;
   commandTimeout?: number;
+  requestTimeout?: number;
+  clientName?: string;
+  tls?: boolean;
+  useTLS?: boolean;
   family?: number;
   keepAlive?: boolean;
   enableReadyCheck?: boolean;
+  enableOfflineQueue?: boolean;
+  enableAutoPipelining?: boolean;
   maxLoadingTimeout?: number;
   keyPrefix?: string;
   lazyConnect?: boolean;
+  
+  // GLIDE-specific features
+  readFrom?: ReadFrom;
+  clientAz?: string; // Availability Zone for AZ affinity
+  
+  // Pub/Sub configuration
+  enableEventBasedPubSub?: boolean; // Enable custom command pub/sub for binary data compatibility
 }
 
 // Connection status
@@ -252,6 +271,19 @@ export interface ClusterOptions {
   scaleReads?: string;
   enableOfflineQueue?: boolean;
   readOnly?: boolean;
+  
+  // Connection and retry options
+  maxRetriesPerRequest?: number | null;
+  connectTimeout?: number;
+  commandTimeout?: number;
+  requestTimeout?: number;
+  clientName?: string;
+  tls?: boolean;
+  useTLS?: boolean;
+  
+  // GLIDE-specific features
+  readFrom?: ReadFrom;
+  clientAz?: string;
 }
 
 // Events interface
@@ -286,7 +318,7 @@ export interface IRedisAdapter extends EventEmitter {
   sendCommand(command: any): Promise<any>;
   call(commandName: string, ...args: any[]): Promise<any>;
   client(subcommand: string, ...args: any[]): Promise<any>;
-  duplicate(): Promise<IRedisAdapter>;
+  duplicate(override?: any): Promise<IRedisAdapter>;
 
   // String commands
   set(key: RedisKey, value: RedisValue, ...args: any[]): Promise<string | null>;
@@ -405,8 +437,38 @@ export interface IRedisAdapter extends EventEmitter {
   type(key: RedisKey): Promise<string>;
   keys(pattern?: string): Promise<string[]>;
 
+  // Scan commands
+  scan(cursor: string, ...args: string[]): Promise<[string, string[]]>;
+  hscan(key: RedisKey, cursor: string, ...args: string[]): Promise<[string, string[]]>;
+  sscan(key: RedisKey, cursor: string, ...args: string[]): Promise<[string, string[]]>;
+  zscan(key: RedisKey, cursor: string, ...args: string[]): Promise<[string, string[]]>;
+
   // Generic command execution
   call(command: string, ...args: (string | number | Buffer)[]): Promise<any>;
+
+  // System and administrative commands
+  config(action: string, parameter?: string): Promise<string[]>;
+  dbsize(): Promise<number>;
+  memory(subcommand: string, ...args: (string | number)[]): Promise<any>;
+  slowlog(subcommand: string, ...args: (string | number)[]): Promise<any>;
+  debug(subcommand: string, ...args: (string | number)[]): Promise<any>;
+  echo(message: string): Promise<string>;
+  time(): Promise<[string, string]>;
+
+  // Stream commands
+  xadd(key: RedisKey, id: string, ...fieldsAndValues: (string | number)[]): Promise<string>;
+  xlen(key: RedisKey): Promise<number>;
+  xread(...args: any[]): Promise<any[]>;
+  xrange(key: RedisKey, start?: string, end?: string, count?: number): Promise<any[]>;
+  xrevrange(key: RedisKey, start?: string, end?: string, count?: number): Promise<any[]>;
+  xdel(key: RedisKey, ...ids: string[]): Promise<number>;
+  xtrim(key: RedisKey, ...args: any[]): Promise<number>;
+  xgroup(action: string, key: RedisKey, group: string, ...args: (string | number)[]): Promise<any>;
+  xreadgroup(...args: any[]): Promise<any[]>;
+  xack(key: RedisKey, group: string, ...ids: string[]): Promise<number>;
+  xpending(key: RedisKey, group: string, range?: { start: string; end: string; count: number; consumer?: string }): Promise<any>;
+  xclaim(key: RedisKey, group: string, consumer: string, minIdleTime: number, ...ids: string[]): Promise<any[]>;
+  xinfo(subcommand: 'STREAM' | 'GROUPS' | 'CONSUMERS', key: RedisKey, group?: string): Promise<any>;
 
   // Pipeline and transactions
   pipeline(): Pipeline;

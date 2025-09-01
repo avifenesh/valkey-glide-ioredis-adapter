@@ -10,17 +10,17 @@
  * - Trading platforms' real-time price updates
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { getRedisTestConfig } from '../utils/redis-config';
 
 describe('Pub/Sub Patterns - Real-World Message Routing', () => {
-  let publisher: RedisAdapter;
-  let subscriber: RedisAdapter;
+  let publisher: Redis;
+  let subscriber: Redis;
 
   beforeEach(async () => {
     const config = await getRedisTestConfig();
-    publisher = new RedisAdapter(config);
-    subscriber = new RedisAdapter(config);
+    publisher = new Redis(config);
+    subscriber = new Redis(config);
   });
 
   afterEach(async () => {

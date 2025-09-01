@@ -4,11 +4,11 @@
  */
 
 import { Queue, Worker, Job } from 'bullmq';
-import { RedisAdapter } from '../../../src/adapters/RedisAdapter';
+import { Redis } from "../../../src";
 import { testUtils } from '../../setup';
 
 describe('BullMQ Integration - Basic Queue Operations', () => {
-  let redisAdapter: RedisAdapter;
+  let redisAdapter: Redis;
   let queue: Queue;
   let worker: Worker;
   let processedJobs: any[] = [];
@@ -35,7 +35,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
 
     // Use dynamic test server configuration with discovery
     const config = await testUtils.getStandaloneConfig();
-    redisAdapter = new RedisAdapter(config);
+    redisAdapter = new Redis(config);
 
     // Establish connection with timeout
     const connectionTimeout = new Promise<never>((_, reject) =>

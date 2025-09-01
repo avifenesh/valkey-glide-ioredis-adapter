@@ -9,12 +9,12 @@ import express = require('express');
 import session = require('express-session');
 import {RedisStore} from 'connect-redis';
 import supertest = require('supertest');
-import { RedisAdapter } from '../../../src/adapters/RedisAdapter';
+import { Redis } from "../../../src";
 import { testUtils } from '../../setup';
 
 describe('Express Session Store Integration', () => {
   let app: express.Application;
-  let redisClient: RedisAdapter;
+  let redisClient: Redis;
   let request: any;
   const keyPrefix = 'TEST:session:';
 
@@ -22,7 +22,7 @@ describe('Express Session Store Integration', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      throw new Error('Test servers not available - Redis connection required for session store integration tests');
+      throw new Error('Test servers not available - Server connection required for session store integration tests');
       return;
     }
   });
@@ -31,12 +31,12 @@ describe('Express Session Store Integration', () => {
     // Fail tests if servers are not available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      throw new Error('Test servers not available - Redis connection required for session store integration tests');
+      throw new Error('Test servers not available - Server connection required for session store integration tests');
     }
 
     // Setup Redis client with our adapter
     const config = testUtils.getStandaloneConfig();
-    redisClient = new RedisAdapter({
+    redisClient = new Redis({
       ...config,
       keyPrefix: keyPrefix
     });

@@ -3,15 +3,15 @@
  * Real-world patterns: Connection resilience, command failures, recovery scenarios
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { getRedisTestConfig } from '../utils/redis-config';
 
 describe('Error Handling and Edge Cases', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
 
   beforeEach(async () => {
     const config = await getRedisTestConfig();
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
   });
 
   afterEach(async () => {
@@ -30,7 +30,7 @@ describe('Error Handling and Edge Cases', () => {
       
       // Should be able to reconnect
       const config = await getRedisTestConfig();
-      redis = new RedisAdapter(config);
+      redis = new Redis(config);
       
       const reconnectedValue = await redis.get('test:disconnect');
       expect(reconnectedValue).toBe('value');
@@ -39,7 +39,7 @@ describe('Error Handling and Edge Cases', () => {
     test('should handle invalid configuration gracefully', async () => {
       // Test with various invalid configs that should not crash
       expect(() => {
-        new RedisAdapter({ host: '', port: 0 });
+        new Redis({ host: '', port: 0 });
       }).not.toThrow();
     });
   });

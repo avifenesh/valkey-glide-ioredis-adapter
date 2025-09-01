@@ -7,12 +7,12 @@ import express = require('express');
 const rateLimit = require('express-rate-limit');
 import { RedisStore } from 'rate-limit-redis';
 import supertest = require('supertest');
-import { RedisAdapter } from '../../../src/adapters/RedisAdapter';
+import { Redis } from "../../../src";
 import { testUtils } from '../../setup';
 
 describe('Rate Limiting Integration', () => {
   let app: express.Application;
-  let redisAdapter: RedisAdapter;
+  let redisAdapter: Redis;
   let request: any;
 
   beforeAll(async () => {
@@ -33,14 +33,14 @@ describe('Rate Limiting Integration', () => {
 
     // Use test server configuration
     const config = await testUtils.getStandaloneConfig();
-    redisAdapter = new RedisAdapter(config);
+    redisAdapter = new Redis(config);
     await redisAdapter.connect();
 
     // Create Express app with rate limiting
     app = express();
     
-    // Trust proxy to handle X-Forwarded-For headers
-    app.set('trust proxy', true);
+    // Trust proxy from local networks only (safer than 'true')
+    app.set('trust proxy', 'loopback, linklocal, uniquelocal');
 
     // Configure rate limiter with our Redis adapter
     const limiter = rateLimit({

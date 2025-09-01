@@ -10,15 +10,15 @@
  * - API responses caching, session data, configuration
  */
 
-import { RedisAdapter } from '../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { getValkeyBundleTestConfig, checkAvailableModules, waitForValkeyBundle } from '../utils/valkey-bundle-config';
 
 describe('JSON Commands - ValkeyJSON Compatibility', () => {
-  let redis: RedisAdapter;
+  let redis: Redis;
 
   beforeAll(async () => {
     const config = await getValkeyBundleTestConfig();
-    redis = new RedisAdapter(config);
+    redis = new Redis(config);
     
     // Wait for valkey-bundle to be ready and check modules
     const isReady = await waitForValkeyBundle(redis);

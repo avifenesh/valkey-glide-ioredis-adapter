@@ -2,7 +2,7 @@
  * Shared utilities for integration tests
  */
 
-import { RedisAdapter } from '../../../src/adapters/RedisAdapter';
+import { Redis } from "../../src";
 import { testUtils } from '../../setup';
 
 export interface IntegrationTestConfig {
@@ -12,7 +12,7 @@ export interface IntegrationTestConfig {
 }
 
 export class IntegrationTestHelper {
-  private redisClient: RedisAdapter | null = null;
+  private redisClient: Redis | null = null;
   private config: IntegrationTestConfig;
 
   constructor(config: IntegrationTestConfig) {
@@ -22,14 +22,14 @@ export class IntegrationTestHelper {
   /**
    * Setup Redis client for integration tests
    */
-  async setupRedis(): Promise<RedisAdapter> {
+  async setupRedis(): Promise<Redis> {
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
       throw new Error('Test servers not available. Please run: ./scripts/start-test-servers.sh');
     }
 
     const serverConfig = testUtils.getStandaloneConfig();
-    this.redisClient = new RedisAdapter({
+    this.redisClient = new Redis({
       ...serverConfig,
       keyPrefix: this.config.keyPrefix
     });
@@ -85,7 +85,7 @@ export class IntegrationTestHelper {
   /**
    * Get the Redis client instance
    */
-  getRedisClient(): RedisAdapter {
+  getRedisClient(): Redis {
     if (!this.redisClient) {
       throw new Error('Redis client not initialized. Call setupRedis() first.');
     }
