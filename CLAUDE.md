@@ -24,12 +24,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Specific Test Commands
 - `npm test tests/unit/` - Run unit tests only
 - `npm test tests/integration/` - Run integration tests only
+- `npm test tests/cluster/` - Run cluster-specific tests
 - `npm test -- tests/unit/json-commands.test.ts` - Run specific test file
 - `npm test -- --testNamePattern="pattern"` - Run tests matching pattern
+- `npm run test:json` - Run JSON module tests specifically
+- `npm run test:search` - Run Search module tests specifically
+- `npm run test:modules` - Run both JSON and Search module tests
 
 ### Build & Release
 - `npm run clean` - Remove dist/ directory
 - `npm run prepublishOnly` - Clean, build, and test before publishing
+- `npm run release` - Create semantic release
+- `npm run release:dry` - Test release without publishing
+- `npm run release:patch|minor|major` - Create specific version releases
+
+### Valkey Module Testing Environment
+- `npm run valkey:start` - Start valkey-bundle Docker container with all modules
+- `npm run valkey:stop` - Stop valkey-bundle Docker container
+- `npm run valkey:test` - Start valkey-bundle for testing environment
 
 ## Architecture
 
@@ -70,7 +82,7 @@ ioredis-compatible Results
 ### Current Implementation Status
 
 **✅ Production Ready Features:**
-- All Redis data types (String, Hash, List, Set, ZSet) - 100% functional
+- All Valkey data types (String, Hash, List, Set, ZSet) - 100% functional
 - ValkeyJSON module support - 31 commands implemented
 - Valkey Search module support - 21 commands implemented  
 - Bull/BullMQ integration - Complete compatibility with createClient factory
@@ -78,6 +90,7 @@ ioredis-compatible Results
 - Transaction support (MULTI/EXEC, WATCH/UNWATCH)
 - Stream operations (XADD, XREAD, XRANGE, etc.)
 - System commands (CONFIG, INFO, DBSIZE, etc.)
+- Cluster operations - Core database commands working
 
 **Test Coverage: Production-ready with all critical features validated**
 
@@ -149,10 +162,27 @@ ioredis-compatible Results
 
 ## Configuration Files
 
-- `jest.config.js` - Jest test configuration with 20s timeout
+- `jest.config.js` - Jest test configuration with 20s timeout, maxWorkers: 1 for stability
 - `tsconfig.json` - TypeScript config targeting ES2020/CommonJS
 - `.eslintrc.js` - ESLint with TypeScript and Prettier integration
 - Test setup in `tests/setup/` with global setup and teardown
+- `scripts/` - Shell scripts for test environment management and releases
+
+## Testing Environment Requirements
+
+### For Standard Tests
+- Valkey/Redis server running on localhost:6379 (or use environment variables)
+- Tests automatically use `VALKEY_BUNDLE_HOST=localhost VALKEY_BUNDLE_PORT=6380` when available
+
+### For Module Tests (JSON/Search)
+- Use valkey-bundle Docker container: `npm run valkey:start`
+- Or manually: `docker-compose -f docker-compose.valkey-bundle.yml up -d`
+- JSON and Search modules must be loaded on the server for full functionality
+
+### Test Execution Patterns
+- **Sequential execution**: Jest configured with maxWorkers: 1 for connection stability
+- **Timeout handling**: 20s timeout for integration tests with Docker setup
+- **Environment detection**: Tests automatically detect available Valkey modules
 
 ## Compatibility Matrix
 
