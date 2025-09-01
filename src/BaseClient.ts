@@ -3760,7 +3760,11 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
 
   // ioredis compatibility - sendCommand
   async sendCommand(command: any): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = await (this as any).ensureConnected();
+    
+    // Ensure connection is alive
+    await client.ping();
+    
     if (Array.isArray(command)) {
       return await client.customCommand(command);
     } else {
