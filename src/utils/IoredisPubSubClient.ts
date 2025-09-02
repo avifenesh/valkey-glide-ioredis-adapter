@@ -76,10 +76,14 @@ export class IoredisPubSubClient extends EventEmitter {
 
   disconnect(): void {
     if (this.socket) {
+      // First try to gracefully end the connection
       this.socket.end();
+      // Then force destroy to ensure cleanup
+      this.socket.destroy();
       this.socket = null;
     }
     this.connectionStatus = 'disconnected';
+    this.removeAllListeners();
   }
 
   // Redis RESP protocol parsing

@@ -10,7 +10,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run dev` - Run both build:watch and test:watch concurrently
 
 ### Testing
-- `npm test` - Run all Jest tests
+- `npm test` - Run all tests using isolated test runner script
+- `npm run test:single` - Run single test with Node.js built-in test runner
 - `npm run test:watch` - Run tests in watch mode
 - `npm run test:coverage` - Run tests with coverage report
 - `npm run test:ci` - Run tests for CI with coverage and no watch
@@ -30,6 +31,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run test:json` - Run JSON module tests specifically
 - `npm run test:search` - Run Search module tests specifically
 - `npm run test:modules` - Run both JSON and Search module tests
+
+### Node.js Native Test Commands
+- `VALKEY_HOST=localhost VALKEY_PORT=6381 timeout 30 node --test tests/unit/smoke.test.mjs` - Run specific native test
+- `./scripts/test-isolated.sh` - Run tests in isolated environment with proper cleanup
 
 ### Build & Release
 - `npm run clean` - Remove dist/ directory
@@ -164,9 +169,10 @@ ioredis-compatible Results
 
 - `jest.config.js` - Jest test configuration with 20s timeout, maxWorkers: 1 for stability
 - `tsconfig.json` - TypeScript config targeting ES2020/CommonJS
-- `.eslintrc.js` - ESLint with TypeScript and Prettier integration
+- `eslint.config.js` - ESLint with TypeScript and Prettier integration
 - Test setup in `tests/setup/` with global setup and teardown
 - `scripts/` - Shell scripts for test environment management and releases
+- `docker-compose.valkey-bundle.yml` - Docker configuration for module testing
 
 ## Testing Environment Requirements
 

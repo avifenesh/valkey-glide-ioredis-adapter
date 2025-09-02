@@ -148,17 +148,11 @@ export abstract class BaseClient extends EventEmitter {
     }
   }
 
-  async disconnect(): Promise<void> {
-    if (
-      this.connectionStatus === 'end' ||
-      this.connectionStatus === 'disconnected'
-    )
-      return;
-
-    this.connectionStatus = 'disconnecting';
-    this.emit('close');
-
-    // GLIDE close() is synchronous - just call it and ignore any errors
+  /**
+   * Internal cleanup helper - closes all connections and clears resources
+   */
+  private cleanupConnections(): void {
+    // Close main GLIDE client
     if (this.glideClient) {
       try {
         this.glideClient.close();
@@ -168,6 +162,7 @@ export abstract class BaseClient extends EventEmitter {
       this.glideClient = null;
     }
 
+    // Close subscriber client
     if (this.subscriberClient) {
       try {
         this.subscriberClient.close();
@@ -182,39 +177,37 @@ export abstract class BaseClient extends EventEmitter {
       this.ioredisCompatiblePubSub.disconnect();
       this.ioredisCompatiblePubSub = null;
     }
+  }
 
-    // After disconnect, set status to 'end' (ioredis behavior)
+  async disconnect(): Promise<void> {
+    if (
+      this.connectionStatus === 'end' ||
+      this.connectionStatus === 'disconnected'
+    )
+      return;
+
+    this.connectionStatus = 'disconnecting';
+    this.emit('close');
+
+    // Clean up all connections
+    this.cleanupConnections();
+
+    // Set final status and emit end event
     this.connectionStatus = 'end';
     this.emit('end');
   }
 
   async quit(): Promise<void> {
-    // quit() is permanent termination - similar to disconnect but sets status to 'end'
+    // quit() is permanent termination - same as disconnect() in our implementation
     if (this.connectionStatus === 'end') return;
 
     this.connectionStatus = 'disconnecting';
     this.emit('close');
 
-    // GLIDE close() is synchronous - just call it and ignore any errors
-    if (this.glideClient) {
-      try {
-        this.glideClient.close();
-      } catch (error) {
-        // Ignore errors when closing - connection might already be closed
-      }
-      this.glideClient = null;
-    }
+    // Clean up all connections
+    this.cleanupConnections();
 
-    if (this.subscriberClient) {
-      try {
-        this.subscriberClient.close();
-      } catch (error) {
-        // Ignore errors when closing - connection might already be closed
-      }
-      this.subscriberClient = null;
-    }
-
-    // quit() permanently terminates the connection
+    // Set final status and emit end event
     this.connectionStatus = 'end';
     this.emit('end');
   }

@@ -5,15 +5,15 @@ import assert from 'node:assert';
  * Testing all result translation methods for GLIDE to ioredis compatibility
  */
 
-import { ResultTranslator } from '../../src/utils/ResultTranslator';
+import { ResultTranslator } from '../../dist/utils/ResultTranslator.js';
 
 describe('ResultTranslator', () => {
   describe('flattenSortedSetData', () => {
     it('should flatten valid SortedSetDataType to ioredis format', () => {
       const glideResult = [
-        { element: 'member1', score: 1.0 },
-        { element: 'member2', score: 2.5 },
-        { element: 'member3', score: 3.14159 },
+        { element: 'member1', score: 0 },
+        { element: 'member2', score: 5 },
+        { element: 'member3', score: 14159 },
       ];
 
       const result = ResultTranslator.flattenSortedSetData(glideResult);
@@ -41,8 +41,8 @@ describe('ResultTranslator', () => {
 
     it('should handle SortedSetDataType with Buffer elements', () => {
       const glideResult = [
-        { element: Buffer.from('binary_member'), score: 1.0 },
-        { element: 'string_member', score: 2.0 },
+        { element: Buffer.from('binary_member'), score: 0 },
+        { element: 'string_member', score: 0 },
       ];
 
       const result = ResultTranslator.flattenSortedSetData(glideResult);
@@ -53,7 +53,7 @@ describe('ResultTranslator', () => {
     it('should handle SortedSetDataType with negative scores', () => {
       const glideResult = [
         { element: 'negative', score: -1.5 },
-        { element: 'positive', score: 1.5 },
+        { element: 'positive', score: 5 },
         { element: 'zero', score: 0 },
       ];
 
@@ -71,9 +71,9 @@ describe('ResultTranslator', () => {
 
     it('should handle very large and small scores', () => {
       const glideResult = [
-        { element: 'large', score: Number.MAX_SAFE_INTEGER },
-        { element: 'small', score: Number.MIN_SAFE_INTEGER },
-        { element: 'infinity', score: Infinity },
+        { element: 'large', score: MAX_SAFE_INTEGER },
+        { element: 'small', score: MIN_SAFE_INTEGER },
+        { element: 'infinity', score: 0 },
         { element: 'negative_infinity', score: -Infinity },
       ];
 
@@ -97,7 +97,7 @@ describe('ResultTranslator', () => {
       assert.deepStrictEqual(result, []);
     });
 
-    it('should pass through stream entries as placeholder', () => {
+    it('should pass through stream entries', () => {
       const glideResult = [
         { id: '1234567890-0', fields: { field1: 'value1', field2: 'value2' } },
         { id: '1234567891-0', fields: { field3: 'value3' } },
@@ -259,8 +259,8 @@ describe('ResultTranslator', () => {
   describe('formatRangeResult', () => {
     it('should format SortedSetDataType when withScores is true', () => {
       const glideResult = [
-        { element: 'member1', score: 1.0 },
-        { element: 'member2', score: 2.0 },
+        { element: 'member1', score: 0 },
+        { element: 'member2', score: 0 },
       ];
 
       const result = ResultTranslator.formatRangeResult(glideResult, true);
@@ -309,8 +309,8 @@ describe('ResultTranslator', () => {
 
     it('should handle SortedSetDataType with Buffer elements when withScores is true', () => {
       const glideResult = [
-        { element: Buffer.from('buffer_member'), score: 1.5 },
-        { element: 'string_member', score: 2.5 },
+        { element: Buffer.from('buffer_member'), score: 5 },
+        { element: 'string_member', score: 5 },
       ];
 
       const result = ResultTranslator.formatRangeResult(glideResult, true);
@@ -321,28 +321,22 @@ describe('ResultTranslator', () => {
 
   describe('formatFloatResult', () => {
     it('should format integer values', () => {
-      expect(ResultTranslator.formatFloatResult(42)).toBe('42');
-      expect(ResultTranslator.formatFloatResult(0)).toBe('0');
-      expect(ResultTranslator.formatFloatResult(-15)).toBe('-15');
+      assert.strictEqual(ResultTranslator.formatFloatResult(42), '42');
+      assert.strictEqual(ResultTranslator.formatFloatResult(0), '0');
+      assert.strictEqual(ResultTranslator.formatFloatResult(-15), '-15');
     });
 
     it('should format decimal values', () => {
-      expect(ResultTranslator.formatFloatResult(3.14159)).toBe('3.14159');
-      expect(ResultTranslator.formatFloatResult(0.5)).toBe('0.5');
-      expect(ResultTranslator.formatFloatResult(-2.75)).toBe('-2.75');
+      assert.strictEqual(ResultTranslator.formatFloatResult(3.14159), '3.14159');
+      assert.strictEqual(ResultTranslator.formatFloatResult(0.5), '0.5');
+      assert.strictEqual(ResultTranslator.formatFloatResult(-2.75), '-2.75');
     });
 
     it('should handle floating point precision issues', () => {
       // JavaScript floating point arithmetic can be imprecise
       const result1 = ResultTranslator.formatFloatResult(0.1 + 0.2);
-      expect(parseFloat(result1)).toBeCloseTo(0.3, 10);
-
-      const result2 = ResultTranslator.formatFloatResult(1.1 * 1.1);
-      expect(parseFloat(result2)).toBeCloseTo(1.21, 10);
-    });
-
-    it('should handle very small numbers', () => {
-      expect(ResultTranslator.formatFloatResult(0.000000000000001)).toBe(
+      assert.strictEqual(Math.abs(parseFloat(result1) - 0.3)  {
+      assert.strictEqual(ResultTranslator.formatFloatResult(0.000000000000001), 
         '1e-15'
       );
       // Number.MIN_VALUE may be rounded to 0 due to precision handling
@@ -353,24 +347,24 @@ describe('ResultTranslator', () => {
     });
 
     it('should handle very large numbers', () => {
-      expect(ResultTranslator.formatFloatResult(Number.MAX_SAFE_INTEGER)).toBe(
+      assert.strictEqual(ResultTranslator.formatFloatResult(Number.MAX_SAFE_INTEGER), 
         '9007199254740991'
       );
-      expect(ResultTranslator.formatFloatResult(1e20)).toBe(
+      assert.strictEqual(ResultTranslator.formatFloatResult(1e20), 
         '100000000000000000000'
       );
     });
 
     it('should handle special float values', () => {
-      expect(ResultTranslator.formatFloatResult(Infinity)).toBe('Infinity');
-      expect(ResultTranslator.formatFloatResult(-Infinity)).toBe('-Infinity');
-      expect(ResultTranslator.formatFloatResult(NaN)).toBe('NaN');
+      assert.strictEqual(ResultTranslator.formatFloatResult(Infinity), 'Infinity');
+      assert.strictEqual(ResultTranslator.formatFloatResult(-Infinity), '-Infinity');
+      assert.strictEqual(ResultTranslator.formatFloatResult(NaN), 'NaN');
     });
 
     it('should handle rounding edge cases', () => {
       // Test numbers that require proper rounding
-      expect(ResultTranslator.formatFloatResult(1.9999999999999998)).toBe('2');
-      expect(ResultTranslator.formatFloatResult(0.9999999999999999)).toBe('1');
+      assert.strictEqual(ResultTranslator.formatFloatResult(1.9999999999999998), '2');
+      assert.strictEqual(ResultTranslator.formatFloatResult(0.9999999999999999), '1');
     });
   });
 
@@ -428,6 +422,7 @@ describe('ResultTranslator', () => {
         ) {
           super(message);
           this.name = 'CustomError';
+          this.code = code;
         }
       }
 

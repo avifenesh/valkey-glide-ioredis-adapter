@@ -7,40 +7,52 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../../dist/index.js';
 const { Redis } = pkg;
+import { getStandaloneConfig, delay } from '../../utils/test-config.mjs';
 
 describe('Simple Socket.IO Pattern Test', () => {
   let pubClient;
   let subClient;
 
   before(async () => {
-    // Simple configuration - use defaults and lazyConnect
-    pubClient = new Redis({
-      host: 'localhost',
-      port: 6379,
-      lazyConnect: true,
+    // Get dynamic configuration from test runner
+    const baseConfig = getStandaloneConfig();
+    const config = {
+      ...baseConfig,
       enableEventBasedPubSub: true, // Socket.IO compatibility mode
-    });
+    };
     
-    subClient = new Redis({
-      host: 'localhost',
-      port: 6379,
-      lazyConnect: true,
-      enableEventBasedPubSub: true, // Socket.IO compatibility mode
-    });
+    pubClient = new Redis(config);
+    subClient = new Redis(config);
+    
+    // Connect both clients
+    await pubClient.connect();
+    await subClient.connect();
   });
 
   after(async () => {
     try {
       if (subClient) {
+        // Remove all event listeners
+        subClient.removeAllListeners();
+        
         // Unsubscribe before disconnecting
-        await subClient.punsubscribe();
-        await subClient.disconnect();
+        try {
+          await subClient.punsubscribe();
+        } catch (e) {
+          // Ignore unsubscribe errors
+        }
+        
+        // Clean shutdown
+        await subClient.quit();
+        subClient = null;
       }
       if (pubClient) {
-        await pubClient.disconnect();
+        await pubClient.quit();
+        pubClient = null;
       }
     } catch (error) {
       // Ignore cleanup errors
+      console.log('Cleanup error:', error.message);
     }
   });
 
@@ -58,7 +70,7 @@ describe('Simple Socket.IO Pattern Test', () => {
     await subClient.psubscribe('socket.io#/#*');
     
     // Wait a bit for subscription to be established
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await delay(100);
 
     // Publish a Socket.IO-style message
     const testMessage = JSON.stringify({
@@ -73,7 +85,7 @@ describe('Simple Socket.IO Pattern Test', () => {
     // Wait for message propagation with timeout
     const startTime = Date.now();
     while (receivedMessages.length === 0 && Date.now() - startTime < 5000) {
-      await new Promise(resolve => setTimeout(resolve, 50));
+      await delay(50);
     }
 
     // Verify we received the pattern message
