@@ -1147,7 +1147,7 @@ export abstract class BaseClient extends EventEmitter {
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     
     try {
-      // Parse max/min boundaries for native GLIDE zrange (note: max/min order is swapped for reverse)
+      // Parse min/max boundaries for native GLIDE zrange
       let minBoundary: any;
       if (typeof min === 'string') {
         if (min === '-inf' || min === '+inf') {
@@ -1209,10 +1209,11 @@ export abstract class BaseClient extends EventEmitter {
       // Check if WITHSCORES is requested
       const withScores = args.some(arg => arg.toUpperCase() === 'WITHSCORES');
       
-      // Use native GLIDE zrange method with reverse option
+      // Use native GLIDE zrange method without reverse option (then reverse manually)
+      // Note: GLIDE's reverse option doesn't work correctly with byScore queries
       const result = withScores
-        ? await client.zrangeWithScores(normalizedKey, rangeQuery, { reverse: true })
-        : await client.zrange(normalizedKey, rangeQuery, { reverse: true });
+        ? await client.zrangeWithScores(normalizedKey, rangeQuery)
+        : await client.zrange(normalizedKey, rangeQuery);
       
       if (!Array.isArray(result)) {
         return [];
@@ -1221,7 +1222,9 @@ export abstract class BaseClient extends EventEmitter {
       if (withScores) {
         // GLIDE returns [{element: 'key', score: 1}] format, convert to ['key', '1'] format
         const flattened: string[] = [];
-        for (const item of result) {
+        // For reverse, we need to reverse the result array first
+        const reversedResult = [...result].reverse();
+        for (const item of reversedResult) {
           if (typeof item === 'object' && item !== null && 'element' in item && 'score' in item) {
             flattened.push(String(item.element), String(item.score));
           }
@@ -1229,7 +1232,9 @@ export abstract class BaseClient extends EventEmitter {
         return flattened;
       }
       
-      return result.map((item: any) => ParameterTranslator.convertGlideString(item) || '');
+      // For non-WITHSCORES, just reverse the array
+      const converted = result.map((item: any) => ParameterTranslator.convertGlideString(item) || '');
+      return converted.reverse();
     } catch (error) {
       console.warn('zrevrangebyscore error:', error);
       return [];
@@ -3327,34 +3332,92 @@ export abstract class BaseClient extends EventEmitter {
 
   async xread(...args: any[]): Promise<any[]> {
     const client = await this.ensureConnected();
-    const result = await client.customCommand(['XREAD', ...args.map(arg => String(arg))]);
-    return Array.isArray(result) ? result : [];
+    
+    // Parse ioredis-style XREAD arguments: ['STREAMS', 'stream1', 'stream2', 'id1', 'id2']
+    // Convert to GLIDE format: {stream1: 'id1', stream2: 'id2'}
+    let streamsIndex = args.findIndex(arg => String(arg).toUpperCase() === 'STREAMS');
+    if (streamsIndex === -1) {
+      // Fallback to customCommand for non-standard usage
+      const result = await client.customCommand(['XREAD', ...args.map(arg => String(arg))]);
+      return Array.isArray(result) ? result : [];
+    }
+    
+    const streamArgs = args.slice(streamsIndex + 1);
+    const streamCount = Math.floor(streamArgs.length / 2);
+    const streamNames = streamArgs.slice(0, streamCount);
+    const streamIds = streamArgs.slice(streamCount);
+    
+    // Build keys_and_ids object for GLIDE
+    const keysAndIds: Record<string, string> = {};
+    for (let i = 0; i < streamCount; i++) {
+      keysAndIds[streamNames[i]] = streamIds[i];
+    }
+    
+    const result = await client.xread(keysAndIds);
+    
+    if (!result || typeof result !== 'object') {
+      return [];
+    }
+    
+    // Convert GLIDE format {stream1: entries, stream2: entries} to ioredis format [[stream1, entries], [stream2, entries]]
+    const ioredisResult: any[] = [];
+    for (const [streamName, entries] of Object.entries(result)) {
+      if (entries && Array.isArray(entries)) {
+        ioredisResult.push([streamName, entries]);
+      }
+    }
+    
+    return ioredisResult;
   }
 
   async xrange(key: RedisKey, start: string = '-', end: string = '+', count?: number): Promise<any[]> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const args = ['XRANGE', normalizedKey, start, end];
     
-    if (count !== undefined) {
-      args.push('COUNT', String(count));
+    // Convert ioredis boundaries to GLIDE boundary format
+    const startBoundary = start === '-' ? { value: "-", isInclusive: false } : { value: start, isInclusive: true };
+    const endBoundary = end === '+' ? { value: "+", isInclusive: false } : { value: end, isInclusive: true };
+    
+    const options = count !== undefined ? { count } : undefined;
+    
+    const result = await client.xrange(normalizedKey, startBoundary, endBoundary, options);
+    
+    // GLIDE returns StreamEntryDataType | null, we need to return array format
+    if (!result || !Array.isArray(result)) {
+      return [];
     }
     
-    const result = await client.customCommand(args);
-    return Array.isArray(result) ? result : [];
+    return result;
   }
 
   async xrevrange(key: RedisKey, start: string = '+', end: string = '-', count?: number): Promise<any[]> {
     const client = await this.ensureConnected();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const args = ['XREVRANGE', normalizedKey, start, end];
     
-    if (count !== undefined) {
-      args.push('COUNT', String(count));
+    // Convert ioredis boundaries to GLIDE boundary format (note: start/end are reversed for XREVRANGE)
+    const startBoundary = start === '+' ? { value: "+", isInclusive: false } : { value: start, isInclusive: true };
+    const endBoundary = end === '-' ? { value: "-", isInclusive: false } : { value: end, isInclusive: true };
+    
+    const options = count !== undefined ? { count } : undefined;
+    
+    // Use GLIDE's xrevrange method (if available) or fallback to customCommand
+    try {
+      const result = await (client as any).xrevrange(normalizedKey, startBoundary, endBoundary, options);
+      
+      if (!result || !Array.isArray(result)) {
+        return [];
+      }
+      
+      return result;
+    } catch (error) {
+      // Fallback to customCommand
+      const args = ['XREVRANGE', normalizedKey, start, end];
+      if (count !== undefined) {
+        args.push('COUNT', String(count));
+      }
+      const result = await client.customCommand(args);
+      return Array.isArray(result) ? result : [];
     }
-    
-    const result = await client.customCommand(args);
-    return Array.isArray(result) ? result : [];
   }
 
   async xdel(key: RedisKey, ...ids: string[]): Promise<number> {

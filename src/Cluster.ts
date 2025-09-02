@@ -31,7 +31,17 @@ export class Cluster extends ClusterClient {
 
   // ioredis compatibility method
   duplicate(override?: Partial<ClusterOptions>): Cluster {
-    return new Cluster(this.clusterNodes, { ...this.clusterOptions, ...override });
+    const duplicated = new Cluster(this.clusterNodes, { ...this.clusterOptions, ...override });
+    
+    // Preserve instance properties
+    if ((this as any).enableBlockingOps) {
+      (duplicated as any).enableBlockingOps = (this as any).enableBlockingOps;
+    }
+    if ((this as any).clientType) {
+      (duplicated as any).clientType = (this as any).clientType;
+    }
+    
+    return duplicated;
   }
 }
 
