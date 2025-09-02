@@ -27,7 +27,9 @@
   "scripts": {
     "build": "tsc",
     "build:watch": "tsc --watch",
-    "test": "jest",
+    "test": "node scripts/test-node.mjs",
+    "test:jest": "jest",
+    "test:node": "node scripts/test-node.mjs",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
     "test:ci": "jest --ci --coverage --watchAll=false",
