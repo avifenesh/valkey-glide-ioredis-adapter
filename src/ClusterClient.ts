@@ -436,7 +436,7 @@ export class ClusterClient extends BaseClient {
     const multiObj = {
       commands,
 
-      // Add common Redis commands to the multi object
+      // Add common server commands to the multi object
       set: (key: string, value: any, ...args: any[]) => {
         commands.push({ command: 'SET', args: [key, value, ...args] });
         return multiObj;

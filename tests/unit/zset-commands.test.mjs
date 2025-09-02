@@ -3,7 +3,11 @@
  * Real-world patterns, rankings, time-series data, priority queues
  */
 
+
+import { describe, it, beforeEach, afterEach, beforeAll, afterAll } from 'node:test';
+import assert from 'node:assert';
 import pkg from '../../dist/index.js';
+import { testUtils } from '../setup/index.mjs';
 const { Redis } = pkg;;
 import { getStandaloneConfig } from '../utils/test-config.mjs';;
 
@@ -11,7 +15,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
   let redis;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
+    const config = testUtils.getStandaloneConfig();
     redis = new Redis(config);
     await redis.connect();
   });
@@ -276,7 +280,21 @@ describe('ZSet Commands - Real-World Patterns', () => {
 
       // Add many members
       const members = [];
-      for (let i <= = 0; i <=  {
+      for (let i = 0; i <= 100; i++) {
+        members.push(i, `member${i}`);
+      }
+      
+      await redis.zadd(key, ...members);
+      
+      const count = await redis.zcard(key);
+      assert.strictEqual(count, 101);
+      
+      const topMembers = await redis.zrange(key, 0, 9);
+      assert.strictEqual(topMembers.length, 10);
+    });
+  });
+
+  describe('Error Handling', () => {
     it('should handle invalid operations gracefully', async () => {
       const key = 'test:' + Math.random();
 
@@ -298,8 +316,8 @@ describe('ZSet Commands - Real-World Patterns', () => {
       await redis.set(key, 'not-a-zset');
 
       // ZSet operations on string should throw
-      await expect(redis.zadd(key, 1, 'member')).rejects.toThrow();
-      await expect(redis.zrange(key, 0, -1)).rejects.toThrow();
+      await assert.ok(redis.zadd(key, 1, 'member')).rejects.toThrow();
+      await assert.ok(redis.zrange(key, 0, -1)).rejects.toThrow();
     });
 
     it('should handle floating point scores correctly', async () => {
@@ -324,13 +342,13 @@ describe('ZSet Commands - Real-World Patterns', () => {
       const score2 = await redis.zscore(key, 'member2');
       const score3 = await redis.zscore(key, 'member3');
 
-      expect(parseFloat(score1!)).toBeCloseTo(1.5, 10);
-      expect(parseFloat(score2!)).toBeCloseTo(2.7, 10);
-      expect(parseFloat(score3!)).toBeCloseTo(1.5000001, 10);
+      assert.ok(parseFloat(score1)), 10) < 0.00000001);
+      assert.ok(parseFloat(score2)), 10) < 0.00000001);
+      assert.ok(parseFloat(score3)), 10) < 0.00000001);
 
       // Test increment with float
       const newScore = await redis.zincrby(key, 0.3, 'member1');
-      expect(parseFloat(newScore)).toBeCloseTo(1.8, 10);
+      assert.ok(parseFloat(newScore)), 10) < 0.00000001);
     });
   });
 });

@@ -1,17 +1,21 @@
+import { describe, it, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert';
+
+// Global declarations for Node.js built-in APIs
+/* global setTimeout */
 /**
  * Distributed Locking Pattern Tests
  * Real-world patterns algorithm, mutex, critical sections, resource coordination
  */
 
 import pkg from '../../dist/index.js';
-const { Redis } = pkg;;
-import { getStandaloneConfig } from '../utils/test-config.mjs';;
-
+const { Redis } = pkg;
+import { testUtils } from "../setup/index.mjs";
 describe('Distributed Locking Patterns', () => {
   let redis;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
+    const config = testUtils.getStandaloneConfig();
     redis = new Redis(config);
     await redis.connect();
   });
@@ -106,7 +110,7 @@ describe('Distributed Locking Patterns', () => {
   describe('Critical Section Protection', () => {
     it('should protect shared counter increment', async () => {
       const counterKey = 'counter:' + Math.random();
-      const lockKey = `${counterKey}`;
+      const lockKey = `${counterKey}:queue`;
 
       // Initialize counter
       await redis.set(counterKey, '0');
@@ -153,29 +157,31 @@ describe('Distributed Locking Patterns', () => {
 
     it('should coordinate resource access between multiple clients', async () => {
       const resourceKey = 'resource:' + Math.random();
-      const lockKey = `${resourceKey}`;
+      const lockKey = `${resourceKey}:queue`;
 
       // Initialize shared resource
+      const initialValue = 0;
+      const initialModifier = 'init';
       await redis.set(
         resourceKey,
         JSON.stringify({
-          value,
-          lastModifier,
-          timestamp.now(),
+          value: initialValue,
+          lastModifier: initialModifier,
+          timestamp: Date.now(),
         })
       );
 
       const accessResource = async (
         clientId,
-        operation: 'read' | 'write',
-        newValue?
+        operation,
+        newValue
       ) => {
         // Try to acquire lock with timeout
         const lockValue = `${clientId}_${Date.now()}`;
         const lockAcquired = await redis.setnx(lockKey, lockValue);
 
         if (!lockAcquired) {
-          return { success, reason: 'lock_unavailable' };
+          return { success: false, reason: 'lock_unavailable' };
         }
 
         try {
@@ -186,7 +192,7 @@ describe('Distributed Locking Patterns', () => {
           const resource = JSON.parse(currentData || '{}');
 
           if (operation === 'read') {
-            return { success, data };
+            return { success: true, data: resource };
           } else {
             // Write operation
             resource.value = newValue;
@@ -194,7 +200,7 @@ describe('Distributed Locking Patterns', () => {
             resource.timestamp = Date.now();
 
             await redis.set(resourceKey, JSON.stringify(resource));
-            return { success, data };
+            return { success: true, data: resource };
           }
         } finally {
           // Always release lock
@@ -228,7 +234,7 @@ describe('Distributed Locking Patterns', () => {
       const processingLockKey = `job:${jobId}`;
 
       const jobData = {
-        id,
+        id: jobId,
         type: 'image_processing',
         status: 'pending',
         data: { imageUrl: 'https://example.com/image.jpg' },
@@ -239,7 +245,7 @@ describe('Distributed Locking Patterns', () => {
         const lockAcquired = await redis.setnx(processingLockKey, lockValue);
 
         if (!lockAcquired) {
-          return { success, reason: 'job_already_processing' };
+          return { success: false, reason: 'job_already_processing' };
         }
 
         try {
@@ -258,7 +264,7 @@ describe('Distributed Locking Patterns', () => {
           jobData.status = 'completed';
           await redis.set(jobKey, JSON.stringify(jobData));
 
-          return { success, jobData };
+          return { success: true, jobData };
         } finally {
           // Release processing lock
           const releaseScript = `
@@ -283,7 +289,7 @@ describe('Distributed Locking Patterns', () => {
 
     it('should handle job queue with exclusive processing', async () => {
       const queueKey = 'job_queue:' + Math.random();
-      const processingSetKey = `${queueKey}`;
+      const processingSetKey = `${queueKey}:queue`;
 
       // Add jobs to queue
       const jobs = ['job1', 'job2', 'job3'];
@@ -316,7 +322,7 @@ describe('Distributed Locking Patterns', () => {
             // Mark
             await redis.srem(processingSetKey, job);
 
-            return { success, job, workerId };
+            return { success: true, job, workerId };
           } catch (error) {
             // On error, return job to queue
             await redis.lpush(queueKey, job);
@@ -325,7 +331,7 @@ describe('Distributed Locking Patterns', () => {
           }
         }
 
-        return { success, reason: 'no_jobs_available' };
+        return { success: false, reason: 'no_jobs_available' };
       };
 
       const result1 = await processNextJob('worker1');
@@ -345,7 +351,7 @@ describe('Distributed Locking Patterns', () => {
   describe('Advanced Locking Patterns', () => {
     it('should implement reentrant lock', async () => {
       const lockKey = 'lock:' + Math.random();
-      const clientId = 'client_' + Math.random();
+      
 
       const acquireReentrantLock = async (
         clientId,
@@ -355,7 +361,7 @@ describe('Distributed Locking Patterns', () => {
 
         if (!lockData) {
           // No lock exists, acquire it
-          const lockInfo = { owner, count };
+          const lockInfo = { owner: clientId, count: 1 };
           const acquired = await redis.setnx(lockKey, JSON.stringify(lockInfo));
           if (acquired) {
             await redis.expire(lockKey, 30);
@@ -388,9 +394,26 @@ describe('Distributed Locking Patterns', () => {
         if (lockInfo.owner !== clientId) return false;
 
         lockInfo.count--;
-        if (lockInfo.count  {
+        if (lockInfo.count <= 0) {
+          await redis.del(lockKey);
+        } else {
+          await redis.set(lockKey, JSON.stringify(lockInfo));
+        }
+        return true;
+      };
+
+      // Test basic lock functionality
+      const acquired = await acquireReentrantLock('client1', lockKey);
+      assert.strictEqual(acquired, true);
+
+      // Test lock release
+      const released = await releaseReentrantLock('client1', lockKey);
+      assert.strictEqual(released, true);
+    });
+
+    it('should implement fair queuing for lock requests', async () => {
       const lockKey = 'lock:' + Math.random();
-      const queueKey = `${lockKey}`;
+      const queueKey = `${lockKey}:queue`;
 
       const requestLock = async (clientId) => {
         // Add client to queue
@@ -451,8 +474,8 @@ describe('Distributed Locking Patterns', () => {
       const maxPermits = 3;
 
       const acquirePermit = async (clientId) => {
-        const permitKey = `${semaphoreKey}`;
-        const holderKey = `${semaphoreKey}`;
+        const permitKey = `${semaphoreKey}:permits`;
+        const holderKey = `${semaphoreKey}:holders`;
 
         const acquireScript = `
           local current = redis.call("GET", KEYS[1])
@@ -462,9 +485,28 @@ describe('Distributed Locking Patterns', () => {
             current = tonumber(current)
           end
           
-          if current  {
-        const permitKey = `${semaphoreKey}`;
-        const holderKey = `${semaphoreKey}`;
+          if current < ` + maxPermits + ` then
+            redis.call("INCR", KEYS[1])
+            redis.call("SADD", KEYS[2], ARGV[1])
+            return 1
+          else
+            return 0
+          end
+        `;
+
+        const acquired = await redis.eval(
+          acquireScript,
+          2,
+          permitKey,
+          holderKey,
+          clientId
+        );
+        return acquired === 1;
+      };
+
+      const releasePermit = async (clientId) => {
+        const permitKey = `${semaphoreKey}:permits`;
+        const holderKey = `${semaphoreKey}:holders`;
 
         const releaseScript = `
           local removed = redis.call("SREM", KEYS[2], ARGV[1])
@@ -500,7 +542,7 @@ describe('Distributed Locking Patterns', () => {
 
       // Check current permit count
       const permitCount = await redis.get(`${semaphoreKey}`);
-      expect(parseInt(permitCount!)).toBe(3);
+      assert.strictEqual(parseInt(permitCount), 3);
 
       // Release one permit
       const released = await releasePermit('client1');
@@ -590,11 +632,11 @@ describe('Distributed Locking Patterns', () => {
           const acquired = await redis.setnx(lockKey, clientId);
           if (acquired) {
             await redis.expire(lockKey, 30);
-            return { success, clientId };
+            return { success: true, clientId };
           }
-          return { success, clientId };
+          return { success: false, clientId };
         } catch (error) {
-          return { success, clientId, error: (error).message };
+          return { success: false, clientId, error: error.message };
         }
       };
 

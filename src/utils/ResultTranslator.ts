@@ -6,10 +6,11 @@ import { SortedSetDataType, GlideString } from '@valkey/valkey-glide';
 import { ParameterTranslator } from './ParameterTranslator';
 
 /**
- * Utility class for translating GLIDE result formats to ioredis-compatible formats.
- *
- * GLIDE often returns structured objects while ioredis expects flat arrays or specific formats.
- * This class centralizes all result translation logic for consistency and maintainability.
+ * Result Translation Utilities
+ * 
+ * Converts Valkey GLIDE result formats to ioredis-compatible formats.
+ * GLIDE returns structured objects while ioredis expects flat arrays or 
+ * specific string formats. This centralizes all format translation logic.
  */
 export class ResultTranslator {
   /**
@@ -130,7 +131,7 @@ export class ResultTranslator {
    * Formats floating point numbers to match ioredis precision expectations.
    *
    * JavaScript floating point arithmetic can introduce precision errors.
-   * This method normalizes the result to match expected Redis behavior.
+   * This method normalizes the result to match expected server behavior.
    *
    * @param value - Floating point number from GLIDE
    * @returns Properly formatted number string

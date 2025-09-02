@@ -1,7 +1,7 @@
 /**
  * StandaloneClient - Internal standalone client implementation
  * Database-agnostic implementation using Valkey GLIDE
- * Not exposed to users directly - wrapped by Redis class
+ * Not exposed to users directly - wrapped by Redis class for ioredis compatibility
  */
 
 import { GlideClient, GlideClientConfiguration } from '@valkey/valkey-glide';

@@ -217,11 +217,11 @@ app.use(session({
 
 | Operation Type | ioredis (baseline) | Our Adapter | Performance |
 |----------------|-------------------|-------------|-------------|
-| Basic GET/SET | Complete | 98-102% | ≈ Equivalent |
-| Hash Operations | Complete | 99-103% | ≈ Equivalent |
-| JSON Operations | N/A | N/A | Native Valkey speed |
-| Vector Search | N/A | N/A | Native Valkey speed |
-| Complex Queries | Complete | 95-105% | ≈ Equivalent |
+| Basic GET/SET | Complete | Complete | Equivalent |
+| Hash Operations | Complete | Complete | Equivalent |
+| JSON Operations | N/A | Complete | Native Valkey speed |
+| Vector Search | N/A | Complete | Native Valkey speed |
+| Complex Queries | Complete | Complete | Equivalent |
 
 *Performance may vary based on network conditions and data size*
 

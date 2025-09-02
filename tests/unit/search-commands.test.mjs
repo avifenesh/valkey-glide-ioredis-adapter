@@ -10,26 +10,30 @@
  * - Geospatial search and filtering
  */
 
+import { describe, it, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert';
+
+// Global declarations for Node.js built-in APIs
+/* global setTimeout */
+
 import pkg from '../../dist/index.js';
-const { Redis } = pkg;;
-;
-import pkg from '../../dist/index.js';
-const { SearchIndex, SearchQuery } = pkg;;
+import { testUtils } from '../setup/index.mjs';
+const { Redis } = pkg;
 
 describe('Search Commands - Valkey Search Compatibility', () => {
   let valkey;
   let searchAvailable = false;
 
   beforeAll(async () => {
-    const config = await getValkeyBundleTestConfig();
+    const config = await testUtils.getValkeyBundleTestConfig();
     valkey = new Redis(config);
 
     try {
       // Wait for valkey-bundle to be ready
-      const isReady = await waitForValkeyBundle(valkey, 5, 1000);
+      const isReady = await testUtils.waitForValkeyBundle(valkey, 5, 1000);
 
       if (isReady) {
-        const modules = await checkAvailableModules(valkey);
+        const modules = await testUtils.checkAvailableModules(valkey);
         searchAvailable = modules.search;
       } else {
         // Modules are available in the container, assume true
@@ -105,7 +109,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
 
         // Get index info
         const info = await valkey.ftInfo('test_products');
-        expect(info).toHaveProperty('index_name');
+        assert.ok(info).toHaveProperty('index_name');
       } catch (error) {
         if (error.message.includes('already exists')) {
           // FT.DROP not supported in Valkey Search, so index already exists
@@ -115,7 +119,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
 
           // Get index info to verify it works
           const info = await valkey.ftInfo('test_products');
-          expect(info).toHaveProperty('index_name');
+          assert.ok(info).toHaveProperty('index_name');
         } else {
           throw error;
         }
@@ -286,10 +290,10 @@ describe('Search Commands - Valkey Search Compatibility', () => {
         `product:${product.id}`,
         1.0,
         {
-          name.name,
-          description.description,
-          price: price: toString(),
-          category.category,
+          name: 'Laptop',
+          description: 'Gaming laptop',
+          price: '999.99',
+          category: 'Electronics',
         }
       );
 
@@ -306,8 +310,8 @@ describe('Search Commands - Valkey Search Compatibility', () => {
       const doc = await valkey.ftGet('test_products', 'product');
 
       if (doc) {
-        expect(doc).toHaveProperty('name', 'Test Product');
-        expect(doc).toHaveProperty('price', '99.99');
+        assert.ok(doc).toHaveProperty('name', 'Test Product');
+        assert.ok(doc).toHaveProperty('price', '99.99');
       }
     });
 
@@ -331,11 +335,11 @@ describe('Search Commands - Valkey Search Compatibility', () => {
       // Add multiple documents
       const docIds = ['bulk1', 'bulk2', 'bulk3'];
 
-      for (let i <= = 0; i <=  `product:${id}`)
+      for (let i = 0; i <=  `product:${id}`)
       );
 
       assert.strictEqual(docs.length, 3);
-      for (let i <= = 0; i <=  {
+      for (let i = 0; i <=  {
     beforeAll(async () => {
       if (!searchAvailable) return;
 
@@ -379,7 +383,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
           await valkey.ftAdd(
             'test_ecommerce',
             `product:${product.id}`,
-            product.rating,
+            product.rating: 5,
             {
               name.name,
               description.description,
@@ -405,9 +409,9 @@ describe('Search Commands - Valkey Search Compatibility', () => {
 
       const results = await valkey.ftSearch('test_ecommerce', searchQuery);
 
-      expect(results.total).toBeGreaterThanOrEqual(0);
+      assert.ok(results.total) >= 0);
       if (results.total > 0) {
-        expect(results.documents[0]).toHaveProperty('id');
+        assert.ok(results.documents[0]).toHaveProperty('id');
         assert.ok(results.documents[0].id.includes('product:'));
       }
     });
@@ -423,13 +427,13 @@ describe('Search Commands - Valkey Search Compatibility', () => {
 
       const results = await valkey.ftSearch('test_ecommerce', searchQuery);
 
-      expect(results.total).toBeGreaterThanOrEqual(0);
+      assert.ok(results.total) >= 0);
       // Verify price filtering if we have results
       if (results.documents.length > 0) {
         results.documents.forEach(doc => {
           const price = parseFloat(doc.fields.price || '0');
-          expect(price).toBeGreaterThanOrEqual(200);
-          expect(price).toBeLessThanOrEqual(1500);
+          assert.ok(price) >= 200);
+          assert.ok(price).toBeLessThanOrEqual(1500);
         });
       }
     });
@@ -445,7 +449,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
 
       const results = await valkey.ftSearch('test_ecommerce', searchQuery);
 
-      expect(results.total).toBeGreaterThanOrEqual(0);
+      assert.ok(results.total) >= 0);
       for (const doc of results.documents) {
         if (doc.fields && doc.fields.category) {
           assert.strictEqual(doc.fields.category, 'Electronics');
@@ -464,7 +468,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
 
       const results = await valkey.ftSearch('test_ecommerce', searchQuery);
 
-      expect(results.total).toBeGreaterThanOrEqual(0);
+      assert.ok(results.total) >= 0);
       // Results might include documents with similar terms
     });
 
@@ -479,14 +483,14 @@ describe('Search Commands - Valkey Search Compatibility', () => {
 
       const results = await valkey.ftSearch('test_ecommerce', searchQuery);
 
-      expect(results.total).toBeGreaterThanOrEqual(0);
+      assert.ok(results.total) >= 0);
       if (results.documents.length > 1) {
         // Verify sorting by rating (descending)
         const ratings = results.documents.map(doc =>
           parseFloat(doc.fields.rating || '0')
         );
 
-        for (let i <= = 1; i <=  {
+        for (let i = 1; i <=  {
     it('should perform aggregation queries', async () => {
       try {
         const results = await valkey.ftAggregate('test_ecommerce', '*', {
@@ -508,7 +512,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
           ],
         });
 
-        expect(Array.isArray(results)).toBe(true);
+        assert.ok(Array.isArray(results)));
         // Results should contain aggregated data by category
       } catch (error) {
         throw error;
@@ -535,7 +539,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
           LIMIT: { offset, num },
         });
 
-        expect(Array.isArray(results)).toBe(true);
+        assert.ok(Array.isArray(results)));
       } catch (error) {
         throw error;
       }
@@ -588,7 +592,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
           }
         );
 
-        expect(results.total).toBeGreaterThanOrEqual(0);
+        assert.ok(results.total) >= 0);
       } catch (error) {
         throw error;
       }
@@ -610,12 +614,12 @@ describe('Search Commands - Valkey Search Compatibility', () => {
 
       const results = await valkey.ftSearch('test_ecommerce', searchQuery);
 
-      expect(results.total).toBeGreaterThanOrEqual(0);
+      assert.ok(results.total) >= 0);
 
       // Verify all results are under $1500
       for (const doc of results.documents) {
         if (doc.fields && doc.fields.price) {
-          expect(parseFloat(doc.fields.price)).toBeLessThanOrEqual(1500);
+          assert.ok(parseFloat(doc.fields.price)).toBeLessThanOrEqual(1500);
         }
       }
     });
@@ -672,7 +676,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
 
         const results = await valkey.ftSearch('test_content', searchQuery);
 
-        expect(results.total).toBeGreaterThanOrEqual(0);
+        assert.ok(results.total) >= 0);
       } catch (error) {
         throw error;
       }
@@ -681,7 +685,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
 
   describe('Error Handling and Edge Cases', () => {
     it('should handle search on non-existent index', async () => {
-      await expect(
+      await assert.ok(
         valkey.ftSearch('nonexistent_index', { query: '*' })
       ).rejects.toThrow();
     });
@@ -701,7 +705,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
         assert.strictEqual(results.documents.length, 0);
       } catch (error) {
         // Expect syntax error for malformed query - this is the correct behavior
-        expect(error.message).toMatch(/syntax|malformed/i);
+        assert.ok(error.message).includes(/syntax|malformed/i);
         console.log('✅ Malformed query correctly rejected:', error.message);
       }
     });
@@ -735,7 +739,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
         options: { LIMIT: { offset, count } },
       };
 
-      await expect(
+      await assert.ok(
         valkey.ftSearch('products', textSearchQuery)
       ).rejects.toThrow(
         /Unsupported query type.*only supports vector similarity search.*KNN syntax/
@@ -758,7 +762,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
         await valkey.ftSearch('products', vectorSearchQuery);
       } catch (error) {
         // Should not be our "unsupported query type" error
-        expect(error.message).not.toMatch(
+        assert.ok(error.message).not.includes(
           /Unsupported query type.*only supports vector similarity search/
         );
       }

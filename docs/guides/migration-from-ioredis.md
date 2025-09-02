@@ -18,8 +18,8 @@ npm install valkey-glide-ioredis-adapter
 // Before
 import Redis from 'ioredis';
 
-// After
-import { RedisAdapter } from 'valkey-glide-ioredis-adapter';
+// After  
+import { Redis } from 'valkey-glide-ioredis-adapter';
 ```
 
 ### 3. Replace Constructor
@@ -32,7 +32,7 @@ const redis = new Redis({
 });
 
 // After
-const redis = new RedisAdapter({
+const redis = new Redis({
   host: 'localhost',
   port: 6379,
   password: 'secret'
@@ -49,14 +49,14 @@ That's it! Your existing Redis operations will work unchanged.
 | Transactions | ✅ | ✅ | Multi/exec fully supported |
 | Lua Scripts | ✅ | ✅ | defineCommand works identically |
 | Pipelines | ✅ | ✅ | Batch operations supported |
-| Pub/Sub | ✅ | 🔄 | See [Pub/Sub Migration](#pubsub-migration) |
+| Pub/Sub | ✅ | ✅ | Dual architecture: high-perf + binary modes |
 | Streams | ✅ | ✅ | Full Redis Streams support |
-| Cluster | ✅ | ✅ | Use ClusterAdapter |
+| Cluster | ✅ | ✅ | Use Cluster class |
 | Sentinel | ✅ | 📋 | Planned for v0.3.0 |
 
-## 🔄 Pub/Sub Migration
+## ✅ Pub/Sub Migration
 
-Pub/Sub requires slight changes due to GLIDE's architecture:
+**Good News**: Pub/Sub now works identically to ioredis with our dual architecture!
 
 ### Traditional Event-Based (ioredis)
 ```typescript
@@ -67,23 +67,31 @@ subscriber.on('message', (channel, message) => {
 await subscriber.subscribe('notifications');
 ```
 
-### Polling-Based (GLIDE Adapter)
+### GLIDE Adapter - Zero Code Changes Required!
 ```typescript
-import { createPubSubClients, pollForMessage } from 'valkey-glide-ioredis-adapter/pubsub';
+import { Redis } from 'valkey-glide-ioredis-adapter';
 
-const clients = await createPubSubClients(
-  { host: 'localhost', port: 6379 },
-  { channels: ['notifications'] }
-);
+// High-performance mode (default) - works exactly like ioredis
+const subscriber = new Redis({ host: 'localhost', port: 6379 });
+subscriber.on('message', (channel, message) => {
+  console.log(`${channel}: ${message}`);
+});
+await subscriber.subscribe('notifications');
+```
 
-// In your application loop
-while (running) {
-  const message = await pollForMessage(clients.subscriber);
-  if (message) {
-    console.log(`${message.channel}: ${message.message}`);
-  }
-  await new Promise(resolve => setTimeout(resolve, 10)); // Small delay
-}
+### Binary Data Support (when needed)
+```typescript
+// For Socket.IO, MessagePack, or binary data
+const subscriber = new Redis({ 
+  host: 'localhost', 
+  port: 6379,
+  enableEventBasedPubSub: true  // Enable binary compatibility
+});
+
+subscriber.on('messageBuffer', (channel, message) => {
+  console.log(`Binary message:`, message); // message is Buffer
+});
+await subscriber.subscribe('binary-channel');
 ```
 
 ## 🏗️ Library-Specific Migrations
@@ -96,11 +104,11 @@ const myQueue = new Queue('my queue');
 
 // After (GLIDE Adapter) - Zero changes!
 const Queue = require('bull');
-const { RedisAdapter } = require('valkey-glide-ioredis-adapter');
+const { Redis } = require('valkey-glide-ioredis-adapter');
 
 const myQueue = new Queue('my queue', {
   createClient: (type) => {
-    return new RedisAdapter({ host: 'localhost', port: 6379 });
+    return new Redis({ host: 'localhost', port: 6379 });
   }
 });
 ```
@@ -113,9 +121,9 @@ const myQueue = new Queue('my queue');
 
 // After (GLIDE Adapter)
 import { Queue, Worker } from 'bullmq';
-import { RedisAdapter } from 'valkey-glide-ioredis-adapter';
+import { Redis } from 'valkey-glide-ioredis-adapter';
 
-const connection = new RedisAdapter({ host: 'localhost', port: 6379 });
+const connection = new Redis({ host: 'localhost', port: 6379 });
 const myQueue = new Queue('my queue', { connection });
 ```
 
@@ -129,12 +137,12 @@ const pubClient = createClient({ host: 'localhost', port: 6379 });
 const subClient = pubClient.duplicate();
 io.adapter(createAdapter(pubClient, subClient));
 
-// After (GLIDE Adapter)
+// After (GLIDE Adapter) - Automatically uses binary-compatible mode
 import { createAdapter } from '@socket.io/redis-adapter';
-import { RedisAdapter } from 'valkey-glide-ioredis-adapter';
+import { Redis } from 'valkey-glide-ioredis-adapter';
 
-const pubClient = new RedisAdapter({ host: 'localhost', port: 6379 });
-const subClient = new RedisAdapter({ host: 'localhost', port: 6379 });
+const pubClient = new Redis({ host: 'localhost', port: 6379 });
+const subClient = pubClient.duplicate(); // Use duplicate() for efficiency
 io.adapter(createAdapter(pubClient, subClient));
 ```
 
@@ -156,10 +164,10 @@ app.use(session({
 // After (GLIDE Adapter)
 import session from 'express-session';
 import connectRedis from 'connect-redis';
-import { RedisAdapter } from 'valkey-glide-ioredis-adapter';
+import { Redis } from 'valkey-glide-ioredis-adapter';
 
 const RedisStore = connectRedis(session);
-const client = new RedisAdapter();
+const client = new Redis();
 
 app.use(session({
   store: new RedisStore({ client }),
@@ -188,11 +196,7 @@ console.log(`${iterations} SET operations: ${end - start}ms`);
 console.log(`Rate: ${iterations / ((end - start) / 1000)} ops/sec`);
 ```
 
-Expected improvements:
-- **SET/GET**: ~15% faster
-- **Hash operations**: ~16% faster  
-- **List operations**: ~14% faster
-- **Memory usage**: ~10% lower
+Note: Performance characteristics depend on your specific use case and workload. Benchmark your own application to measure actual improvements.
 
 ## 🔧 Configuration Differences
 
@@ -200,7 +204,7 @@ Expected improvements:
 Most options work identically, with these additions:
 
 ```typescript
-const redis = new RedisAdapter({
+const redis = new Redis({
   // Standard ioredis options work
   host: 'localhost',
   port: 6379,
@@ -208,9 +212,10 @@ const redis = new RedisAdapter({
   db: 0,
   
   // GLIDE-specific optimizations
-  lazyConnect: false,        // Connect immediately
-  maxCommandsInFlight: 1000, // Concurrent command limit
-  enableAutoPipelining: true // Automatic batching
+  lazyConnect: false,              // Connect immediately
+  enableEventBasedPubSub: true,    // Binary pub/sub support
+  maxCommandsInFlight: 1000,       // Concurrent command limit
+  enableAutoPipelining: true       // Automatic batching
 });
 ```
 
@@ -223,14 +228,12 @@ const cluster = new Redis.Cluster([
 ]);
 
 // After (GLIDE Adapter)
-import { ClusterAdapter } from 'valkey-glide-ioredis-adapter';
+import { Cluster } from 'valkey-glide-ioredis-adapter';
 
-const cluster = new ClusterAdapter({
-  nodes: [
-    { host: '127.0.0.1', port: 7000 },
-    { host: '127.0.0.1', port: 7001 }
-  ]
-});
+const cluster = new Cluster([
+  { host: '127.0.0.1', port: 7000 },
+  { host: '127.0.0.1', port: 7001 }
+]);
 ```
 
 ## 🧪 Testing Your Migration
@@ -256,19 +259,26 @@ const cluster = new ClusterAdapter({
 ```typescript
 // Check for remaining ioredis imports
 import Redis from 'ioredis'; // ❌ Remove this
-import { RedisAdapter } from 'valkey-glide-ioredis-adapter'; // ✅ Use this
+import { Redis } from 'valkey-glide-ioredis-adapter'; // ✅ Use this
 ```
 
 ### Issue: Pub/Sub Events Not Firing
-**Solution**: Migrate to polling pattern (see [Pub/Sub Migration](#pubsub-migration))
+**Solution**: Enable binary-compatible mode if using binary data:
+```typescript
+const subscriber = new Redis({
+  host: 'localhost', 
+  port: 6379,
+  enableEventBasedPubSub: true // Enable for Socket.IO/binary data
+});
+```
 
 ### Issue: Performance Regression  
 **Solution**: Enable GLIDE optimizations:
 ```typescript
-const redis = new RedisAdapter({
+const redis = new Redis({
   // ... other options
-  enableAutoPipelining: true,
-  lazyConnect: false
+  lazyConnect: false,          // Connect immediately
+  enableAutoPipelining: true   // Enable automatic batching
 });
 ```
 

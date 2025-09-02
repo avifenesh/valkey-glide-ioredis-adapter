@@ -1,6 +1,9 @@
 /**
- * Command Parameter Translation Layer
- * Converts ioredis command arguments to valkey-glide compatible formats
+ * Parameter Translation Utilities
+ * 
+ * Provides translation between ioredis parameter formats and Valkey GLIDE
+ * parameter formats, ensuring API compatibility while leveraging GLIDE's
+ * native method signatures.
  */
 
 import { RedisKey, RedisValue } from '../types';

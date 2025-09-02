@@ -3,9 +3,14 @@
  * Tests current pub/sub implementation and validates incremental improvements
  */
 
+import { describe, it, beforeAll, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert';
+
+// Global declarations for Node.js built-in APIs
+/* global setTimeout, console */
 import pkg from '../../dist/index.js';
-const { Redis } = pkg;;
-import { testUtils } from '../setup';
+const { Redis } = pkg;
+import { testUtils } from '../setup/index.mjs';
 
 describe('Basic Pub/Sub Functionality', () => {
   let publisher;
@@ -42,7 +47,7 @@ describe('Basic Pub/Sub Functionality', () => {
       try {
         await subscriber.unsubscribe();
         await subscriber.punsubscribe();
-      } catch (error) {
+      } catch {
         // Ignore cleanup errors
       }
       await subscriber.disconnect();

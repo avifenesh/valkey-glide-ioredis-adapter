@@ -1,7 +1,7 @@
 /**
- * Cluster - Redis Cluster client (External API)
+ * Cluster - Valkey/Redis Cluster client (External API)
  * Drop-in replacement for ioredis Cluster class
- * Wraps internal ClusterClient with Redis-compatible naming
+ * Wraps internal ClusterClient with ioredis-compatible naming
  */
 
 import { ClusterClient, ClusterNode, ClusterOptions } from './ClusterClient';

@@ -377,7 +377,7 @@ npm run test:e2e
 
 After migration, you can expect:
 
-- **Similar Performance**: 95-105% of original ioredis performance for basic operations
+- **Equivalent Performance**: Similar to original ioredis performance for basic operations
 - **Better Performance**: Enhanced performance for JSON and Search operations
 - **Same Memory Usage**: Similar memory patterns as ioredis
 - **Improved Reliability**: Benefits from GLIDE's Rust core stability

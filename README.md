@@ -9,7 +9,7 @@
 > 
 > **Production-Ready Core Features** - BullMQ, Socket.IO, Express Sessions, JSON/Search modules fully validated
 
-A **production-ready ioredis replacement** that seamlessly integrates **Valkey GLIDE**'s high-performance Rust core with your existing Node.js applications. **Zero code changes required** for core functionality - simply change your import statement and gain superior performance while maintaining API compatibility.
+A **production-ready ioredis replacement** that seamlessly integrates **Valkey GLIDE**'s high-performance Rust core with your existing Node.js applications. **Zero code changes required** for core functionality - simply change your import statement and gain the benefits of GLIDE's resilient, high-performance architecture while maintaining API compatibility.
 
 ## 🎯 **Pure GLIDE Architecture**
 

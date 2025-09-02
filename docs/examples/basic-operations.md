@@ -5,16 +5,16 @@ Common Valkey operations using Valkey GLIDE ioredis Adapter.
 ## 🔧 Setup
 
 ```typescript
-import { RedisAdapter } from 'valkey-glide-ioredis-adapter';
+import { Redis } from 'valkey-glide-ioredis-adapter';
 
-const redis = new RedisAdapter({
+const redis = new Redis({
   host: 'localhost',
   port: 6379,
   password: 'your-password', // if needed
   db: 0
 });
 
-// Wait for Valkey connection
+// Wait for server connection
 await redis.connect();
 ```
 

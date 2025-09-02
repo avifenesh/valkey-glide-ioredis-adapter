@@ -4,6 +4,9 @@
  * Uses environment variables set by the test runner
  */
 
+// Global declarations for Node.js built-in APIs
+/* global process, setTimeout */
+
 /**
  * Get Redis/Valkey configuration for standalone tests
  * @returns {Object} Redis configuration object

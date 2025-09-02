@@ -9,6 +9,9 @@ import pkg from '../../../dist/index.js';
 const { Redis } = pkg;
 import { getStandaloneConfig, delay } from '../../utils/test-config.mjs';
 
+// Global declarations for Node.js built-in globals
+/* global console, Buffer */
+
 describe('Simple Socket.IO Pattern Test', () => {
   let pubClient;
   let subClient;
@@ -38,7 +41,7 @@ describe('Simple Socket.IO Pattern Test', () => {
         // Unsubscribe before disconnecting
         try {
           await subClient.punsubscribe();
-        } catch (e) {
+        } catch {
           // Ignore unsubscribe errors
         }
         

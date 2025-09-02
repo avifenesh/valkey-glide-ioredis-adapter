@@ -1,3 +1,6 @@
+
+import { describe, it, beforeEach, afterEach, beforeAll, afterAll } from 'node:test';
+import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;;
 import { testUtils } from '../../tests/setup';
@@ -14,7 +17,7 @@ describe('Transaction Commands', () => {
       );
     }
 
-    const config = await testUtils.getStandaloneConfig();
+    const config = await testUtils.testUtils.getStandaloneConfig();
     redis = new Redis(config);
     await redis.connect();
   });
@@ -58,8 +61,8 @@ describe('Transaction Commands', () => {
 
     const results = await multi.exec();
 
-    expect(results).not.toBeNull();
-    expect(Array.isArray(results)).toBe(true);
+    assert.ok(results);
+    assert.ok(Array.isArray(results));
     if (results) {
       assert.strictEqual(results.length, 3);
       assert.deepStrictEqual(results[0], [null, 'value1']);
@@ -84,7 +87,7 @@ describe('Transaction Commands', () => {
 
     const results = await multi.exec();
 
-    expect(results).not.toBeNull();
+    assert.ok(results).not.toBeNull();
     if (results) {
       assert.strictEqual(results.length, 2);
       assert.deepStrictEqual(results[0], [null, 'initial']);

@@ -1,4 +1,4 @@
-import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 /**
  * Hash Commands Comprehensive Tests
@@ -7,13 +7,12 @@ import assert from 'node:assert';
 
 import pkg from '../../dist/index.js';
 const { Redis  } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('Hash Commands - Real-World Patterns', () => {
   let redis;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
+    const config = testUtils.getStandaloneConfig();
     redis = new Redis(config);
   });
 
@@ -121,8 +120,8 @@ describe('Hash Commands - Real-World Patterns', () => {
       assert.strictEqual(storedProfile.name, 'Alice Johnson');
 
       const preferences = JSON.parse(storedProfile.preferences);
-      assert.strictEqual(preferences: JSON.theme, 'dark');
-      assert.strictEqual(preferences: JSON.notifications, true);
+      assert.strictEqual(preferences.theme, 'dark');
+      assert.strictEqual(preferences.notifications, true);
     });
 
     it('should handle profile field operations', async () => {
@@ -227,7 +226,10 @@ describe('Hash Commands - Real-World Patterns', () => {
         'cpu_usage',
         2.3
       );
-      assert.strictEqual(Math.abs(parseFloat(newCpuUsage.toString()) - 47.8)  {
+      assert.ok(Math.abs(parseFloat(newCpuUsage.toString()) - 47.8) < 0.1);
+    });
+
+    it('should handle conditional field setting with HSETNX', async () => {
       const configKey = 'config:' + Math.random();
 
       // Set default configuration

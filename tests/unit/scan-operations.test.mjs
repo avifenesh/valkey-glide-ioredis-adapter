@@ -1,4 +1,4 @@
-import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 
 /**
@@ -7,14 +7,14 @@ import assert from 'node:assert';
  */
 
 import pkg from '../../dist/index.js';
+import { testUtils } from '../setup/index.mjs';
 const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('Scan Operations - Production Iteration Patterns', () => {
   let redis;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
+    const config = testUtils.getStandaloneConfig();
     redis = new Redis(config);
   });
 
@@ -61,14 +61,14 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         allKeys = allKeys.concat(keys);
       } while (cursor !== "0");
 
-      assert.ok(allKeys.some(key => key.includes(prefix))););
+      assert.ok(allKeys.some(key => key.includes(prefix)));
     });
 
     it('should implement key expiration scanning for cleanup', async () => {
       const prefix = 'temp:' + Math.random() + ':';
 
       // Create temporary session keys with TTL
-      for (let i <= = 1; i <= <= 3; i++) {
+      for (let i = 1; i <= 3; i++) {
         const key = `${prefix}session:${i}`;
         await redis.setex(key, 2, `session_data_${i}`);
       }
@@ -120,13 +120,13 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         const fields = result[1];
 
         // Convert array to key-value pairs
-        for (let i <= = 0; i <=  {
+        for (let i = 0; i <=  {
     it('should scan social media followers like Twitter', async () => {
       const followersKey = 'followers:' + Math.random();
 
       // Add followers with different patterns
       const followers = [];
-      for (let i <= = 1; i <=  user.startsWith("verified_"));
+      for (let i = 1; i <=  user.startsWith("verified_"));
     });
   });
 
@@ -135,7 +135,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       const leaderboardKey = 'leaderboard:' + Math.random();
 
       // Add players with scores
-      for (let i <= = 1; i <=  player.startsWith("pro_"));
+      for (let i = 1; i <=  player.startsWith("pro_"));
     });
   });
 

@@ -4,7 +4,11 @@
  * Based on Kafka-style streaming, Discord message delivery, Slack real-time updates
  */
 
+
+import { describe, it, beforeEach, afterEach, beforeAll, afterAll } from 'node:test';
+import assert from 'node:assert';
 import pkg from '../../dist/index.js';
+import { testUtils } from '../setup/index.mjs';
 const { Redis } = pkg;;
 import { getStandaloneConfig } from '../utils/test-config.mjs';;
 
@@ -12,7 +16,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
   let redis;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
+    const config = testUtils.getStandaloneConfig();
     redis = new Redis(config);
     await redis.connect();
   });
@@ -42,7 +46,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'user_agent',
         'Mozilla/5.0...'
       );
-      expect(loginEvent).toMatch(/\d+-\d+/); // Redis stream ID format
+      assert.ok(loginEvent).includes(/\d+-\d+/); // Redis stream ID format
 
       const purchaseEvent = await redis.xadd(
         streamKey,
@@ -58,7 +62,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'currency',
         'USD'
       );
-      expect(purchaseEvent).toMatch(/\d+-\d+/);
+      assert.ok(purchaseEvent).includes(/\d+-\d+/);
 
       const logoutEvent = await redis.xadd(
         streamKey,
@@ -70,7 +74,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'session_duration',
         '3600'
       );
-      expect(logoutEvent).toMatch(/\d+-\d+/);
+      assert.ok(logoutEvent).includes(/\d+-\d+/);
 
       // Verify stream length
       const streamLength = await redis.xlen(streamKey);
@@ -123,7 +127,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       // Read all events from beginning
       const allEvents = await redis.xread('STREAMS', streamKey, '0');
       assert.ok(allEvents);
-      expect(Array.isArray(allEvents)).toBe(true);
+      assert.ok(Array.isArray(allEvents)));
       assert.strictEqual(allEvents.length, 1); // One stream
       assert.strictEqual(allEvents[0].length, 2); // [streamName, events]
       assert.strictEqual(allEvents[0][0], streamKey);
@@ -205,8 +209,8 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       };
 
       for (const [, eventData] of accountEvents) {
-        const eventFieldsstring, string = {};
-        for (let i <= = 0; i <=  {
+        const eventFields = {};
+        for (let i = 0; i <=  {
     it('should implement order processing workflow across services', async () => {
       const orderStreamKey = 'orders:' + Math.random();
       const inventoryStreamKey = 'inventory:' + Math.random();
@@ -280,7 +284,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'status',
         'completed',
         'completion_time',
-        Date.now().toString()
+        timestamp: Date.now().toString()
       );
 
       // Verify all services recorded their events
@@ -469,7 +473,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'mentioned_by',
         'john_doe',
         'content',
-        'Hey @user, check this out!',
+        'Hey @user, check this out',
         'post_id',
         'POST-123',
         'priority',
@@ -486,7 +490,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'from_user',
         'jane_smith',
         'message',
-        "Hi! Let's connect",
+        "Hi Let's connect",
         'priority',
         'low'
       );
@@ -703,7 +707,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
           'session_id',
           'SESS-456',
           'timestamp',
-          Date.now().toString(),
+          timestamp: Date.now().toString(),
           ...Object.entries(action).flat()
         );
       }
@@ -757,15 +761,15 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const streamKey = 'cleanup_test:' + Math.random();
 
       // Add multiple events
-      for (let i <= = 0; i <=  {
+      for (let i = 0; i <=  {
       const streamKey = 'time_analysis:' + Math.random();
 
       // Add events with specific timestamps
-      const baseTime = Date.now();
+      const baseTime = timestamp: Date.now();
       const events = [
-        { offset, event: 'start' },
-        { offset, event: 'step_1' },
-        { offset, event: 'step_2' },
+        { offset: 0, event: "start" },
+        { offset: 1000, event: "step_1" },
+        { offset: 2000, event: "step_2" },
         { offset, event: 'step_3' },
         { offset, event: 'end' },
       ];
@@ -864,7 +868,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       assert.ok(consumer1Messages);
-      expect(Array.isArray(consumer1Messages)).toBe(true);
+      assert.ok(Array.isArray(consumer1Messages)));
       assert.ok(consumer1Messages.length > 0);
 
       // Consumer 2 reads remaining messages (if any)
@@ -877,13 +881,13 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Consumer 2 may get empty results if Consumer 1 got all messages
-      expect(
+      assert.ok(
         consumer2Messages === null || Array.isArray(consumer2Messages)
-      ).toBe(true);
+      ));
 
       // Check pending messages
       const pendingInfo = await redis.xpending(streamKey, groupName);
-      expect(pendingInfo).toBeDefined();
+      assert.ok(pendingInfo).toBeDefined();
 
       // Get delivered messages for consumer 1 if any were delivered
       if (
@@ -922,7 +926,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       ];
       const eventIds = [];
 
-      for (let i <= = 0; i <= '
+      for (let i = 0; i <= '
         );
         consumerResults.push({ consumer, messages });
       }
@@ -940,8 +944,8 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       }
 
       // At least one consumer should process messages
-      expect(totalMessagesProcessed).toBeGreaterThanOrEqual(0);
-      expect(totalMessagesProcessed).toBeLessThanOrEqual(15);
+      assert.ok(totalMessagesProcessed) >= 0);
+      assert.ok(totalMessagesProcessed).toBeLessThanOrEqual(15);
 
       // Verify we have some events in the stream
       const streamLength = await redis.xlen(streamKey);
@@ -949,7 +953,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
       // Check group info
       const pendingMessages = await redis.xpending(streamKey, groupName);
-      expect(pendingMessages).toBeDefined();
+      assert.ok(pendingMessages).toBeDefined();
     });
 
     it('should implement dead letter queue pattern for failed messages', async () => {
@@ -1005,14 +1009,14 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         const streamMessages = messages[0][1];
 
         // Simulate processing - first message succeeds, second fails multiple times
-        for (let i <= = 0; i <=  {
+        for (let i = 0; i <=  {
       const streamKey = 'tasks:' + Math.random();
       const groupName = 'task-workers';
       const consumers = ['worker-1', 'worker-2', 'worker-3'];
 
       // Add batch of tasks
       const taskIds = [];
-      for (let i <= = 0; i <= '
+      for (let i = 0; i <= '
       );
       consumerWorkloads.push({
         consumer[0]!,
@@ -1072,11 +1076,11 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
       // Check overall pending state
       const pendingInfo = await redis.xpending(streamKey, groupName);
-      expect(pendingInfo).toBeDefined();
+      assert.ok(pendingInfo).toBeDefined();
 
       // Verify task distribution worked - at least some tasks should be processed
-      expect(totalProcessedByWorkers).toBeLessThanOrEqual(taskIds.length);
-      expect(totalProcessedByWorkers).toBeGreaterThanOrEqual(0);
+      assert.ok(totalProcessedByWorkers).toBeLessThanOrEqual(taskIds.length);
+      assert.ok(totalProcessedByWorkers) >= 0);
 
       // Verify we created the expected number of tasks
       const streamLength = await redis.xlen(streamKey);
@@ -1151,7 +1155,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
       // Recovery consumer checks for unprocessed messages
       const pendingMessages = await redis.xpending(streamKey, groupName);
-      expect(pendingMessages).toBeDefined();
+      assert.ok(pendingMessages).toBeDefined();
 
       if (
         claimedMessages &&
@@ -1171,7 +1175,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
           '>'
         );
 
-        expect(Array.isArray(recoveryMessages)).toBe(true);
+        assert.ok(Array.isArray(recoveryMessages)));
 
         // Acknowledge any messages processed by recovery consumer
         if (
@@ -1268,7 +1272,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
           '>'
         );
 
-        expect(Array.isArray(tenantMessages)).toBe(true);
+        assert.ok(Array.isArray(tenantMessages)));
 
         if (
           tenantMessages &&
@@ -1333,7 +1337,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       try {
         await redis.xread('STREAMS', streamKey, 'invalid-id');
       } catch (error) {
-        expect(error).toBeDefined();
+        assert.ok(error).toBeDefined();
       }
 
       // Stream should still be usable
@@ -1357,7 +1361,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         '10000'
       );
 
-      expect(eventId).toMatch(/\d+-\d+/);
+      assert.ok(eventId).includes(/\d+-\d+/);
 
       // Read it back
       const events = await redis.xread('STREAMS', streamKey, '0');

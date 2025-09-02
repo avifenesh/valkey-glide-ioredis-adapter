@@ -1,12 +1,13 @@
 /**
- * BaseClient - Complete key-value database API implementation
- * Base class for both standalone and cluster clients
- * Database-agnostic internally, ioredis-compatible externally
- * Uses Valkey GLIDE for all operations
+ * BaseClient - Core database client implementation
+ * 
+ * Base class providing comprehensive database operations for both standalone 
+ * and cluster clients. Maintains complete ioredis API compatibility while 
+ * leveraging Valkey GLIDE's high-performance core.
  */
 
 import { EventEmitter } from 'events';
-import { GlideClient, GlideClusterClient } from '@valkey/valkey-glide';
+import { GlideClient, GlideClusterClient, Logger } from '@valkey/valkey-glide';
 import { RedisOptions, RedisKey, RedisValue, Multi, Pipeline } from './types';
 import { ParameterTranslator } from './utils/ParameterTranslator';
 import { TimeUnit, SetOptions } from '@valkey/valkey-glide';
@@ -14,7 +15,7 @@ import { IoredisPubSubClient } from './utils/IoredisPubSubClient';
 
 export type GlideClientType = GlideClient | GlideClusterClient;
 
-// Direct GLIDE Pub/Sub Interface (Resilient Architecture)
+// Direct GLIDE Pub/Sub Interface - High-Performance Native Callbacks
 export interface DirectPubSubMessage {
   channel: string;
   message: string;
@@ -22,7 +23,7 @@ export interface DirectPubSubMessage {
 }
 
 export interface DirectGlidePubSubInterface {
-  // Subscribe with direct callback (resilient GLIDE architecture)
+  // High-performance subscriptions with native GLIDE callbacks (text only)
   subscribe(
     channels: string[],
     callback: (message: DirectPubSubMessage) => void
@@ -36,19 +37,19 @@ export interface DirectGlidePubSubInterface {
     callback: (message: DirectPubSubMessage) => void
   ): Promise<number>; // Cluster only
 
-  // Unsubscribe (affects callback-based subscriptions)
+  // Unsubscribe operations
   unsubscribe(...channels: string[]): Promise<number>;
   punsubscribe(...patterns: string[]): Promise<number>;
   sunsubscribe?(...channels: string[]): Promise<number>; // Cluster only
 
-  // Publishing
+  // Publishing (automatically detects cluster vs standalone)
   publish(
     channel: string,
     message: string | Buffer,
     sharded?: boolean
   ): Promise<number>;
 
-  // Status
+  // Subscription status
   getStatus(): {
     subscribedChannels: string[];
     subscribedPatterns: string[];
@@ -66,9 +67,9 @@ export abstract class BaseClient extends EventEmitter {
   // ioredis compatibility properties
   public blocked: boolean = false;
 
-  // Socket.IO compatibility: duplicate() method for separate pub/sub clients
+  // ioredis compatibility: duplicate() method for separate pub/sub clients
   duplicate(): BaseClient {
-    // Create new instance with same options
+    // Create new instance with same options for separate pub/sub handling
     const duplicateClient = Object.create(Object.getPrototypeOf(this));
     duplicateClient.options = { ...this.options };
     duplicateClient.connectionStatus = 'disconnected';
@@ -84,18 +85,13 @@ export abstract class BaseClient extends EventEmitter {
     return duplicateClient;
   }
 
-  // Pub/Sub state management - Event-based Compatible Architecture
+  // Dual Pub/Sub Architecture State Management
   protected subscribedChannels = new Set<string>();
   protected subscribedPatterns = new Set<string>();
-  protected subscribedShardedChannels = new Set<string>(); // Only used by cluster clients
+  protected subscribedShardedChannels = new Set<string>(); // Cluster only
   protected isInSubscriberMode = false;
 
-  // Event-based pub/sub state (for binary data compatibility)
-  protected pollingActive = false;
-  protected pollingPromise: Promise<void> | null = null;
-  protected eventBasedSubscriber: GlideClientType | null = null;
-
-  // Direct GLIDE Pub/Sub - Resilient Architecture
+  // Direct GLIDE Pub/Sub - High-Performance Native Callbacks
   public directPubSub: DirectGlidePubSubInterface;
 
   constructor(options: RedisOptions = {}) {
@@ -110,7 +106,7 @@ export abstract class BaseClient extends EventEmitter {
     // ioredis compatibility - expose options as _options
     (this as any)._options = this.options;
 
-    // Initialize Direct GLIDE Pub/Sub (Resilient Architecture)
+    // Initialize Direct GLIDE Pub/Sub (High-Performance Architecture)
     this.directPubSub = new DirectGlidePubSub(this);
 
     // GLIDE by default is NOT lazy - it connects immediately
@@ -1339,8 +1335,7 @@ export abstract class BaseClient extends EventEmitter {
         (item: any) => ParameterTranslator.convertGlideString(item) || ''
       );
     } catch (error) {
-      console.warn('zrangebyscore error:', error);
-      return [];
+      throw error;
     }
   }
 
@@ -1454,8 +1449,7 @@ export abstract class BaseClient extends EventEmitter {
       );
       return converted.reverse();
     } catch (error) {
-      console.warn('zrevrangebyscore error:', error);
-      return [];
+      throw error;
     }
   }
 
@@ -1488,8 +1482,7 @@ export abstract class BaseClient extends EventEmitter {
 
       return [];
     } catch (error) {
-      console.warn('zpopmin error:', error);
-      return [];
+      throw error;
     }
   }
 
@@ -1522,8 +1515,7 @@ export abstract class BaseClient extends EventEmitter {
 
       return [];
     } catch (error) {
-      console.warn('zpopmax error:', error);
-      return [];
+      throw error;
     }
   }
 
@@ -2391,7 +2383,6 @@ export abstract class BaseClient extends EventEmitter {
             }
           });
         } catch (error) {
-          console.error('Batch execution failed:', error);
           throw error;
         }
       },
@@ -2915,12 +2906,15 @@ export abstract class BaseClient extends EventEmitter {
     return await client.customCommand(args);
   }
 
-  // Pub/Sub Commands - Based on proven bridge pattern from old adapters
-
+  // === Pub/Sub Commands - Dual Architecture ===
+  
   /**
-   * Subscribe to channels - supports both GLIDE native and event-based modes
-   * GLIDE mode: Uses callback mechanism (better performance, text only)
-   * Event-based mode: Uses custom commands (Socket.IO compatible, binary safe)
+   * Subscribe to channels using dual pub/sub architecture:
+   * 
+   * 1. Direct GLIDE Mode (default): High-performance native callbacks, text messages only
+   * 2. ioredis-Compatible Mode: Full binary support via direct TCP, Socket.IO compatible
+   * 
+   * Mode is controlled by `options.enableEventBasedPubSub` flag
    */
   async subscribe(...channels: string[]): Promise<number> {
     // Debug logging for Socket.IO
@@ -2970,7 +2964,8 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   /**
-   * Subscribe to patterns - supports both GLIDE native and event-based modes
+   * Subscribe to patterns using dual pub/sub architecture
+   * Same architecture as subscribe() - uses GLIDE native or ioredis-compatible mode
    */
   async psubscribe(...patterns: string[]): Promise<number> {
     // Socket.IO adapter debug logging
@@ -3281,10 +3276,6 @@ export abstract class BaseClient extends EventEmitter {
             }
           } catch (error) {
             // If all else fails, emit a safe fallback message
-            console.warn(
-              '[ioredis-adapter] Pub/sub message processing error:',
-              error
-            );
             this.emit('message', 'unknown', 'binary-data-error');
           }
         },
@@ -3755,10 +3746,17 @@ export abstract class BaseClient extends EventEmitter {
 }
 
 /**
- * DirectGlidePubSub - Resilient GLIDE Pub/Sub Implementation
+ * DirectGlidePubSub - High-Performance GLIDE Native Pub/Sub
  *
- * Uses GLIDE's native callback mechanism for message delivery.
- * This is the resilient architecture that doesn't require polling.
+ * Primary implementation of the dual pub/sub architecture using GLIDE's native
+ * callback mechanism for maximum performance. Suitable for high-throughput
+ * applications with text-only messaging requirements.
+ *
+ * Features:
+ * - Zero-copy message delivery via native callbacks
+ * - No polling or event loop overhead  
+ * - Automatic cluster/standalone detection
+ * - Text-only messages (use IoredisPubSubClient for binary data)
  */
 class DirectGlidePubSub implements DirectGlidePubSubInterface {
   private baseClient: BaseClient;

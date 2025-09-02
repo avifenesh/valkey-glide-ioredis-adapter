@@ -10,7 +10,11 @@
  * - Netflix's A/B testing assignment with stateful Lua scripts
  */
 
+
+import { describe, it, beforeEach, afterEach, beforeAll, afterAll } from 'node:test';
+import assert from 'node:assert';
 import pkg from '../../dist/index.js';
+import { testUtils } from '../setup/index.mjs';
 const { Redis } = pkg;;
 import { getStandaloneConfig } from '../utils/test-config.mjs';;
 
@@ -18,7 +22,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
   let redis;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
+    const config = testUtils.getStandaloneConfig();
     redis = new Redis(config);
     await redis.connect();
   });
@@ -43,7 +47,40 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         -- Count current requests
         local current_requests = redis.call('ZCARD', key)
         
-        if current_requests  {
+        if current_requests < limit then
+          -- Add current request
+          redis.call('ZADD', key, current_time, current_time)
+          redis.call('EXPIRE', key, window)
+          return 1
+        else
+          return 0
+        end
+      `;
+
+      const limit = 5; // 5 requests per minute
+      const window = 60; // 60 seconds
+      const userKey = 'rate_limit:user123';
+
+      // Test rate limiting
+      for (let i = 0; i < 7; i++) {
+        const allowed = await redis.eval(
+          rateLimitScript,
+          1,
+          userKey,
+          window,
+          limit,
+          Date.now()
+        );
+        
+        if (i < 5) {
+          assert.strictEqual(allowed, 1, `Request ${i + 1} should be allowed`);
+        } else {
+          assert.strictEqual(allowed, 0, `Request ${i + 1} should be blocked`);
+        }
+      }
+    });
+
+    it('should implement token bucket rate limiter', async () => {
       const tokenBucketScript = `
         local bucket_key = KEYS[1]
         local max_tokens = tonumber(ARGV[1])
@@ -120,7 +157,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       );
 
       assert.strictEqual(result3[0], 1); // Granted (bucket refilled)
-      expect(result3[1]).toBeGreaterThanOrEqual(0); // Some tokens remaining
+      assert.ok(result3[1]) >= 0); // Some tokens remaining
     });
 
     it('should implement fixed window rate limiter like Discord', async () => {
@@ -287,7 +324,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         lockKey,
         process1Id,
         expirationMs.toString(),
-        Date.now().toString()
+        timestamp: Date.now().toString()
       );
 
       assert.strictEqual(lock1[0], 1); // Acquired
@@ -301,12 +338,12 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         lockKey,
         process2Id,
         expirationMs.toString(),
-        Date.now().toString()
+        timestamp: Date.now().toString()
       );
 
       assert.strictEqual(lock2[0], 0); // Failed
       assert.strictEqual(lock2[1], process1Id); // Lock owned by process 1
-      expect(lock2[2]).toBeLessThanOrEqual(expirationMs); // TTL remaining
+      assert.ok(lock2[2]).toBeLessThanOrEqual(expirationMs); // TTL remaining
 
       // Process 1 extends its own lock - should succeed
       const lock3 = await redis.eval(
@@ -315,7 +352,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         lockKey,
         process1Id,
         expirationMs.toString(),
-        Date.now().toString()
+        timestamp: Date.now().toString()
       );
 
       assert.strictEqual(lock3[0], 1); // Extended
@@ -370,7 +407,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
 
       const eventType = `page_view_${Math.random()}`;
       const userId = `user_${Math.random()}`;
-      const timestamp = Math.floor(Date.now() / 1000);
+      const timestamp = Math.floor(timestamp: Date.now() / 1000);
 
       // Record multiple events
       const result1 = await redis.eval(
@@ -381,16 +418,16 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         timestamp.toString()
       );
 
-      expect(Array.isArray(result1)).toBe(true);
+      assert.ok(Array.isArray(result1)));
       assert.strictEqual(result1.length, 5); // 5 counters updated
 
       // Verify counter types and values - use unique events to avoid interference
       const counterMap = new Map(result1);
-      expect(counterMap.get('daily')).toBeGreaterThanOrEqual(1);
-      expect(counterMap.get('hourly')).toBeGreaterThanOrEqual(1);
-      expect(counterMap.get('user')).toBeGreaterThanOrEqual(1);
-      expect(counterMap.get('global')).toBeGreaterThanOrEqual(1);
-      expect(counterMap.get('unique_users')).toBeGreaterThanOrEqual(1);
+      assert.ok(counterMap.get('daily')) >= 1);
+      assert.ok(counterMap.get('hourly')) >= 1);
+      assert.ok(counterMap.get('user')) >= 1);
+      assert.ok(counterMap.get('global')) >= 1);
+      assert.ok(counterMap.get('unique_users')) >= 1);
 
       // Record another event for same user - unique users should not increase
       const result2 = await redis.eval(
@@ -402,10 +439,10 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       );
 
       const counterMap2 = new Map(result2);
-      expect(counterMap2.get('daily')).toBeGreaterThan(
+      assert.ok(counterMap2.get('daily')).toBeGreaterThan(
         counterMap.get('daily')
       );
-      expect(counterMap2.get('unique_users')).toBe(
+      assert.ok(counterMap2.get('unique_users')).toBe(
         counterMap.get('unique_users')
       ); // Same user, so no change
 
@@ -419,7 +456,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       );
 
       const counterMap3 = new Map(result3);
-      expect(counterMap3.get('unique_users')).toBeGreaterThan(
+      assert.ok(counterMap3.get('unique_users')).toBeGreaterThan(
         counterMap.get('unique_users')
       ); // More unique users
     });
@@ -449,7 +486,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       } catch (error) {
         // If EVALSHA fails, it means script wasn't cached - this is implementation dependent
         // Some Redis implementations might not cache automatically
-        expect(error).toBeDefined();
+        assert.ok(error).toBeDefined();
       }
     });
 
@@ -474,13 +511,13 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
 
       const result = await redis.eval(complexScript, 0);
 
-      expect(Array.isArray(result)).toBe(true);
+      assert.ok(Array.isArray(result)));
       assert.strictEqual(result.length, 4);
       assert.strictEqual(result[0], 'string_value');
       assert.strictEqual(result[1], 42);
-      expect(Array.isArray(result[2])).toBe(true);
+      assert.ok(Array.isArray(result[2])));
       assert.deepStrictEqual(result[2], ['item1', 'item2', 'item3']);
-      expect(Array.isArray(result[3])).toBe(true);
+      assert.ok(Array.isArray(result[3])));
     });
   });
 
@@ -492,7 +529,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
 
       const result = await redis.eval(simpleScript, 0);
       assert.strictEqual(typeof result, 'string');
-      expect(parseInt(result)).toBeGreaterThan(1600000000); // After 2020
+      assert.ok(parseInt(result)).toBeGreaterThan(1600000000); // After 2020
     });
 
     it('should handle scripts with many keys and arguments', async () => {
@@ -517,7 +554,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         ...args
       );
 
-      expect(Array.isArray(result)).toBe(true);
+      assert.ok(Array.isArray(result)));
       assert.strictEqual(result.length, 5);
       assert.strictEqual(result[0], 'key1');
       assert.strictEqual(result[4], 'key5');
@@ -547,9 +584,9 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         // Should not reach here
         assert.strictEqual(true, false);
       } catch (error) {
-        expect(error).toBeDefined();
+        assert.ok(error).toBeDefined();
         // Valkey returns "Unknown command" while Redis returns "Unknown Redis command"
-        expect(String(error)).toMatch(/Unknown (Redis )?command/);
+        assert.ok(String(error)).includes(/Unknown (Redis )?command/);
       }
     });
   });

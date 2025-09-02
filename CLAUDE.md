@@ -68,7 +68,7 @@ ioredis-compatible Results
 ### Key Components
 
 **Core Clients** (`src/`):
-- `BaseClient.ts` - Core GLIDE client wrapper with all common Redis operations
+- `BaseClient.ts` - Core GLIDE client wrapper with all common database operations
 - `StandaloneClient.ts` - Standalone-specific implementation extending BaseClient  
 - `ClusterClient.ts` - Cluster-specific implementation extending BaseClient
 - `Redis.ts` - ioredis-compatible Redis class wrapper around StandaloneClient
@@ -77,8 +77,7 @@ ioredis-compatible Results
 **Utilities** (`src/utils/`):
 - `ParameterTranslator.ts` - Converts ioredis parameters to GLIDE format
 - `ResultTranslator.ts` - Converts GLIDE results to ioredis format
-- `ConnectionUtils.ts` - Robust connection management with cluster detection
-- `GlideUtils.ts` - Common GLIDE utility functions
+- `IoredisPubSubClient.ts` - Binary-compatible pub/sub client using RESP protocol
 
 **Types** (`src/types/`):
 - Complete TypeScript type definitions matching ioredis interfaces
@@ -142,12 +141,12 @@ ioredis-compatible Results
 - Always validate assumptions against actual GLIDE and ioredis implementations
 
 ### Pure GLIDE Architecture
-- **Only use Valkey GLIDE APIs** - no direct Redis commands
+- **Only use Valkey GLIDE APIs** - no direct server commands
 - Custom logic implemented when GLIDE doesn't have direct equivalents
 - Maintain ioredis compatibility through translation layers
 
 ### Code Structure
-- Commands are organized into modules by Redis data type
+- Commands are organized into modules by data type
 - Each command module extends base adapter functionality  
 - Parameter/result translation happens at module boundaries
 - Connection management centralized in base adapters
@@ -162,7 +161,7 @@ ioredis-compatible Results
 - ZSET operations require special `WITHSCORES` result handling
 - JSON and Search modules are optional (graceful fallbacks)
 - Connection validation prevents cluster/standalone mismatches
-- Pub/Sub uses polling pattern due to GLIDE architecture
+- Dual pub/sub architecture: Direct GLIDE callbacks (high-performance) + ioredis-compatible TCP (binary support)
 - Transaction support through MultiAdapter/PipelineAdapter
 
 ## Configuration Files

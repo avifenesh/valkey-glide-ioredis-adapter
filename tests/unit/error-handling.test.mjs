@@ -1,17 +1,22 @@
+import { describe, it, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert';
+
+// Global declarations for Node.js built-in APIs
+/* global setTimeout */
 /**
  * Error Handling and Edge Case Tests
  * Real-world patterns resilience, command failures, recovery scenarios
  */
 
 import pkg from '../../dist/index.js';
-const { Redis } = pkg;;
-import { getStandaloneConfig } from '../utils/test-config.mjs';;
+const { Redis } = pkg;
+import { testUtils } from '../setup/index.mjs';
 
 describe('Error Handling and Edge Cases', () => {
   let redis;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
+    const config = await testUtils.getStandaloneConfig();
     redis = new Redis(config);
     await redis.connect();
   });
@@ -33,7 +38,7 @@ describe('Error Handling and Edge Cases', () => {
       await redis.quit();
 
       // Should be able to reconnect
-      const config = await getRedisTestConfig();
+      const config = await testUtils.getStandaloneConfig();
       redis = new Redis(config);
 
       const reconnectedValue = await redis.get('test');
@@ -42,8 +47,8 @@ describe('Error Handling and Edge Cases', () => {
 
     it('should handle invalid configuration gracefully', async () => {
       // Test with various invalid configs that should not crash
-      expect(() => {
-        new Redis({ host: '', port });
+      assert.ok(() => {
+        new Redis({ host: '', port: 6379 });
       }).not.toThrow();
     });
   });
@@ -56,16 +61,16 @@ describe('Error Handling and Edge Cases', () => {
       await redis.set(key, 'string_value');
 
       // Try to use - should throw appropriate error
-      await expect(redis.lpush(key, 'value')).rejects.toThrow();
+      await assert.ok(redis.lpush(key, 'value')).rejects.toThrow();
 
       // Try to use - should throw appropriate error
-      await expect(redis.hset(key, 'field', 'value')).rejects.toThrow();
+      await assert.ok(redis.hset(key, 'field', 'value')).rejects.toThrow();
 
       // Try to use - should throw appropriate error
-      await expect(redis.sadd(key, 'member')).rejects.toThrow();
+      await assert.ok(redis.sadd(key, 'member')).rejects.toThrow();
 
       // Try to use - should throw appropriate error
-      await expect(redis.zadd(key, 1, 'member')).rejects.toThrow();
+      await assert.ok(redis.zadd(key, 1, 'member')).rejects.toThrow();
     });
 
     it('should handle invalid command arguments', async () => {
@@ -73,12 +78,12 @@ describe('Error Handling and Edge Cases', () => {
 
       // Invalid LSET arguments
       await redis.rpush(key, 'a', 'b', 'c');
-      await expect(redis.lset(key, 999, 'value')).rejects.toThrow();
-      await expect(redis.lset(key, -999, 'value')).rejects.toThrow();
+      await assert.ok(redis.lset(key, 999, 'value')).rejects.toThrow();
+      await assert.ok(redis.lset(key, -999, 'value')).rejects.toThrow();
 
       // Invalid INCR on non-numeric value
       await redis.set(key + '', 'not_a_number');
-      await expect(redis.incr(key + '')).rejects.toThrow();
+      await assert.ok(redis.incr(key + '')).rejects.toThrow();
     });
 
     it('should handle memory pressure scenarios', async () => {
@@ -93,7 +98,7 @@ describe('Error Handling and Edge Cases', () => {
         assert.strictEqual(retrieved, largeValue);
       } catch (error) {
         // If memory is limited, should get appropriate error
-        expect((error).message).toMatch(/memory|space|limit/i);
+        assert.ok(/memory|space|limit/i.test(error.message));
       }
 
       // Clean up
@@ -117,7 +122,7 @@ describe('Error Handling and Edge Cases', () => {
 
       // Should get results for all commands, even if some fail
       assert.ok(results);
-      expect(Array.isArray(results)).toBe(true);
+      assert.ok(Array.isArray(results));
     });
 
     it('should handle empty transactions', async () => {
@@ -125,7 +130,7 @@ describe('Error Handling and Edge Cases', () => {
       const results = await multi.exec();
 
       assert.ok(results);
-      expect(Array.isArray(results)).toBe(true);
+      assert.ok(Array.isArray(results));
       assert.strictEqual(results.length, 0);
     });
   });
@@ -147,18 +152,18 @@ describe('Error Handling and Edge Cases', () => {
       const results = await pipeline.exec();
 
       assert.ok(results);
-      expect(Array.isArray(results)).toBe(true);
+      assert.ok(Array.isArray(results));
       assert.strictEqual(results.length, 4);
 
       // First two should succeed
-      assert.strictEqual(results[0].[1], 'OK');
-      assert.strictEqual(results[1].[1], 'OK');
+      assert.strictEqual(results[0][1], 'OK');
+      assert.strictEqual(results[1][1], 'OK');
 
       // Third should fail
-      assert.ok(results[2].[0]); // Should have error
+      assert.ok(results[2][0]); // Should have error
 
       // Fourth should succeed
-      assert.strictEqual(results[3].[1], 'ok');
+      assert.strictEqual(results[3][1], 'ok');
     });
 
     it('should handle pipeline abort scenarios', async () => {
@@ -179,26 +184,26 @@ describe('Error Handling and Edge Cases', () => {
 
       // Empty list operations
       const listKey = baseKey + '';
-      expect(await redis.llen(listKey)).toBe(0);
-      expect(await redis.lpop(listKey)).toBeNull();
-      expect(await redis.lrange(listKey, 0, -1)).toEqual([]);
+      assert.ok(await redis.llen(listKey)).toBe(0);
+      assert.ok(await redis.lpop(listKey)).toBeNull();
+      assert.ok(await redis.lrange(listKey, 0, -1)).toEqual([]);
 
       // Empty set operations
       const setKey = baseKey + '';
-      expect(await redis.scard(setKey)).toBe(0);
-      expect(await redis.spop(setKey)).toBeNull();
-      expect(await redis.smembers(setKey)).toEqual([]);
+      assert.ok(await redis.scard(setKey)).toBe(0);
+      assert.ok(await redis.spop(setKey)).toBeNull();
+      assert.ok(await redis.smembers(setKey)).toEqual([]);
 
       // Empty hash operations
       const hashKey = baseKey + '';
-      expect(await redis.hlen(hashKey)).toBe(0);
-      expect(await redis.hkeys(hashKey)).toEqual([]);
-      expect(await redis.hgetall(hashKey)).toEqual({});
+      assert.ok(await redis.hlen(hashKey)).toBe(0);
+      assert.ok(await redis.hkeys(hashKey)).toEqual([]);
+      assert.ok(await redis.hgetall(hashKey)).toEqual({});
 
       // Empty zset operations
       const zsetKey = baseKey + '';
-      expect(await redis.zcard(zsetKey)).toBe(0);
-      expect(await redis.zrange(zsetKey, 0, -1)).toEqual([]);
+      assert.ok(await redis.zcard(zsetKey)).toBe(0);
+      assert.ok(await redis.zrange(zsetKey, 0, -1)).toEqual([]);
     });
 
     it('should handle boundary value operations', async () => {
@@ -239,7 +244,7 @@ describe('Error Handling and Edge Cases', () => {
       const floatKey = key + '';
       await redis.set(floatKey, '0.0');
       const floatIncr = await redis.incrbyfloat(floatKey, 0.1);
-      expect(parseFloat(floatIncr.toString())).toBeCloseTo(0.1, 10);
+      assert.ok(Math.abs(parseFloat(floatIncr.toString()) - 0.1) < 0.00000001);
     });
   });
 
@@ -249,7 +254,8 @@ describe('Error Handling and Edge Cases', () => {
       await redis.set(key, '0');
 
       // Simulate concurrent increments
-      const concurrentOperations = Array.from({ length }, () =>
+      const operationCount = 10;
+      const concurrentOperations = Array.from({ length: operationCount }, () =>
         redis.incr(key)
       );
 
@@ -264,7 +270,7 @@ describe('Error Handling and Edge Cases', () => {
 
       // Final value should be 10
       const finalValue = await redis.get(key);
-      expect(parseInt(finalValue!)).toBe(10);
+      assert.strictEqual(parseInt(finalValue), 10);
     });
 
     it('should handle concurrent pipeline executions', async () => {
@@ -277,7 +283,8 @@ describe('Error Handling and Edge Cases', () => {
         return pipeline.exec();
       };
 
-      const pipelines = Array.from({ length }, (_, i) =>
+      const pipelineCount = 5;
+      const pipelines = Array.from({ length: pipelineCount }, (_, i) =>
         createPipeline(i.toString())
       );
 
@@ -287,8 +294,8 @@ describe('Error Handling and Edge Cases', () => {
       assert.strictEqual(results.length, 5);
       results.forEach((result, index) => {
         assert.strictEqual(result.length, 2);
-        assert.strictEqual(result.[0].[1], 'OK'); // SET result
-        assert.strictEqual(result.[1].[1], index.toString()); // GET result
+        assert.strictEqual(result[0][1], 'OK'); // SET result
+        assert.strictEqual(result[1][1], index.toString()); // GET result
       });
     });
   });
@@ -328,10 +335,10 @@ describe('Error Handling and Edge Cases', () => {
       await redis.rpush(baseKey + '', 'item1', 'item2');
 
       // Verify they exist
-      expect(await redis.hlen(baseKey + '')).toBeGreaterThan(0);
-      expect(await redis.scard(baseKey + '')).toBeGreaterThan(0);
-      expect(await redis.zcard(baseKey + '')).toBeGreaterThan(0);
-      expect(await redis.llen(baseKey + '')).toBeGreaterThan(0);
+      assert.ok(await redis.hlen(baseKey + '')).toBeGreaterThan(0);
+      assert.ok(await redis.scard(baseKey + '')).toBeGreaterThan(0);
+      assert.ok(await redis.zcard(baseKey + '')).toBeGreaterThan(0);
+      assert.ok(await redis.llen(baseKey + '')).toBeGreaterThan(0);
 
       // Cleanup all at once
       const deleted = await redis.del(
@@ -344,10 +351,10 @@ describe('Error Handling and Edge Cases', () => {
       assert.strictEqual(deleted, 4);
 
       // Verify cleanup
-      expect(await redis.hlen(baseKey + '')).toBe(0);
-      expect(await redis.scard(baseKey + '')).toBe(0);
-      expect(await redis.zcard(baseKey + '')).toBe(0);
-      expect(await redis.llen(baseKey + '')).toBe(0);
+      assert.ok(await redis.hlen(baseKey + '')).toBe(0);
+      assert.ok(await redis.scard(baseKey + '')).toBe(0);
+      assert.ok(await redis.zcard(baseKey + '')).toBe(0);
+      assert.ok(await redis.llen(baseKey + '')).toBe(0);
     });
   });
 
@@ -367,7 +374,7 @@ describe('Error Handling and Edge Cases', () => {
       assert.deepStrictEqual(outOfBounds, []);
 
       const negativeRange = await redis.lrange(key, -10, -5);
-      expect(Array.isArray(negativeRange)).toBe(true);
+      assert.ok(Array.isArray(negativeRange));
     });
 
     it('should handle malformed key patterns', async () => {
@@ -428,7 +435,7 @@ describe('Error Handling and Edge Cases', () => {
       // Attempt operations that might partially fail
       try {
         await redis.lset(key, 999, 'invalid_index'); // Should fail
-      } catch (error) {
+      } catch {
         // Expected to fail
       }
 

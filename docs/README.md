@@ -53,16 +53,9 @@ Works with popular Valkey/Redis libraries:
 - TypeScript definitions included
 - Extensive test coverage
 
-## 📊 Performance Benchmarks
+## 📊 Performance
 
-| Operation | ioredis | GLIDE Adapter | Improvement |
-|-----------|---------|---------------|-------------|
-| SET/GET | 45k ops/sec | 52k ops/sec | +15.5% |
-| HGET/HSET | 38k ops/sec | 44k ops/sec | +15.8% |
-| LPUSH/LPOP | 41k ops/sec | 47k ops/sec | +14.6% |
-| Pub/Sub | 12k msg/sec | 14k msg/sec | +16.7% |
-
-*Benchmarks run on Node.js 18.17.0, Valkey 7.2*
+Built on Valkey GLIDE's high-performance Rust core for optimal throughput and efficiency. Actual performance depends on your specific workload and environment - we recommend benchmarking your own use case.
 
 ## 🚨 Migration Notes
 

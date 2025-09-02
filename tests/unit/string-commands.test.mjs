@@ -1,4 +1,4 @@
-import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach, beforeAll } from 'node:test';
 import assert from 'node:assert';
 /**
  * String Commands Behavioral Tests
@@ -6,13 +6,14 @@ import assert from 'node:assert';
  */
 
 import pkg from '../../dist/index.js';
+import { testUtils } from '../setup/index.mjs';
 const { Redis  } = pkg;
 import { getStandaloneConfig, checkTestServers, delay } from '../utils/test-config.mjs';
 
 describe('String Commands (ioredis compatibility)', () => {
   let redis;
 
-  before(async () => {
+  beforeAll(async () => {
     // Check if test servers are available
     const serversAvailable = checkTestServers();
     if (!serversAvailable) {
@@ -30,7 +31,7 @@ describe('String Commands (ioredis compatibility)', () => {
     }
 
     // Use test server configuration
-    const config = getStandaloneConfig();
+    const config = testUtils.getStandaloneConfig();
     redis = new Redis(config);
     await redis.connect();
 

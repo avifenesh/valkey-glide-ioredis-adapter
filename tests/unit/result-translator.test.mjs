@@ -1,5 +1,8 @@
-import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
+import { describe, it } from 'node:test';
 import assert from 'node:assert';
+
+// Global declarations for Node.js built-in globals
+/* global Buffer */
 /**
  * ResultTranslator Comprehensive Tests
  * Testing all result translation methods for GLIDE to ioredis compatibility
@@ -71,8 +74,8 @@ describe('ResultTranslator', () => {
 
     it('should handle very large and small scores', () => {
       const glideResult = [
-        { element: 'large', score: MAX_SAFE_INTEGER },
-        { element: 'small', score: MIN_SAFE_INTEGER },
+        { element: 'large', score: Number.MAX_SAFE_INTEGER },
+        { element: 'small', score: Number.MIN_SAFE_INTEGER },
         { element: 'infinity', score: 0 },
         { element: 'negative_infinity', score: -Infinity },
       ];
@@ -335,7 +338,8 @@ describe('ResultTranslator', () => {
     it('should handle floating point precision issues', () => {
       // JavaScript floating point arithmetic can be imprecise
       const result1 = ResultTranslator.formatFloatResult(0.1 + 0.2);
-      assert.strictEqual(Math.abs(parseFloat(result1) - 0.3)  {
+      assert.ok(Math.abs(parseFloat(result1) - 0.3) < 1e-10);
+      
       assert.strictEqual(ResultTranslator.formatFloatResult(0.000000000000001), 
         '1e-15'
       );
