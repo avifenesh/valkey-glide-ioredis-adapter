@@ -37,17 +37,26 @@ export interface RedisOptions {
   maxLoadingTimeout?: number;
   keyPrefix?: string;
   lazyConnect?: boolean;
-  
+
   // GLIDE-specific features
   readFrom?: ReadFrom;
   clientAz?: string; // Availability Zone for AZ affinity
-  
+
   // Pub/Sub configuration
   enableEventBasedPubSub?: boolean; // Enable custom command pub/sub for binary data compatibility
 }
 
 // Connection status
-export type ConnectionStatus = 'wait' | 'connecting' | 'connected' | 'ready' | 'disconnecting' | 'disconnected' | 'reconnecting' | 'end' | 'error';
+export type ConnectionStatus =
+  | 'wait'
+  | 'connecting'
+  | 'connected'
+  | 'ready'
+  | 'disconnecting'
+  | 'disconnected'
+  | 'reconnecting'
+  | 'end'
+  | 'error';
 
 // Pipeline and Multi interfaces
 export interface Pipeline {
@@ -124,7 +133,12 @@ export interface Pipeline {
   zadd(key: RedisKey, ...scoreMembers: (number | string)[]): Pipeline;
   zrem(key: RedisKey, ...members: RedisValue[]): Pipeline;
   zrange(key: RedisKey, start: number, stop: number, options?: any): Pipeline;
-  zrevrange(key: RedisKey, start: number, stop: number, options?: any): Pipeline;
+  zrevrange(
+    key: RedisKey,
+    start: number,
+    stop: number,
+    options?: any
+  ): Pipeline;
   zscore(key: RedisKey, member: RedisValue): Pipeline;
   zcard(key: RedisKey): Pipeline;
   zrank(key: RedisKey, member: RedisValue): Pipeline;
@@ -132,7 +146,11 @@ export interface Pipeline {
   zincrby(key: RedisKey, increment: number, member: RedisValue): Pipeline;
   zcount(key: RedisKey, min: number | string, max: number | string): Pipeline;
   zremrangebyrank(key: RedisKey, start: number, stop: number): Pipeline;
-  zremrangebyscore(key: RedisKey, min: number | string, max: number | string): Pipeline;
+  zremrangebyscore(
+    key: RedisKey,
+    min: number | string,
+    max: number | string
+  ): Pipeline;
 
   // Key commands
   del(...keys: RedisKey[]): Pipeline;
@@ -228,7 +246,11 @@ export interface Multi {
   zincrby(key: RedisKey, increment: number, member: RedisValue): Multi;
   zcount(key: RedisKey, min: number | string, max: number | string): Multi;
   zremrangebyrank(key: RedisKey, start: number, stop: number): Multi;
-  zremrangebyscore(key: RedisKey, min: number | string, max: number | string): Multi;
+  zremrangebyscore(
+    key: RedisKey,
+    min: number | string,
+    max: number | string
+  ): Multi;
 
   // Key commands
   del(...keys: RedisKey[]): Multi;
@@ -240,7 +262,7 @@ export interface Multi {
   // Multi-specific methods
   watch(...keys: RedisKey[]): Promise<string>;
   unwatch(): Promise<string>;
-  
+
   // Override exec to allow null return (when transaction is discarded)
   exec(): Promise<Array<[Error | null, any]> | null>;
   discard(): void;
@@ -271,7 +293,7 @@ export interface ClusterOptions {
   scaleReads?: string;
   enableOfflineQueue?: boolean;
   readOnly?: boolean;
-  
+
   // Connection and retry options
   maxRetriesPerRequest?: number | null;
   connectTimeout?: number;
@@ -280,7 +302,7 @@ export interface ClusterOptions {
   clientName?: string;
   tls?: boolean;
   useTLS?: boolean;
-  
+
   // GLIDE-specific features
   readFrom?: ReadFrom;
   clientAz?: string;
@@ -288,21 +310,21 @@ export interface ClusterOptions {
 
 // Events interface
 export interface RedisEvents {
-  'connect': () => void;
-  'ready': () => void;
-  'error': (error: Error) => void;
-  'close': () => void;
-  'reconnecting': () => void;
-  'end': () => void;
-  'wait': () => void;
-  'message': (channel: string, message: string) => void;
-  'messageBuffer': (channel: Buffer, message: Buffer) => void;
-  'pmessage': (pattern: string, channel: string, message: string) => void;
-  'pmessageBuffer': (pattern: Buffer, channel: Buffer, message: Buffer) => void;
-  'subscribe': (channel: string, count: number) => void;
-  'unsubscribe': (channel: string, count: number) => void;
-  'psubscribe': (pattern: string, count: number) => void;
-  'punsubscribe': (pattern: string, count: number) => void;
+  connect: () => void;
+  ready: () => void;
+  error: (error: Error) => void;
+  close: () => void;
+  reconnecting: () => void;
+  end: () => void;
+  wait: () => void;
+  message: (channel: string, message: string) => void;
+  messageBuffer: (channel: Buffer, message: Buffer) => void;
+  pmessage: (pattern: string, channel: string, message: string) => void;
+  pmessageBuffer: (pattern: Buffer, channel: Buffer, message: Buffer) => void;
+  subscribe: (channel: string, count: number) => void;
+  unsubscribe: (channel: string, count: number) => void;
+  psubscribe: (pattern: string, count: number) => void;
+  punsubscribe: (pattern: string, count: number) => void;
 }
 
 // Main interfaces
@@ -381,16 +403,20 @@ export interface IRedisAdapter extends EventEmitter {
   lrem(key: RedisKey, count: number, element: RedisValue): Promise<number>;
   lpushx(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
   rpushx(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
-  
+
   // Blocking list operations - critical for queue systems (BullMQ compatible)
   blpop(...args: any[]): Promise<[string, string] | null>;
   brpop(...args: any[]): Promise<[string, string] | null>;
-  brpoplpush(source: RedisKey, destination: RedisKey, timeout: number): Promise<string | null>;
-  
+  brpoplpush(
+    source: RedisKey,
+    destination: RedisKey,
+    timeout: number
+  ): Promise<string | null>;
+
   // BullMQ-critical blocking sorted set operations
   bzpopmin(...args: any[]): Promise<[string, string, string] | null>;
   bzpopmax(...args: any[]): Promise<[string, string, string] | null>;
-  
+
   // Stream commands for BullMQ
   xadd(key: RedisKey, id: string, ...fieldsAndValues: any[]): Promise<string>;
   xread(...args: any[]): Promise<any>;
@@ -398,7 +424,13 @@ export interface IRedisAdapter extends EventEmitter {
   xack(key: RedisKey, group: string, ...ids: string[]): Promise<number>;
   xgroup(subcommand: string, ...args: any[]): Promise<any>;
   xpending(key: RedisKey, group: string, ...args: any[]): Promise<any>;
-  xclaim(key: RedisKey, group: string, consumer: string, minIdleTime: number, ...ids: string[]): Promise<any>;
+  xclaim(
+    key: RedisKey,
+    group: string,
+    consumer: string,
+    minIdleTime: number,
+    ...ids: string[]
+  ): Promise<any>;
 
   // Set commands
   sadd(key: RedisKey, ...members: RedisValue[]): Promise<number>;
@@ -418,16 +450,38 @@ export interface IRedisAdapter extends EventEmitter {
   // Sorted Set commands
   zadd(key: RedisKey, ...scoreMembers: (number | string)[]): Promise<number>;
   zrem(key: RedisKey, ...members: RedisValue[]): Promise<number>;
-  zrange(key: RedisKey, start: number, stop: number, options?: any): Promise<string[]>;
-  zrevrange(key: RedisKey, start: number, stop: number, options?: any): Promise<string[]>;
+  zrange(
+    key: RedisKey,
+    start: number,
+    stop: number,
+    options?: any
+  ): Promise<string[]>;
+  zrevrange(
+    key: RedisKey,
+    start: number,
+    stop: number,
+    options?: any
+  ): Promise<string[]>;
   zscore(key: RedisKey, member: RedisValue): Promise<string | null>;
   zcard(key: RedisKey): Promise<number>;
   zrank(key: RedisKey, member: RedisValue): Promise<number | null>;
   zrevrank(key: RedisKey, member: RedisValue): Promise<number | null>;
-  zincrby(key: RedisKey, increment: number, member: RedisValue): Promise<string>;
-  zcount(key: RedisKey, min: number | string, max: number | string): Promise<number>;
+  zincrby(
+    key: RedisKey,
+    increment: number,
+    member: RedisValue
+  ): Promise<string>;
+  zcount(
+    key: RedisKey,
+    min: number | string,
+    max: number | string
+  ): Promise<number>;
   zremrangebyrank(key: RedisKey, start: number, stop: number): Promise<number>;
-  zremrangebyscore(key: RedisKey, min: number | string, max: number | string): Promise<number>;
+  zremrangebyscore(
+    key: RedisKey,
+    min: number | string,
+    max: number | string
+  ): Promise<number>;
 
   // Key commands
   del(...keys: RedisKey[]): Promise<number>;
@@ -439,9 +493,21 @@ export interface IRedisAdapter extends EventEmitter {
 
   // Scan commands
   scan(cursor: string, ...args: string[]): Promise<[string, string[]]>;
-  hscan(key: RedisKey, cursor: string, ...args: string[]): Promise<[string, string[]]>;
-  sscan(key: RedisKey, cursor: string, ...args: string[]): Promise<[string, string[]]>;
-  zscan(key: RedisKey, cursor: string, ...args: string[]): Promise<[string, string[]]>;
+  hscan(
+    key: RedisKey,
+    cursor: string,
+    ...args: string[]
+  ): Promise<[string, string[]]>;
+  sscan(
+    key: RedisKey,
+    cursor: string,
+    ...args: string[]
+  ): Promise<[string, string[]]>;
+  zscan(
+    key: RedisKey,
+    cursor: string,
+    ...args: string[]
+  ): Promise<[string, string[]]>;
 
   // Generic command execution
   call(command: string, ...args: (string | number | Buffer)[]): Promise<any>;
@@ -456,19 +522,52 @@ export interface IRedisAdapter extends EventEmitter {
   time(): Promise<[string, string]>;
 
   // Stream commands
-  xadd(key: RedisKey, id: string, ...fieldsAndValues: (string | number)[]): Promise<string>;
+  xadd(
+    key: RedisKey,
+    id: string,
+    ...fieldsAndValues: (string | number)[]
+  ): Promise<string>;
   xlen(key: RedisKey): Promise<number>;
   xread(...args: any[]): Promise<any[]>;
-  xrange(key: RedisKey, start?: string, end?: string, count?: number): Promise<any[]>;
-  xrevrange(key: RedisKey, start?: string, end?: string, count?: number): Promise<any[]>;
+  xrange(
+    key: RedisKey,
+    start?: string,
+    end?: string,
+    count?: number
+  ): Promise<any[]>;
+  xrevrange(
+    key: RedisKey,
+    start?: string,
+    end?: string,
+    count?: number
+  ): Promise<any[]>;
   xdel(key: RedisKey, ...ids: string[]): Promise<number>;
   xtrim(key: RedisKey, ...args: any[]): Promise<number>;
-  xgroup(action: string, key: RedisKey, group: string, ...args: (string | number)[]): Promise<any>;
+  xgroup(
+    action: string,
+    key: RedisKey,
+    group: string,
+    ...args: (string | number)[]
+  ): Promise<any>;
   xreadgroup(...args: any[]): Promise<any[]>;
   xack(key: RedisKey, group: string, ...ids: string[]): Promise<number>;
-  xpending(key: RedisKey, group: string, range?: { start: string; end: string; count: number; consumer?: string }): Promise<any>;
-  xclaim(key: RedisKey, group: string, consumer: string, minIdleTime: number, ...ids: string[]): Promise<any[]>;
-  xinfo(subcommand: 'STREAM' | 'GROUPS' | 'CONSUMERS', key: RedisKey, group?: string): Promise<any>;
+  xpending(
+    key: RedisKey,
+    group: string,
+    range?: { start: string; end: string; count: number; consumer?: string }
+  ): Promise<any>;
+  xclaim(
+    key: RedisKey,
+    group: string,
+    consumer: string,
+    minIdleTime: number,
+    ...ids: string[]
+  ): Promise<any[]>;
+  xinfo(
+    subcommand: 'STREAM' | 'GROUPS' | 'CONSUMERS',
+    key: RedisKey,
+    group?: string
+  ): Promise<any>;
 
   // Pipeline and transactions
   pipeline(): Pipeline;
@@ -491,7 +590,10 @@ export interface IRedisAdapter extends EventEmitter {
   scriptFlush(): Promise<string>;
   eval(script: string, numkeys: number, ...keysAndArgs: any[]): Promise<any>;
   evalsha(sha1: string, numkeys: number, ...keysAndArgs: any[]): Promise<any>;
-  defineCommand(name: string, options: { lua: string; numberOfKeys?: number }): void;
+  defineCommand(
+    name: string,
+    options: { lua: string; numberOfKeys?: number }
+  ): void;
   script(subcommand: string, ...args: any[]): Promise<any>;
 
   // Event emitter methods (inherited from EventEmitter)

@@ -1,6 +1,6 @@
 /**
  * Socket.IO Redis Adapter Integration Test
- * 
+ *
  * Tests that our ioredis adapter works correctly with @socket.io/redis-adapter
  * for multi-instance Socket.IO scaling and real-time applications.
  */
@@ -9,12 +9,12 @@ import { Server as SocketIOServer } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { io as Client } from 'socket.io-client';
 import { createServer } from 'http';
-import { Redis } from "../../../src";
+import { Redis } from '../../../src';
 import { testUtils } from '../../setup';
 
-describe('Socket.IO Redis Adapter Integration', () => {
-  let redisClient1: Redis;
-  let redisClient2: Redis;
+describe('Socket.IO Valkey Adapter Integration', () => {
+  let valkeyClient1: Redis;
+  let valkeyClient2: Redis;
   let subClient1: Redis;
   let subClient2: Redis;
   let server1: any;
@@ -30,20 +30,27 @@ describe('Socket.IO Redis Adapter Integration', () => {
     // Setup global error handler for GLIDE ClosingError during tests
     originalHandlers = process.listeners('uncaughtException');
     process.removeAllListeners('uncaughtException');
-    
+
     process.on('uncaughtException', (error: Error) => {
-      if (error.name === 'ClosingError' && error.message === 'Cleanup initiated') {
+      if (
+        error.name === 'ClosingError' &&
+        error.message === 'Cleanup initiated'
+      ) {
         // Silently ignore GLIDE ClosingError during Socket.IO cleanup
-        console.log('Test: Ignoring GLIDE ClosingError during Socket.IO cleanup');
+        console.log(
+          'Test: Ignoring GLIDE ClosingError during Socket.IO cleanup'
+        );
         return;
       }
-      
+
       // Silently ignore GLIDE UTF-8 errors from Socket.IO binary pub/sub data
       if (error.message && error.message.includes('invalid utf-8 sequence')) {
-        console.log('Test: Ignoring GLIDE UTF-8 error from Socket.IO binary pub/sub data');
+        console.log(
+          'Test: Ignoring GLIDE UTF-8 error from Socket.IO binary pub/sub data'
+        );
         return;
       }
-      
+
       // For all other errors, restore original behavior
       if (originalHandlers.length > 0) {
         originalHandlers.forEach(handler => {
@@ -59,12 +66,63 @@ describe('Socket.IO Redis Adapter Integration', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      console.warn('⚠️  Test servers not available. Skipping Socket.IO integration tests...');
-      return;
+      throw new Error(
+        'Test servers not available for Socket.IO integration tests. Please start test servers first.'
+      );
     }
+
+    // Create shared Valkey connections once for all tests (reduces load by half)
+    const config = await testUtils.getStandaloneConfig();
+
+    valkeyClient1 = new Redis({
+      ...config,
+      keyPrefix: keyPrefix + 'pub:',
+      enableEventBasedPubSub: true, // Enable binary-safe pub/sub for Socket.IO
+    });
+
+    valkeyClient2 = new Redis({
+      ...config,
+      keyPrefix: keyPrefix + 'sub:',
+      enableEventBasedPubSub: true, // Enable binary-safe pub/sub for Socket.IO
+    });
+
+    await valkeyClient1.connect();
+    await valkeyClient2.connect();
+
+    // Create duplicate clients for pub/sub (Socket.IO adapter pattern)
+    subClient1 = valkeyClient1.duplicate();
+    subClient2 = valkeyClient2.duplicate();
+
+    await subClient1.connect();
+    await subClient2.connect();
   });
 
   afterAll(async () => {
+    // Clean up shared Valkey connections
+    if (valkeyClient1) {
+      try {
+        const keys = await valkeyClient1.keys(`${keyPrefix}*`);
+        if (keys.length > 0) {
+          await valkeyClient1.del(...keys);
+        }
+      } catch {
+        // Ignore cleanup errors
+      }
+      await valkeyClient1.disconnect();
+    }
+
+    if (valkeyClient2) {
+      await valkeyClient2.disconnect();
+    }
+
+    if (subClient1) {
+      await subClient1.disconnect();
+    }
+
+    if (subClient2) {
+      await subClient2.disconnect();
+    }
+
     // Restore original uncaughtException handlers
     process.removeAllListeners('uncaughtException');
     originalHandlers.forEach(handler => {
@@ -83,42 +141,26 @@ describe('Socket.IO Redis Adapter Integration', () => {
     // Get available ports for Socket.IO servers using system allocation
     // This approach uses port 0 to let the OS choose available ports
     const net = await import('net');
-    
+
     // Get first available port
     const tempServer1 = net.createServer();
-    await new Promise<void>((resolve) => {
+    await new Promise<void>(resolve => {
       tempServer1.listen(0, () => {
         port1 = (tempServer1.address() as any)?.port || 0;
         tempServer1.close(() => resolve());
       });
     });
-    
-    // Get second available port  
+
+    // Get second available port
     const tempServer2 = net.createServer();
-    await new Promise<void>((resolve) => {
+    await new Promise<void>(resolve => {
       tempServer2.listen(0, () => {
         port2 = (tempServer2.address() as any)?.port || 0;
         tempServer2.close(() => resolve());
       });
     });
 
-    // Setup Redis clients for both Socket.IO instances
-    const config = await testUtils.getStandaloneConfig();
-    
-    redisClient1 = new Redis({
-      ...config,
-      keyPrefix: keyPrefix + 'pub:',
-      enableEventBasedPubSub: true  // Enable binary-safe pub/sub for Socket.IO
-    });
-    
-    redisClient2 = new Redis({
-      ...config, 
-      keyPrefix: keyPrefix + 'sub:',
-      enableEventBasedPubSub: true  // Enable binary-safe pub/sub for Socket.IO
-    });
-
-    await redisClient1.connect();
-    await redisClient2.connect();
+    // Valkey clients are now shared across tests (created in beforeAll)
 
     // Create HTTP servers
     server1 = createServer();
@@ -127,78 +169,69 @@ describe('Socket.IO Redis Adapter Integration', () => {
     // Create Socket.IO instances
     io1 = new SocketIOServer(server1, {
       cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-      }
+        origin: '*',
+        methods: ['GET', 'POST'],
+      },
     });
 
     io2 = new SocketIOServer(server2, {
       cors: {
-        origin: "*", 
-        methods: ["GET", "POST"]
-      }
+        origin: '*',
+        methods: ['GET', 'POST'],
+      },
     });
 
-    // Setup Redis adapters for both instances
+    // Setup Valkey adapters for both instances (using shared connections)
     try {
-      // Create separate pub and sub clients as Socket.IO adapter expects
-      subClient1 = redisClient1.duplicate();
-      subClient2 = redisClient2.duplicate();
-      
-      await subClient1.connect();
-      await subClient2.connect();
-      
-      const adapter1 = createAdapter(redisClient1 as any, subClient1 as any);
-      const adapter2 = createAdapter(redisClient2 as any, subClient2 as any);
+      const adapter1 = createAdapter(valkeyClient1 as any, subClient1 as any);
+      const adapter2 = createAdapter(valkeyClient2 as any, subClient2 as any);
 
       io1.adapter(adapter1);
       io2.adapter(adapter2);
     } catch (error: any) {
-      console.warn(
-        '⚠️  Could not setup Redis adapters, falling back to default:',
-        error.message
+      throw new Error(
+        `Failed to setup Redis adapters: ${error.message}. Cross-instance functionality must work.`
       );
-      // Tests will run but won't test cross-instance functionality
     }
 
     // Setup event handlers
-    io1.on('connection', (socket) => {
-      socket.on('join-room', (room) => {
+    io1.on('connection', socket => {
+      socket.on('join-room', room => {
         socket.join(room);
         socket.emit('joined-room', room);
       });
 
-      socket.on('leave-room', (room) => {
+      socket.on('leave-room', room => {
         socket.leave(room);
         socket.emit('left-room', room);
       });
 
-      socket.on('broadcast-to-room', (data) => {
+      socket.on('broadcast-to-room', data => {
         socket.to(data.room).emit('room-message', data.message);
       });
 
-      socket.on('private-message', (data) => {
+      socket.on('private-message', data => {
         socket.to(data.targetSocketId).emit('private-message', data.message);
       });
     });
 
-    io2.on('connection', (socket) => {
-      socket.on('join-room', (room) => {
+    io2.on('connection', socket => {
+      socket.on('join-room', room => {
         socket.join(room);
         socket.emit('joined-room', room);
       });
 
-      socket.on('broadcast-to-room', (data) => {
+      socket.on('broadcast-to-room', data => {
         socket.to(data.room).emit('room-message', data.message);
       });
     });
 
     // Start servers
-    await new Promise<void>((resolve) => {
+    await new Promise<void>(resolve => {
       server1.listen(port1, resolve);
     });
 
-    await new Promise<void>((resolve) => {
+    await new Promise<void>(resolve => {
       server2.listen(port2, resolve);
     });
 
@@ -209,7 +242,7 @@ describe('Socket.IO Redis Adapter Integration', () => {
   afterEach(async () => {
     // Small delay to let any pending operations complete
     await testUtils.delay(100);
-    
+
     // Close Socket.IO servers (global error handler will catch GLIDE ClosingError)
     if (io1) {
       io1.close();
@@ -217,7 +250,7 @@ describe('Socket.IO Redis Adapter Integration', () => {
     if (io2) {
       io2.close();
     }
-    
+
     // Longer delay after close to let cleanup settle on macOS
     await testUtils.delay(200);
 
@@ -229,31 +262,7 @@ describe('Socket.IO Redis Adapter Integration', () => {
       server2.close();
     }
 
-    // Cleanup Redis clients
-    if (redisClient1) {
-      try {
-        const keys = await redisClient1.keys(`${keyPrefix}*`);
-        if (keys.length > 0) {
-          await redisClient1.del(...keys);
-        }
-      } catch {
-        // Ignore cleanup errors
-      }
-      await redisClient1.disconnect();
-    }
-
-    if (redisClient2) {
-      await redisClient2.disconnect();
-    }
-
-    // Cleanup subscriber clients
-    if (subClient1) {
-      await subClient1.disconnect();
-    }
-    
-    if (subClient2) {
-      await subClient2.disconnect();
-    }
+    // Valkey clients are now shared - no cleanup needed per test
 
     // Wait longer for cleanup to complete on macOS (port limit issues)
     await testUtils.delay(300);
@@ -367,17 +376,8 @@ describe('Socket.IO Redis Adapter Integration', () => {
         message: 'Cross-instance hello!',
       });
 
-      try {
-        await crossInstancePromise;
-        console.log('✅ Cross-instance communication working!');
-      } catch (error) {
-        console.warn(
-          '⚠️  Cross-instance test failed:',
-          (error as Error).message
-        );
-        console.warn('   This may indicate Redis adapter compatibility issues');
-        // Don't fail the test, just warn - adapter compatibility is complex
-      }
+      // Cross-instance communication must work - no graceful fallbacks
+      await crossInstancePromise;
 
       client1.disconnect();
       client2.disconnect();
@@ -387,8 +387,8 @@ describe('Socket.IO Redis Adapter Integration', () => {
   describe('Room Management', () => {
     test('should handle multiple rooms correctly', async () => {
       const client = Client(`http://localhost:${port1}`);
-      
-      await new Promise<void>((resolve) => client.on('connect', resolve));
+
+      await new Promise<void>(resolve => client.on('connect', resolve));
 
       const room1 = 'room1-' + testUtils.randomString();
       const room2 = 'room2-' + testUtils.randomString();
@@ -410,7 +410,7 @@ describe('Socket.IO Redis Adapter Integration', () => {
       ]);
 
       // Leave one room
-      await new Promise<void>((resolve) => {
+      await new Promise<void>(resolve => {
         client.emit('leave-room', room1);
         client.on('left-room', resolve);
       });
@@ -423,13 +423,13 @@ describe('Socket.IO Redis Adapter Integration', () => {
     test('should handle Redis connection errors gracefully', async () => {
       // This test verifies the adapter handles Redis issues gracefully
       const client = Client(`http://localhost:${port1}`);
-      
-      await new Promise<void>((resolve) => client.on('connect', resolve));
+
+      await new Promise<void>(resolve => client.on('connect', resolve));
 
       // Even if Redis has issues, basic Socket.IO should work
       const room = 'error-test-room';
-      
-      await new Promise<void>((resolve) => {
+
+      await new Promise<void>(resolve => {
         client.emit('join-room', room);
         client.on('joined-room', resolve);
       });
@@ -439,11 +439,11 @@ describe('Socket.IO Redis Adapter Integration', () => {
 
     test('should handle disconnections properly', async () => {
       const client = Client(`http://localhost:${port1}`);
-      
-      await new Promise<void>((resolve) => client.on('connect', resolve));
 
-      const disconnectPromise = new Promise<void>((resolve) => {
-        client.on('disconnect', (_reason) => resolve());
+      await new Promise<void>(resolve => client.on('connect', resolve));
+
+      const disconnectPromise = new Promise<void>(resolve => {
+        client.on('disconnect', _reason => resolve());
       });
 
       client.disconnect();
@@ -460,9 +460,9 @@ describe('Socket.IO Redis Adapter Integration', () => {
       for (let i = 0; i < 5; i++) {
         const client = Client(`http://localhost:${port1}`);
         clients.push(client);
-        
+
         connectionPromises.push(
-          new Promise<void>((resolve) => client.on('connect', resolve))
+          new Promise<void>(resolve => client.on('connect', resolve))
         );
       }
 

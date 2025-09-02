@@ -22,12 +22,12 @@ export class ParameterTranslator {
     }
 
     const [key, value, ...optionArgs] = args;
-    
+
     // Validate key is not empty (ioredis compatibility)
     if (key === '' || key === null || key === undefined) {
-      throw new Error('ERR wrong number of arguments for \'set\' command');
+      throw new Error("ERR wrong number of arguments for 'set' command");
     }
-    
+
     const result = {
       key: key.toString(),
       value: value.toString(),
@@ -42,12 +42,12 @@ export class ParameterTranslator {
    */
   static parseSetOptions(args: any[]): any {
     if (args.length === 0) return undefined;
-    
+
     const options: any = {};
-    
+
     for (let i = 0; i < args.length; i++) {
       const arg = args[i];
-      
+
       // Handle connect-redis object format: { expiration: { type: 'EX', value: 3600 } }
       if (typeof arg === 'object' && arg !== null && !Array.isArray(arg)) {
         if (arg.expiration) {
@@ -57,13 +57,13 @@ export class ParameterTranslator {
               case 'EX':
                 options.expiry = {
                   type: TimeUnit.Seconds,
-                  count: parseInt(expiration.value, 10)
+                  count: parseInt(expiration.value, 10),
                 };
                 break;
               case 'PX':
                 options.expiry = {
                   type: TimeUnit.Milliseconds,
-                  count: parseInt(expiration.value, 10)
+                  count: parseInt(expiration.value, 10),
                 };
                 break;
             }
@@ -80,13 +80,13 @@ export class ParameterTranslator {
       // Handle ioredis string format: 'EX', 1, 'NX', etc.
       else if (typeof arg === 'string') {
         const upperArg = arg.toUpperCase();
-        
+
         switch (upperArg) {
           case 'EX':
             if (i + 1 < args.length) {
               options.expiry = {
                 type: TimeUnit.Seconds,
-                count: parseInt(args[++i], 10)
+                count: parseInt(args[++i], 10),
               };
             }
             break;
@@ -94,7 +94,7 @@ export class ParameterTranslator {
             if (i + 1 < args.length) {
               options.expiry = {
                 type: TimeUnit.Milliseconds,
-                count: parseInt(args[++i], 10)
+                count: parseInt(args[++i], 10),
               };
             }
             break;
@@ -110,7 +110,7 @@ export class ParameterTranslator {
         }
       }
     }
-    
+
     return Object.keys(options).length > 0 ? options : undefined;
   }
 
@@ -128,7 +128,7 @@ export class ParameterTranslator {
     if (args.length === 1 && Array.isArray(args[0])) {
       return args[0].map((key: RedisKey) => key.toString());
     }
-    
+
     return args.map((key: RedisKey) => key.toString());
   }
 
@@ -143,24 +143,30 @@ export class ParameterTranslator {
     }
 
     // Handle object format
-    if (args.length === 1 && typeof args[0] === 'object' && !Array.isArray(args[0])) {
+    if (
+      args.length === 1 &&
+      typeof args[0] === 'object' &&
+      !Array.isArray(args[0])
+    ) {
       const result: Record<string, string> = {};
       for (const [key, value] of Object.entries(args[0])) {
         result[key] = String(value);
       }
       return result;
     }
-    
+
     // Handle variadic format
     if (args.length % 2 !== 0) {
-      throw new Error('MSET requires an even number of arguments (key-value pairs)');
+      throw new Error(
+        'MSET requires an even number of arguments (key-value pairs)'
+      );
     }
-    
+
     const result: Record<string, string> = {};
     for (let i = 0; i < args.length; i += 2) {
       result[args[i].toString()] = args[i + 1].toString();
     }
-    
+
     return result;
   }
 
@@ -173,31 +179,38 @@ export class ParameterTranslator {
     key: string;
     fieldValues: Record<string, string>;
   } {
-    if (args.length < 3 && !(args.length === 2 && typeof args[1] === 'object')) {
+    if (
+      args.length < 3 &&
+      !(args.length === 2 && typeof args[1] === 'object')
+    ) {
       throw new Error('HSET requires at least 3 arguments: key, field, value');
     }
 
     const [key, ...rest] = args;
-    
+
     // Handle object format: HSET key {field: value, ...}
-    if (rest.length === 1 && typeof rest[0] === 'object' && !Array.isArray(rest[0])) {
+    if (
+      rest.length === 1 &&
+      typeof rest[0] === 'object' &&
+      !Array.isArray(rest[0])
+    ) {
       const fieldValues: Record<string, string> = {};
       for (const [field, value] of Object.entries(rest[0])) {
         fieldValues[field] = String(value);
       }
       return { key: key.toString(), fieldValues };
     }
-    
+
     // Handle variadic format: HSET key field1 value1 field2 value2 ...
     if (rest.length % 2 !== 0) {
       throw new Error('HSET requires an even number of field-value arguments');
     }
-    
+
     const fieldValues: Record<string, string> = {};
     for (let i = 0; i < rest.length; i += 2) {
       fieldValues[rest[i].toString()] = rest[i + 1].toString();
     }
-    
+
     return { key: key.toString(), fieldValues };
   }
 
@@ -215,7 +228,7 @@ export class ParameterTranslator {
     }
 
     const [key, ...rest] = args;
-    
+
     // Handle array format: HMGET key [field1, field2, ...]
     if (rest.length === 1 && Array.isArray(rest[0])) {
       return {
@@ -223,7 +236,7 @@ export class ParameterTranslator {
         fields: rest[0].map((field: string) => field.toString()),
       };
     }
-    
+
     // Handle variadic format: HMGET key field1 field2 ...
     return {
       key: key.toString(),
@@ -241,11 +254,13 @@ export class ParameterTranslator {
     elements: string[];
   } {
     if (args.length < 2) {
-      throw new Error('List push requires at least 2 arguments: key and element');
+      throw new Error(
+        'List push requires at least 2 arguments: key and element'
+      );
     }
 
     const [key, ...rest] = args;
-    
+
     // Handle array format: LPUSH key [element1, element2, ...]
     if (rest.length === 1 && Array.isArray(rest[0])) {
       return {
@@ -253,7 +268,7 @@ export class ParameterTranslator {
         elements: rest[0].map((element: RedisValue) => element.toString()),
       };
     }
-    
+
     // Handle variadic format: LPUSH key element1 element2 ...
     return {
       key: key.toString(),
@@ -270,7 +285,7 @@ export class ParameterTranslator {
     if (args.length === 0) {
       throw new Error('DEL requires at least 1 key');
     }
-    
+
     return args.map((key: RedisKey) => key.toString());
   }
 
@@ -283,7 +298,7 @@ export class ParameterTranslator {
     if (args.length === 0) {
       throw new Error('EXISTS requires at least 1 key');
     }
-    
+
     return args.map((key: RedisKey) => key.toString());
   }
 
@@ -376,16 +391,19 @@ export class ParameterTranslator {
   /**
    * Create boundary for ZSET range operations (eliminating duplication)
    */
-  static createScoreBoundary(bound: string | number): { value: number; isInclusive: boolean } {
+  static createScoreBoundary(bound: string | number): {
+    value: number;
+    isInclusive: boolean;
+  } {
     if (typeof bound === 'string' && bound.startsWith('(')) {
-      return { 
-        value: this.parseScoreValue(bound.slice(1)), 
-        isInclusive: false 
+      return {
+        value: this.parseScoreValue(bound.slice(1)),
+        isInclusive: false,
       };
     }
-    return { 
-      value: this.parseScoreValue(bound), 
-      isInclusive: true 
+    return {
+      value: this.parseScoreValue(bound),
+      isInclusive: true,
     };
   }
 
@@ -394,10 +412,14 @@ export class ParameterTranslator {
    */
   static parseHashSetArgs(args: any[]): Record<string, string> {
     const fieldValues: Record<string, string> = {};
-    
+
     // Handle different argument patterns: hset(key, field, value, field2, value2, ...)
     // or hset(key, {field: value, field2: value2})
-    if (args.length === 1 && typeof args[0] === 'object' && !Buffer.isBuffer(args[0])) {
+    if (
+      args.length === 1 &&
+      typeof args[0] === 'object' &&
+      !Buffer.isBuffer(args[0])
+    ) {
       // Object format
       const obj = args[0];
       for (const [field, value] of Object.entries(obj)) {
@@ -411,7 +433,7 @@ export class ParameterTranslator {
         }
       }
     }
-    
+
     return fieldValues;
   }
 
@@ -433,7 +455,7 @@ export class ParameterTranslator {
         if (offsetArg !== undefined && countArg !== undefined) {
           limit = {
             offset: parseInt(offsetArg.toString()),
-            count: parseInt(countArg.toString())
+            count: parseInt(countArg.toString()),
           };
           break;
         }
@@ -444,11 +466,11 @@ export class ParameterTranslator {
       withScores: boolean;
       limit?: { offset: number; count: number };
     } = { withScores };
-    
+
     if (limit !== undefined) {
       result.limit = limit;
     }
-    
+
     return result;
   }
 }

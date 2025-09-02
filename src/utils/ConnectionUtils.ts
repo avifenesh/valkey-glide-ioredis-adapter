@@ -3,7 +3,11 @@
  * Prevents cluster autodiscovery issues and provides resilient connection handling
  */
 
-import { GlideClient, GlideClientConfiguration, ProtocolVersion } from '@valkey/valkey-glide';
+import {
+  GlideClient,
+  GlideClientConfiguration,
+  ProtocolVersion,
+} from '@valkey/valkey-glide';
 import { RedisOptions } from '../types';
 
 export interface RobustConnectionOptions {
@@ -21,13 +25,12 @@ export function createRobustGlideConfig(
   clientName: string = 'ioredis-adapter',
   customOptions: RobustConnectionOptions = {}
 ): GlideClientConfiguration {
-  const {
-    connectionTimeout = 5000,
-    forceStandalone = true
-  } = customOptions;
+  const { connectionTimeout = 5000, forceStandalone = true } = customOptions;
 
   const config: GlideClientConfiguration = {
-    addresses: [{ host: options.host || 'localhost', port: options.port || 6379 }],
+    addresses: [
+      { host: options.host || 'localhost', port: options.port || 6379 },
+    ],
     protocol: ProtocolVersion.RESP3,
     clientName: `${clientName}-${Date.now()}`, // Unique name to avoid conflicts
     requestTimeout: connectionTimeout,
@@ -63,13 +66,10 @@ export async function createRobustGlideClient(
   clientName: string = 'ioredis-adapter',
   customOptions: RobustConnectionOptions = {}
 ): Promise<GlideClient> {
-  const {
-    retryAttempts = 3,
-    retryDelay = 1000,
-  } = customOptions;
+  const { retryAttempts = 3, retryDelay = 1000 } = customOptions;
 
   const config = createRobustGlideConfig(options, clientName, customOptions);
-  
+
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= retryAttempts; attempt++) {
@@ -78,10 +78,9 @@ export async function createRobustGlideClient(
       // Immediately test the connection with a ping
       await client.ping();
       return client;
-      
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      
+
       if (attempt < retryAttempts) {
         await new Promise(resolve => setTimeout(resolve, retryDelay));
       }
@@ -96,21 +95,27 @@ export async function createRobustGlideClient(
 /**
  * Validate that a GLIDE client is properly connected to a standalone instance
  */
-export async function validateStandaloneConnection(client: GlideClient, clientName: string): Promise<void> {
+export async function validateStandaloneConnection(
+  client: GlideClient,
+  clientName: string
+): Promise<void> {
   try {
     // Test basic connectivity
     await client.ping();
-    
+
     // Get server info to verify it's standalone mode (optional validation)
     const info = await client.customCommand(['INFO', 'replication']);
     const infoStr = String(info);
-    
+
     // Just ensure we get some response indicating a working Redis/Valkey server
     if (!infoStr.includes('role:')) {
-      throw new Error(`Unexpected server response: ${infoStr.substring(0, 100)}`);
+      throw new Error(
+        `Unexpected server response: ${infoStr.substring(0, 100)}`
+      );
     }
-    
   } catch (error) {
-    throw new Error(`Connection validation failed for ${clientName}: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Connection validation failed for ${clientName}: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }

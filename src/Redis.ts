@@ -15,15 +15,19 @@ export class Redis extends StandaloneClient {
   constructor(port: number, host: string, options: RedisOptions);
   constructor(options: RedisOptions);
   constructor(url: string);
-  constructor(portOrOptions?: number | RedisOptions | string, host?: string, options?: RedisOptions) {
+  constructor(
+    portOrOptions?: number | RedisOptions | string,
+    host?: string,
+    options?: RedisOptions
+  ) {
     // Parse constructor arguments ioredis-style
     let parsedOptions: RedisOptions = {};
-    
+
     if (typeof portOrOptions === 'number') {
-      parsedOptions = { 
-        port: portOrOptions, 
+      parsedOptions = {
+        port: portOrOptions,
         host: host || 'localhost',
-        ...options
+        ...options,
       };
     } else if (typeof portOrOptions === 'string') {
       // URL parsing
@@ -36,22 +40,25 @@ export class Redis extends StandaloneClient {
   }
 
   // Bull/BullMQ createClient factory method
-  static createClient(type: 'client' | 'subscriber' | 'bclient', options: RedisOptions): Redis {
+  static createClient(
+    type: 'client' | 'subscriber' | 'bclient',
+    options: RedisOptions
+  ): Redis {
     const client = new Redis(options);
     (client as any).clientType = type;
-    
+
     // Enable blocking operations for bclient type
     if (type === 'bclient') {
       (client as any).enableBlockingOps = true;
     }
-    
+
     return client;
   }
 
   // ioredis compatibility method
   duplicate(override?: Partial<RedisOptions>): Redis {
     const duplicated = new Redis({ ...this.options, ...override });
-    
+
     // Preserve client type and custom properties
     if ((this as any).clientType) {
       (duplicated as any).clientType = (this as any).clientType;
@@ -59,10 +66,10 @@ export class Redis extends StandaloneClient {
     if ((this as any).enableBlockingOps) {
       (duplicated as any).enableBlockingOps = (this as any).enableBlockingOps;
     }
-    
+
     // ioredis compatibility - expose options as _options
     (duplicated as any)._options = duplicated.options;
-    
+
     return duplicated;
   }
 }
@@ -75,24 +82,24 @@ function parseUrl(url: string): RedisOptions {
       const [host, portStr] = url.split(':');
       return {
         host: host || 'localhost',
-        port: parseInt(portStr || '6379') || 6379
+        port: parseInt(portStr || '6379') || 6379,
       };
     }
-    
+
     // Full URL format
     const parsed = new URL(url);
     const result: RedisOptions = {
       host: parsed.hostname,
-      port: parseInt(parsed.port) || 6379
+      port: parseInt(parsed.port) || 6379,
     };
-    
+
     if (parsed.username) result.username = parsed.username;
     if (parsed.password) result.password = parsed.password;
     if (parsed.pathname && parsed.pathname !== '/') {
       result.db = parseInt(parsed.pathname.slice(1)) || 0;
     }
     if (parsed.protocol === 'rediss:') result.tls = true;
-    
+
     return result;
   } catch {
     throw new Error(`Invalid URL: ${url}`);
