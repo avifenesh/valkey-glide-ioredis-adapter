@@ -3,7 +3,7 @@
  * Tests current pub/sub implementation and validates incremental improvements
  */
 
-import { describe, it, beforeAll, beforeEach, afterEach } from 'node:test';
+import { describe, it, before, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 
 // Global declarations for Node.js built-in APIs
@@ -17,7 +17,7 @@ describe('Basic Pub/Sub Functionality', () => {
   let subscriber;
   let config;
 
-  beforeAll(async () => {
+  before(async () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {

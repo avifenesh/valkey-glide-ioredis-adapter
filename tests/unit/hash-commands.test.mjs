@@ -7,6 +7,7 @@ import assert from 'node:assert';
 
 import pkg from '../../dist/index.js';
 const { Redis  } = pkg;
+import { testUtils } from '../setup/index.mjs';
 
 describe('Hash Commands - Real-World Patterns', () => {
   let redis;

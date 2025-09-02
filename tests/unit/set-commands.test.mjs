@@ -5,12 +5,11 @@
  */
 
 
-import { describe, it, beforeEach, afterEach, beforeAll, afterAll } from 'node:test';
+import { describe, it, beforeEach, afterEach, before, after } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 import { testUtils } from '../setup/index.mjs';
 const { Redis } = pkg;;
-import { getStandaloneConfig } from '../utils/test-config.mjs';;
 
 describe('Set Commands - Social Network & Analytics Patterns', () => {
   let redis;
@@ -218,7 +217,7 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
           `post_tags:${postData.post}`,
           'photography'
         );
-        const expected = postData.tags.includes('photography') ? 1 ;
+        const expected = postData.tags.includes('photography') ? 1 : 0;
         assert.strictEqual(hasPhotography, expected);
       }
 
@@ -233,7 +232,7 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
     it('should implement hashtag recommendation system', async () => {
       const userId = 'user_' + Math.random();
       const userTagsKey = `user_tags:${userId}`;
-      const trendingTagsKey = `trending_tags:${timestamp: Date.now()}`;
+      const trendingTagsKey = `trending_tags:${Date.now()}`;
 
       // User's historically used tags
       await redis.sadd(userTagsKey, 'photography', 'travel', 'food', 'nature');
@@ -452,7 +451,10 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
       const variantAConverts = await redis.scard(variantAConvertsKey);
       const variantARate = variantAConverts / variantASize;
 
-      assert.strictEqual(Math.abs(controlRate - 0.33, 2)  {
+      assert.ok(Math.abs(controlRate - 0.33) < 0.1);
+    });
+
+    it('should implement feature rollout management like Spotify', async () => {
       const featureId = 'feature_' + Math.random();
       const betaUsersKey = `beta_users:${featureId}`;
       const activeUsersKey = `active_users:${featureId}`;

@@ -1,14 +1,14 @@
 
-import { describe, it, beforeEach, afterEach, beforeAll, afterAll } from 'node:test';
+import { describe, it, beforeEach, afterEach, before, after } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;;
-import { testUtils } from '../../tests/setup';
+import { testUtils } from '../setup/index.mjs';
 
 describe('Transaction Commands', () => {
   let redis;
 
-  beforeAll(async () => {
+  before(async () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
@@ -17,12 +17,12 @@ describe('Transaction Commands', () => {
       );
     }
 
-    const config = await testUtils.testUtils.getStandaloneConfig();
+    const config = await testUtils.getStandaloneConfig();
     redis = new Redis(config);
     await redis.connect();
   });
 
-  afterAll(async () => {
+  after(async () => {
     if (redis) {
       await redis.quit();
     }
@@ -87,7 +87,7 @@ describe('Transaction Commands', () => {
 
     const results = await multi.exec();
 
-    assert.ok(results).not.toBeNull();
+    assert.ok(results !== null);
     if (results) {
       assert.strictEqual(results.length, 2);
       assert.deepStrictEqual(results[0], [null, 'initial']);

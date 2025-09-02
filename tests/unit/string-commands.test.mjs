@@ -1,5 +1,9 @@
-import { describe, it, beforeEach, afterEach, beforeAll } from 'node:test';
+import { describe, it, beforeEach, afterEach, before } from 'node:test';
 import assert from 'node:assert';
+
+// Global declarations for Node.js built-in APIs
+/* global setTimeout */
+
 /**
  * String Commands Behavioral Tests
  * These tests are adapted from ioredis patterns to ensure compatibility
@@ -8,14 +12,13 @@ import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 import { testUtils } from '../setup/index.mjs';
 const { Redis  } = pkg;
-import { getStandaloneConfig, checkTestServers, delay } from '../utils/test-config.mjs';
 
 describe('String Commands (ioredis compatibility)', () => {
   let redis;
 
-  beforeAll(async () => {
+  before(async () => {
     // Check if test servers are available
-    const serversAvailable = checkTestServers();
+    const serversAvailable = testUtils.checkTestServers();
     if (!serversAvailable) {
       throw new Error(
         'Test servers not available. Please start Redis server before running tests.'
@@ -25,7 +28,7 @@ describe('String Commands (ioredis compatibility)', () => {
 
   beforeEach(async () => {
     // Health check before each test
-    const serversAvailable = checkTestServers();
+    const serversAvailable = testUtils.checkTestServers();
     if (!serversAvailable) {
       throw new Error('Test servers became unavailable during test execution');
     }
@@ -93,7 +96,7 @@ describe('String Commands (ioredis compatibility)', () => {
       assert.strictEqual(await redis.get('foo'), 'bar');
 
       // Wait for expiration - increased delay for reliability
-      await delay(1500);
+      await new Promise(resolve => setTimeout(resolve, 1500));
       assert.strictEqual(await redis.get('foo'), null);
     });
 
@@ -102,7 +105,7 @@ describe('String Commands (ioredis compatibility)', () => {
       await redis.set('foo', 'bar', 'PX', 500);
       assert.strictEqual(await redis.get('foo'), 'bar');
 
-      await delay(600);
+      await new Promise(resolve => setTimeout(resolve, 600));
       assert.strictEqual(await redis.get('foo'), null);
     });
 
@@ -255,7 +258,7 @@ describe('String Commands (ioredis compatibility)', () => {
       assert.strictEqual(await redis.get('tempkey'), 'tempvalue');
 
       // Wait for expiration - increased delay for reliability
-      await delay(1500);
+      await new Promise(resolve => setTimeout(resolve, 1500));
       assert.strictEqual(await redis.get('tempkey'), null);
     });
 
@@ -273,7 +276,7 @@ describe('String Commands (ioredis compatibility)', () => {
       await redis.psetex('tempkey', 500, 'tempvalue');
       assert.strictEqual(await redis.get('tempkey'), 'tempvalue');
 
-      await delay(600);
+      await new Promise(resolve => setTimeout(resolve, 600));
       assert.strictEqual(await redis.get('tempkey'), null);
     });
   });

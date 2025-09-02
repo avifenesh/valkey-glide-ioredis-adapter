@@ -111,9 +111,9 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         m => m.channel === 'channel'
       );
 
-      assert.ok(generalMsg).toBeDefined();
-      assert.ok(techMsg).toBeDefined();
-      assert.ok(randomMsg).toBeDefined();
+      assert.ok(generalMsg !== undefined);
+      assert.ok(techMsg !== undefined);
+      assert.ok(randomMsg !== undefined);
 
       // Verify message content
       const generalData = JSON.parse(generalMsg.message);
@@ -520,7 +520,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       const pushEvent = webhookEvents.find(e =>
         e.channel.includes('myorg/myproject/push')
       );
-      assert.ok(pushEvent).toBeDefined();
+      assert.ok(pushEvent !== undefined);
 
       const pushData = JSON.parse(pushEvent.message);
       assert.strictEqual(pushData.event, 'push');
@@ -597,14 +597,14 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       assert.strictEqual(priceUpdates.length, 3);
 
       const btcUpdate = priceUpdates.find(u => u.channel.includes('BTC-USD'));
-      assert.ok(btcUpdate).toBeDefined();
+      assert.ok(btcUpdate !== undefined);
 
       const btcData = JSON.parse(btcUpdate.message);
       assert.strictEqual(btcData.symbol, 'BTC-USD');
       assert.strictEqual(btcData.price, 45230.5);
 
       const forexUpdate = priceUpdates.find(u => u.channel.includes('EUR-USD'));
-      assert.ok(forexUpdate).toBeDefined();
+      assert.ok(forexUpdate !== undefined);
 
       const forexData = JSON.parse(forexUpdate.message);
       assert.strictEqual(forexData.bid, 1.0842);
@@ -812,7 +812,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       // Should only have received 3 messages (not the 4th from unsubscribed channel)
       assert.strictEqual(messages.length, 3);
       assert.ok(messages.includes('test'));
-      assert.ok(messages).not.toContain('test');
+      assert.ok(!messages || toContain('test');
     });
 
     it('should handle large message payloads', async () => {

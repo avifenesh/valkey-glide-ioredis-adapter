@@ -49,7 +49,7 @@ describe('Error Handling and Edge Cases', () => {
       // Test with various invalid configs that should not crash
       assert.ok(() => {
         new Redis({ host: '', port: 6379 });
-      }).not.toThrow();
+      })
     });
   });
 

@@ -4,12 +4,11 @@
  */
 
 
-import { describe, it, beforeEach, afterEach, beforeAll, afterAll } from 'node:test';
+import { describe, it, beforeEach, afterEach, before, after } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 import { testUtils } from '../setup/index.mjs';
 const { Redis } = pkg;;
-import { getStandaloneConfig } from '../utils/test-config.mjs';;
 
 describe('ZSet Commands - Real-World Patterns', () => {
   let redis;
@@ -316,8 +315,8 @@ describe('ZSet Commands - Real-World Patterns', () => {
       await redis.set(key, 'not-a-zset');
 
       // ZSet operations on string should throw
-      await assert.ok(redis.zadd(key, 1, 'member')).rejects.toThrow();
-      await assert.ok(redis.zrange(key, 0, -1)).rejects.toThrow();
+      await assert.rejects(redis.zadd(key, 1, 'member'));
+      await assert.rejects(redis.zrange(key, 0, -1));
     });
 
     it('should handle floating point scores correctly', async () => {
@@ -342,13 +341,13 @@ describe('ZSet Commands - Real-World Patterns', () => {
       const score2 = await redis.zscore(key, 'member2');
       const score3 = await redis.zscore(key, 'member3');
 
-      assert.ok(parseFloat(score1)), 10) < 0.00000001);
-      assert.ok(parseFloat(score2)), 10) < 0.00000001);
-      assert.ok(parseFloat(score3)), 10) < 0.00000001);
+      assert.ok(Math.abs(parseFloat(score1) - 1.5) < 0.00000001);
+      assert.ok(Math.abs(parseFloat(score2) - 2.7) < 0.00000001);
+      assert.ok(Math.abs(parseFloat(score3) - 1.5000001) < 0.00000001);
 
       // Test increment with float
       const newScore = await redis.zincrby(key, 0.3, 'member1');
-      assert.ok(parseFloat(newScore)), 10) < 0.00000001);
+      assert.ok(Math.abs(parseFloat(newScore) - 1.8) < 0.00000001);
     });
   });
 });

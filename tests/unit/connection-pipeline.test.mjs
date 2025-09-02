@@ -219,7 +219,7 @@ describe('Connection Management (ioredis compatibility)', () => {
 
       // Try to increment a non-numeric value
       await redis.set('text', 'not_a_number');
-      await assert.ok(redis.incr('text')).rejects.toThrow();
+      await assert.rejects(redis.incr('text'));
 
       // Connection should still be usable
       assert.strictEqual(await redis.ping(), 'PONG');

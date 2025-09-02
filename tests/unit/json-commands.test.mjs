@@ -10,7 +10,7 @@
  * - API responses caching, session data, configuration
  */
 
-import { describe, it, beforeAll, afterAll, beforeEach } from 'node:test';
+import { describe, it, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;

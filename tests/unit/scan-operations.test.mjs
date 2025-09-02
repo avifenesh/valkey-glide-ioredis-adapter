@@ -79,7 +79,12 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       for (const key of keys) {
         const ttl = await redis.ttl(key);
         assert.ok(ttl > 0);
-        assert.ok(ttl  {
+        assert.ok(ttl <= 2);
+      }
+    });
+  });
+
+  describe('Hash Field Scanning (HSCAN)', () => {
     it('should scan user profile fields like LinkedIn profiles', async () => {
       const profileKey = 'profile:' + Math.random();
 
@@ -120,13 +125,50 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         const fields = result[1];
 
         // Convert array to key-value pairs
-        for (let i = 0; i <=  {
+        for (let i = 0; i < fields.length; i += 2) {
+          if (fields[i] && fields[i + 1]) {
+            skills[fields[i]] = fields[i + 1];
+          }
+        }
+      } while (cursor !== '0');
+
+      // Check that we found skills
+      assert.ok(Object.keys(skills).length > 0);
+      assert.strictEqual(skills['skill_javascript'], 'Expert');
+      assert.strictEqual(skills['skill_python'], 'Advanced');
+    });
+
     it('should scan social media followers like Twitter', async () => {
       const followersKey = 'followers:' + Math.random();
 
       // Add followers with different patterns
       const followers = [];
-      for (let i = 1; i <=  user.startsWith("verified_"));
+      for (let i = 1; i <= 15; i++) {
+        const username = i <= 5 ? `verified_user${i}` : `user${i}`;
+        followers.push(username);
+        await redis.sadd(followersKey, username);
+      }
+
+      // Scan for verified users
+      let cursor = '0';
+      let verifiedUsers = [];
+
+      do {
+        const result = await redis.sscan(
+          followersKey,
+          cursor,
+          'MATCH',
+          'verified_*',
+          'COUNT',
+          '10'
+        );
+        cursor = result[0];
+        verifiedUsers = verifiedUsers.concat(result[1]);
+      } while (cursor !== '0');
+
+      // Verify we found verified users
+      assert.ok(verifiedUsers.length > 0);
+      assert.ok(verifiedUsers.some(user => user.startsWith("verified_")));
     });
   });
 
@@ -135,7 +177,39 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       const leaderboardKey = 'leaderboard:' + Math.random();
 
       // Add players with scores
-      for (let i = 1; i <=  player.startsWith("pro_"));
+      for (let i = 1; i <= 10; i++) {
+        const playerName = i <= 3 ? `pro_player${i}` : `player${i}`;
+        const score = 1000 + (i * 50);
+        await redis.zadd(leaderboardKey, score, playerName);
+      }
+
+      // Scan for pro players using ZSCAN
+      let cursor = '0';
+      let proPlayers = {};
+
+      do {
+        const result = await redis.zscan(
+          leaderboardKey,
+          cursor,
+          'MATCH',
+          'pro_*',
+          'COUNT',
+          '5'
+        );
+        cursor = result[0];
+        const members = result[1];
+
+        // Convert array to member-score pairs
+        for (let i = 0; i < members.length; i += 2) {
+          if (members[i] && members[i + 1]) {
+            proPlayers[members[i]] = parseFloat(members[i + 1]);
+          }
+        }
+      } while (cursor !== '0');
+
+      // Verify we found pro players
+      assert.ok(Object.keys(proPlayers).length > 0);
+      assert.ok(Object.keys(proPlayers).some(player => player.startsWith("pro_")));
     });
   });
 
