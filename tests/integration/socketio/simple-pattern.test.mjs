@@ -16,16 +16,16 @@ describe('Simple Socket.IO Pattern Test', () => {
     // Simple configuration - use defaults and lazyConnect
     pubClient = new Redis({
       host: 'localhost',
-      port,
-      lazyConnect,
-      enableEventBasedPubSub, // Socket.IO compatibility mode
+      port: 6379,
+      lazyConnect: true,
+      enableEventBasedPubSub: true, // Socket.IO compatibility mode
     });
     
     subClient = new Redis({
       host: 'localhost',
-      port,
-      lazyConnect,
-      enableEventBasedPubSub, // Socket.IO compatibility mode
+      port: 6379,
+      lazyConnect: true,
+      enableEventBasedPubSub: true, // Socket.IO compatibility mode
     });
   });
 
@@ -49,7 +49,7 @@ describe('Simple Socket.IO Pattern Test', () => {
     
     // Set up pattern listener (Socket.IO uses pattern subscriptions)
     subClient.on('pmessage', (pattern, channel, message) => {
-      const messageStr = Buffer.isBuffer(message) ? message.toString() ;
+      const messageStr = Buffer.isBuffer(message) ? message.toString() : message;
       console.log(`Received pattern message: ${pattern} -> ${channel}: ${messageStr.substring(0, 50)}`);
       receivedMessages.push({ pattern, channel, message: messageStr });
     });
@@ -72,7 +72,8 @@ describe('Simple Socket.IO Pattern Test', () => {
 
     // Wait for message propagation with timeout
     const startTime = Date.now();
-    while (receivedMessages.length === 0 && Date.now() - startTime  setTimeout(resolve, 50));
+    while (receivedMessages.length === 0 && Date.now() - startTime < 5000) {
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
 
     // Verify we received the pattern message
@@ -81,6 +82,6 @@ describe('Simple Socket.IO Pattern Test', () => {
     assert.strictEqual(receivedMessages[0].channel, 'socket.io#/#general#', 'Channel should match published channel');
     assert.ok(receivedMessages[0].message.includes('Hello from Node.js test'), 'Message should contain test content');
 
-    console.log('✅ Socket.IO pattern subscription working with Node.js test runner!');
+    console.log('✅ Socket.IO pattern subscription working with Node.js test runner');
   });
 });

@@ -2,18 +2,22 @@ import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 /**
  * Hash Commands Comprehensive Tests
- * Real-world patterns: Session storage, user profiles, object caching, shopping carts
+ * Real-world patterns, shopping carts
  */
 
 import pkg from '../../dist/index.js';
 const { Redis  } = pkg;
-import { getRedisTestConfig } from '../utils/redis-config';
+// import { getRedisTestConfig } from "../utils/redis-config.mjs"; // Using testUtils instead
 
 describe('Hash Commands - Real-World Patterns', () => {
   let redis;
 
   beforeEach(async () => {
-    const config = await getRedisTestConfig();
+    const config = {
+      host: 'localhost',
+      port: 6379,
+      lazyConnect: true,
+    };
     redis = new Redis(config);
   });
 
@@ -118,7 +122,7 @@ describe('Hash Commands - Real-World Patterns', () => {
       assert.strictEqual(storedProfile.id, '123');
       assert.strictEqual(storedProfile.name, 'Alice Johnson');
 
-      const preferences = JSON.parse(storedProfile.preferences!);
+      const preferences = JSON.parse(storedProfile.preferences);
       assert.strictEqual(preferences.theme, 'dark');
       assert.strictEqual(preferences.notifications, true);
     });
@@ -161,7 +165,7 @@ describe('Hash Commands - Real-World Patterns', () => {
           productId: 'PROD-001',
           name: 'Laptop',
           price: 999.99,
-          quantity,
+          quantity: 1,
         })
       );
 
@@ -172,15 +176,15 @@ describe('Hash Commands - Real-World Patterns', () => {
           productId: 'PROD-002',
           name: 'Mouse',
           price: 29.99,
-          quantity,
+          quantity: 1,
         })
       );
 
       // Get cart contents
       const cartItems = await redis.hgetall(cartKey);
-      expect(Object.keys(cartItems)).toHaveLength(2);
+      assert.strictEqual(Object.keys(cartItems).length, 2);
 
-      const item1 = JSON.parse(cartItems.item_1!);
+      const item1 = JSON.parse(cartItems.item_1);
       assert.strictEqual(item1.productId, 'PROD-001');
       assert.strictEqual(item1.price, 999.99);
 

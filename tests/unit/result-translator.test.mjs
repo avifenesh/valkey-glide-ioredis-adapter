@@ -1,11 +1,11 @@
+import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert';
 /**
  * ResultTranslator Comprehensive Tests
  * Testing all result translation methods for GLIDE to ioredis compatibility
  */
 
-import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
-import assert from 'node:assert';
-import { ResultTranslator } from '../../dist/utils/ResultTranslator.js';
+import { ResultTranslator } from '../../src/utils/ResultTranslator';
 
 describe('ResultTranslator', () => {
   describe('flattenSortedSetData', () => {
@@ -120,7 +120,7 @@ describe('ResultTranslator', () => {
 
   describe('formatBlockingPopResult', () => {
     it('should format valid blocking pop result', () => {
-      const glideResult: [GlideString, GlideString, number] = [
+      const glideResult = [
         'key1',
         'member1',
         5.5,
@@ -168,7 +168,7 @@ describe('ResultTranslator', () => {
     });
 
     it('should handle Buffer GlideString inputs', () => {
-      const glideResult: [GlideString, GlideString, number] = [
+      const glideResult = [
         Buffer.from('buffer_key'),
         Buffer.from('buffer_member'),
         42.7,
@@ -180,7 +180,7 @@ describe('ResultTranslator', () => {
     });
 
     it('should handle zero and negative scores', () => {
-      const glideResult: [GlideString, GlideString, number] = [
+      const glideResult = [
         'key',
         'member',
         0,
@@ -188,7 +188,7 @@ describe('ResultTranslator', () => {
       const result1 = ResultTranslator.formatBlockingPopResult(glideResult);
       assert.deepStrictEqual(result1, ['key', 'member', '0']);
 
-      const negativeResult: [GlideString, GlideString, number] = [
+      const negativeResult = [
         'key',
         'member',
         -3.14,
@@ -424,7 +424,7 @@ describe('ResultTranslator', () => {
       class CustomError extends Error {
         constructor(
           message,
-          public code
+          code
         ) {
           super(message);
           this.name = 'CustomError';
