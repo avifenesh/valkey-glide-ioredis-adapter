@@ -1,11 +1,11 @@
 /**
  * Caching, Analytics & E-commerce Integration Test
- * 
+ *
  * Tests that our ioredis adapter works correctly with common caching patterns,
  * analytics data aggregation, and e-commerce scenarios like shopping carts.
  */
 
-import { Redis } from "../../../src";
+import { Redis } from '../../../src';
 import { testUtils } from '../../setup';
 
 describe('Caching, Analytics & E-commerce Integration', () => {
@@ -15,7 +15,9 @@ describe('Caching, Analytics & E-commerce Integration', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      throw new Error('Test servers not available - Redis connection required for caching integration tests');
+      throw new Error(
+        'Test servers not available - Redis connection required for caching integration tests'
+      );
       return;
     }
   });
@@ -31,9 +33,9 @@ describe('Caching, Analytics & E-commerce Integration', () => {
     // Setup Redis client
     const config = await testUtils.getStandaloneConfig();
     redisClient = new Redis(config);
-    
+
     await redisClient.connect();
-    
+
     // Clean up any existing test data at the start
     try {
       const allKeys = await redisClient.keys('*');
@@ -478,7 +480,9 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       expect(unreadNotifications).toHaveLength(3);
 
       // Mark notification as read (update specific notification)
-      const notificationList = unreadNotifications.map((n: any) => JSON.parse(n));
+      const notificationList = unreadNotifications.map((n: any) =>
+        JSON.parse(n)
+      );
       notificationList[0].read = true;
 
       // Update the list (in production, you might use a more efficient method)
@@ -541,13 +545,13 @@ describe('Caching, Analytics & E-commerce Integration', () => {
 
       // Use pipeline for bulk operations
       const pipeline = redisClient.pipeline();
-      
+
       for (let i = 0; i < itemCount; i++) {
         const data = {
           id: i,
           value: testUtils.randomString(10),
           timestamp: Date.now(),
-          score: Math.random()
+          score: Math.random(),
         };
         pipeline.hset(largeDataKey, i.toString(), JSON.stringify(data));
       }
@@ -560,12 +564,12 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       // Debug pipeline execution
       console.log('Pipeline results length:', pipelineResults?.length);
       console.log('Sample pipeline results:', pipelineResults?.slice(0, 3));
-      
+
       // Verify pipeline execution succeeded
       expect(pipelineResults).toBeTruthy();
       expect(Array.isArray(pipelineResults)).toBe(true);
       expect(pipelineResults.length).toBe(itemCount);
-      
+
       // Check for any errors in pipeline results
       const errors = pipelineResults.filter(([err]) => err !== null);
       if (errors.length > 0) {
@@ -575,26 +579,26 @@ describe('Caching, Analytics & E-commerce Integration', () => {
 
       // Verify data integrity
       const randomKey = Math.floor(Math.random() * itemCount).toString();
-      
+
       // First check if the hash exists
       const hashExists = await redisClient.exists(largeDataKey);
       expect(hashExists).toBe(1);
-      
+
       // Then try to get the random item
       const randomItem = await redisClient.hget(largeDataKey, randomKey);
-      
+
       // If the random key doesn't exist, try a known key (0)
       if (randomItem === null) {
         const firstItem = await redisClient.hget(largeDataKey, '0');
         expect(firstItem).toBeDefined();
         expect(firstItem).not.toBeNull();
-        
+
         const parsed = JSON.parse(firstItem as string);
         expect(parsed.id).toBe(0);
       } else {
         expect(randomItem).toBeDefined();
         expect(randomItem).not.toBeNull();
-        
+
         const parsed = JSON.parse(randomItem as string);
         expect(parsed.id).toBe(parseInt(randomKey));
       }

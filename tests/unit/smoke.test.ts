@@ -2,7 +2,7 @@
  * Basic smoke test for Redis
  */
 
-import { Redis } from "../../src";
+import { Redis } from '../../src';
 
 describe('Redis Basic Functionality', () => {
   test('should create adapter instance', () => {

@@ -1,6 +1,6 @@
 /**
  * Dynamic Port Discovery Utility for Test Infrastructure
- * 
+ *
  * This module provides utilities for:
  * - Finding available ports dynamically
  * - Discovering running Redis/Valkey servers
@@ -39,7 +39,9 @@ export class PortDiscovery {
         return port;
       }
     }
-    throw new Error(`No available ports found in range ${startPort}-${endPort}`);
+    throw new Error(
+      `No available ports found in range ${startPort}-${endPort}`
+    );
   }
 
   /**
@@ -53,7 +55,10 @@ export class PortDiscovery {
     const ports: number[] = [];
     let currentPort = startPort;
 
-    while (ports.length < count && currentPort <= PortDiscovery.PORT_RANGE_END) {
+    while (
+      ports.length < count &&
+      currentPort <= PortDiscovery.PORT_RANGE_END
+    ) {
       if (await PortDiscovery.isPortAvailable(currentPort, host)) {
         ports.push(currentPort);
       }
@@ -70,27 +75,30 @@ export class PortDiscovery {
   /**
    * Check if a specific port is available
    */
-  static async isPortAvailable(port: number, host: string = PortDiscovery.DEFAULT_HOST): Promise<boolean> {
-    return new Promise((resolve) => {
+  static async isPortAvailable(
+    port: number,
+    host: string = PortDiscovery.DEFAULT_HOST
+  ): Promise<boolean> {
+    return new Promise(resolve => {
       const socket = new net.Socket();
-      
+
       socket.setTimeout(PortDiscovery.DISCOVERY_TIMEOUT);
-      
+
       socket.on('connect', () => {
         socket.destroy();
         resolve(false); // Port is in use
       });
-      
+
       socket.on('timeout', () => {
         socket.destroy();
         resolve(true); // Port is available
       });
-      
+
       socket.on('error', () => {
         socket.destroy();
         resolve(true); // Port is available
       });
-      
+
       socket.connect(port, host);
     });
   }
@@ -99,16 +107,21 @@ export class PortDiscovery {
    * Scan for running Redis/Valkey servers on common ports
    */
   static async discoverRedisServers(
-    portRange: number[] = [6379, 6380, 6381, 7000, 7001, 7002, 7003, 7004, 7005],
+    portRange: number[] = [
+      6379, 6380, 6381, 7000, 7001, 7002, 7003, 7004, 7005,
+    ],
     host: string = PortDiscovery.DEFAULT_HOST
   ): Promise<DiscoveredServer[]> {
     const servers: DiscoveredServer[] = [];
-    
-    const scanPromises = portRange.map(async (port) => {
+
+    const scanPromises = portRange.map(async port => {
       try {
         const isRunning = !(await PortDiscovery.isPortAvailable(port, host));
         if (isRunning) {
-          const serverInfo = await PortDiscovery.validateRedisServer({ host, port });
+          const serverInfo = await PortDiscovery.validateRedisServer({
+            host,
+            port,
+          });
           if (serverInfo) {
             servers.push(serverInfo);
           }
@@ -135,9 +148,15 @@ export class PortDiscovery {
 
     for (let start = startPort; start <= endPort; start += batchSize) {
       const end = Math.min(start + batchSize - 1, endPort);
-      const portRange = Array.from({ length: end - start + 1 }, (_, i) => start + i);
-      
-      const batchServers = await PortDiscovery.discoverRedisServers(portRange, host);
+      const portRange = Array.from(
+        { length: end - start + 1 },
+        (_, i) => start + i
+      );
+
+      const batchServers = await PortDiscovery.discoverRedisServers(
+        portRange,
+        host
+      );
       servers.push(...batchServers);
     }
 
@@ -147,28 +166,30 @@ export class PortDiscovery {
   /**
    * Validate if a server is a Redis/Valkey instance and get its info
    */
-  static async validateRedisServer(config: ServerConfig): Promise<DiscoveredServer | null> {
+  static async validateRedisServer(
+    config: ServerConfig
+  ): Promise<DiscoveredServer | null> {
     try {
       // Dynamic import to avoid circular dependency
       const { default: Redis } = await import('../../src/Redis');
-      
+
       const testAdapter = new Redis(config);
-      
+
       // Test connection with timeout
       const connectionPromise = testAdapter.connect();
-      const timeoutPromise = new Promise<never>((_, reject) => 
+      const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('Connection timeout')), 2000)
       );
-      
+
       await Promise.race([connectionPromise, timeoutPromise]);
-      
+
       // Test PING command
       const pingResult = await testAdapter.ping();
       const responsive = pingResult === 'PONG';
-      
+
       let serverType: 'redis' | 'valkey' | 'unknown' = 'unknown';
       let version: string | undefined;
-      
+
       try {
         // Try to get server info - check if method exists first
         if (typeof (testAdapter as any).info === 'function') {
@@ -188,15 +209,15 @@ export class PortDiscovery {
       } catch {
         // If info command fails, still consider it a valid server if PING worked
       }
-      
+
       await testAdapter.disconnect();
-      
+
       return {
         host: config.host,
         port: config.port,
         type: serverType,
         version,
-        responsive
+        responsive,
       };
     } catch (error) {
       return null;
@@ -206,10 +227,12 @@ export class PortDiscovery {
   /**
    * Get the first available Redis server, or create configuration for a new one
    */
-  static async getOrAllocateRedisServer(preferredPort?: number): Promise<ServerConfig> {
+  static async getOrAllocateRedisServer(
+    preferredPort?: number
+  ): Promise<ServerConfig> {
     // First, try to discover existing servers
     const discoveredServers = await PortDiscovery.discoverRedisServers();
-    
+
     if (discoveredServers.length > 0) {
       const responsiveServer = discoveredServers.find(s => s.responsive);
       if (responsiveServer) {
@@ -218,7 +241,7 @@ export class PortDiscovery {
     }
 
     // If preferred port is specified and available, use it
-    if (preferredPort && await PortDiscovery.isPortAvailable(preferredPort)) {
+    if (preferredPort && (await PortDiscovery.isPortAvailable(preferredPort))) {
       return { host: PortDiscovery.DEFAULT_HOST, port: preferredPort };
     }
 
@@ -241,18 +264,18 @@ export class PortDiscovery {
    */
   static async hasAnyRedisServer(): Promise<boolean> {
     const standardPorts = [6379, 6380, 6381];
-    
+
     for (const port of standardPorts) {
       const serverInfo = await PortDiscovery.validateRedisServer({
         host: PortDiscovery.DEFAULT_HOST,
-        port
+        port,
       });
-      
+
       if (serverInfo && serverInfo.responsive) {
         return true;
       }
     }
-    
+
     return false;
   }
 }
@@ -265,21 +288,26 @@ export const portUtils = {
    * Quick check for Redis on default port
    */
   async isDefaultRedisAvailable(): Promise<boolean> {
-    return PortDiscovery.validateRedisServer({ host: 'localhost', port: 6379 })
-      .then(server => server?.responsive ?? false);
+    return PortDiscovery.validateRedisServer({
+      host: 'localhost',
+      port: 6379,
+    }).then(server => server?.responsive ?? false);
   },
 
   /**
    * Find Redis server or suggest port for new instance
    */
-  async findRedisServerOrPort(): Promise<{ server?: DiscoveredServer; suggestedPort?: number }> {
+  async findRedisServerOrPort(): Promise<{
+    server?: DiscoveredServer;
+    suggestedPort?: number;
+  }> {
     const servers = await PortDiscovery.discoverRedisServers();
     const responsiveServer = servers.find(s => s.responsive);
-    
+
     if (responsiveServer) {
       return { server: responsiveServer };
     }
-    
+
     const suggestedPort = await PortDiscovery.findAvailablePort(6379, 6400);
     return { suggestedPort };
   },
@@ -292,17 +320,17 @@ export const portUtils = {
     cluster?: ServerConfig[];
   }> {
     const standalone = await PortDiscovery.getOrAllocateRedisServer(6379);
-    
+
     if (!includeCluster) {
       return { standalone };
     }
-    
+
     const clusterPorts = await PortDiscovery.findAvailablePorts(6, 7000);
     const cluster = clusterPorts.map(port => ({
       host: 'localhost',
-      port
+      port,
     }));
-    
+
     return { standalone, cluster };
-  }
+  },
 };

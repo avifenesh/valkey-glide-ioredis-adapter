@@ -1,17 +1,17 @@
 /**
  * BullMQ Connection Tests - Adapted for our ioredis-adapter
- * 
+ *
  * These tests verify that our ioredis adapter works correctly with BullMQ's
  * connection system, defineCommand, and Lua script execution.
  */
 
 // Using Jest expect instead of chai to match our test framework
-import { Redis } from "../../src";
+import { Redis } from '../../src';
 import { getRedisTestConfig } from '../utils/redis-config';
 
 describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
   let redis: Redis;
-  
+
   beforeEach(async () => {
     const config = await getRedisTestConfig();
     redis = new Redis(config);
@@ -41,7 +41,7 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
 
       redis.defineCommand('testScript', {
         lua: script,
-        numberOfKeys: 1
+        numberOfKeys: 1,
       });
 
       // The command should now exist on the redis instance
@@ -63,11 +63,14 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
 
       redis.defineCommand('arrayTest', {
         lua: script,
-        numberOfKeys: 1
+        numberOfKeys: 1,
       });
 
       // Test with array-style arguments (BullMQ pattern)
-      const result = await (redis as any).arrayTest(['test:array', 'array-value']);
+      const result = await (redis as any).arrayTest([
+        'test:array',
+        'array-value',
+      ]);
       expect(result).toBe('array-value');
     });
   });
@@ -81,7 +84,7 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
 
       redis.defineCommand('emptyReturn', {
         lua: script,
-        numberOfKeys: 0
+        numberOfKeys: 0,
       });
 
       const result = await (redis as any).emptyReturn();
@@ -106,12 +109,12 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
 
       redis.defineCommand('addJob', {
         lua: addJobScript,
-        numberOfKeys: 1
+        numberOfKeys: 1,
       });
 
       const jobId = 'job:1';
       const jobData = '{"message": "test job"}';
-      
+
       const result = await (redis as any).addJob('test:queue', jobId, jobData);
       expect(result).toBe(jobId);
 
@@ -126,11 +129,11 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
     it('should support versioned commands (BullMQ pattern)', async () => {
       // BullMQ uses versioned commands like "addJob:5.58.4"
       const script = `return "version-test"`;
-      
+
       const commandName = 'versionedCommand:5.58.4';
       redis.defineCommand(commandName, {
         lua: script,
-        numberOfKeys: 0
+        numberOfKeys: 0,
       });
 
       const result = await (redis as any)[commandName]();
@@ -148,7 +151,7 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
 
       redis.defineCommand('errorCommand', {
         lua: errorScript,
-        numberOfKeys: 0
+        numberOfKeys: 0,
       });
 
       await expect((redis as any).errorCommand()).rejects.toThrow();
@@ -157,10 +160,10 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
     it('should handle EVALSHA fallback to EVAL', async () => {
       // This tests the EVALSHA -> EVAL fallback mechanism
       const script = `return "evalsha-test"`;
-      
+
       redis.defineCommand('evalshaTest', {
         lua: script,
-        numberOfKeys: 0
+        numberOfKeys: 0,
       });
 
       // First call should work (might use EVALSHA or EVAL)
@@ -192,7 +195,7 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
     it('should handle blocking operations (bclient compatibility)', async () => {
       // BullMQ uses blocking operations for job processing
       expect(typeof redis.blocked).toBe('boolean');
-      
+
       // Test that we can enable blocking mode
       redis.blocked = true;
       expect(redis.blocked).toBe(true);

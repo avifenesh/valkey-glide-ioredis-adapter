@@ -3,7 +3,7 @@
  * Tests the new implementations for Bull/Bee-Queue compatibility
  */
 
-import { Redis } from "../../src";
+import { Redis } from '../../src';
 import { testUtils } from '../setup';
 
 describe('Enhanced Features for Queue Compatibility', () => {
@@ -14,7 +14,9 @@ describe('Enhanced Features for Queue Compatibility', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      throw new Error('Test servers not available. Please start Redis server before running tests.');
+      throw new Error(
+        'Test servers not available. Please start Redis server before running tests.'
+      );
     }
 
     config = await testUtils.getStandaloneConfig();
@@ -35,43 +37,47 @@ describe('Enhanced Features for Queue Compatibility', () => {
 
   describe('Enhanced defineCommand', () => {
     test('supports variadic arguments (ioredis style)', async () => {
-      redis.defineCommand('testCmd', { 
-        lua: 'return {KEYS[1], ARGV[1]}', 
-        numberOfKeys: 1 
+      redis.defineCommand('testCmd', {
+        lua: 'return {KEYS[1], ARGV[1]}',
+        numberOfKeys: 1,
       });
-      
+
       const result = await (redis as any).testCmd('key1', 'arg1');
       expect(result).toEqual(['key1', 'arg1']);
     });
 
     test('supports array arguments (BullMQ style)', async () => {
-      redis.defineCommand('testCmd', { 
-        lua: 'return {KEYS[1], ARGV[1]}', 
-        numberOfKeys: 1 
+      redis.defineCommand('testCmd', {
+        lua: 'return {KEYS[1], ARGV[1]}',
+        numberOfKeys: 1,
       });
-      
+
       const result = await (redis as any).testCmd(['key1', 'arg1']);
       expect(result).toEqual(['key1', 'arg1']);
     });
 
     test('returns empty array instead of null for empty results', async () => {
-      redis.defineCommand('emptyCmd', { 
-        lua: 'return {}', 
-        numberOfKeys: 0 
+      redis.defineCommand('emptyCmd', {
+        lua: 'return {}',
+        numberOfKeys: 0,
       });
-      
+
       const result = await (redis as any).emptyCmd();
       expect(result).toEqual([]);
       expect(result).not.toBeNull();
     });
 
     test('handles complex argument types', async () => {
-      redis.defineCommand('complexCmd', { 
-        lua: 'return {KEYS[1], ARGV[1], ARGV[2]}', 
-        numberOfKeys: 1 
+      redis.defineCommand('complexCmd', {
+        lua: 'return {KEYS[1], ARGV[1], ARGV[2]}',
+        numberOfKeys: 1,
       });
-      
-      const result = await (redis as any).complexCmd('key1', { data: 'test' }, 42);
+
+      const result = await (redis as any).complexCmd(
+        'key1',
+        { data: 'test' },
+        42
+      );
       expect(result).toEqual(['key1', '{"data":"test"}', '42']);
     });
   });
@@ -100,7 +106,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
       const start = Date.now();
       const client = Redis.createClient('client', config);
       const elapsed = Date.now() - start;
-      
+
       expect(client).toBeInstanceOf(Redis);
       expect(elapsed).toBeLessThan(100); // Should return immediately
     });
@@ -123,7 +129,14 @@ describe('Enhanced Features for Queue Compatibility', () => {
     });
 
     test('zrangebyscore with LIMIT', async () => {
-      const result = await redis.zrangebyscore('testzset', 1, 4, 'LIMIT', '1', '2');
+      const result = await redis.zrangebyscore(
+        'testzset',
+        1,
+        4,
+        'LIMIT',
+        '1',
+        '2'
+      );
       expect(result).toEqual(['two', 'three']);
     });
 
@@ -150,10 +163,10 @@ describe('Enhanced Features for Queue Compatibility', () => {
   describe('Blocking operations', () => {
     test('brpoplpush with existing data', async () => {
       await redis.lpush('source', 'item1', 'item2');
-      
+
       const result = await redis.brpoplpush('source', 'dest', 1);
       expect(result).toBe('item1');
-      
+
       const destItems = await redis.lrange('dest', 0, -1);
       expect(destItems).toEqual(['item1']);
     });
@@ -162,7 +175,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
       const startTime = Date.now();
       const result = await redis.brpoplpush('empty-source', 'dest', 1);
       const elapsed = Date.now() - startTime;
-      
+
       expect(result).toBeNull();
       expect(elapsed).toBeGreaterThanOrEqual(900); // Allow some tolerance
       expect(elapsed).toBeLessThanOrEqual(1200);
@@ -170,7 +183,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
 
     test('blpop with existing data', async () => {
       await redis.lpush('testlist', 'item1');
-      
+
       const result = await redis.blpop('testlist', 1);
       expect(result).toEqual(['testlist', 'item1']);
     });
@@ -182,7 +195,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
 
     test('brpop with existing data', async () => {
       await redis.lpush('testlist', 'item1', 'item2');
-      
+
       const result = await redis.brpop('testlist', 1);
       expect(result).toEqual(['testlist', 'item1']);
     });
@@ -192,12 +205,14 @@ describe('Enhanced Features for Queue Compatibility', () => {
     test('preserves client type when duplicating', async () => {
       const original = Redis.createClient('bclient', config);
       const duplicated = await original.duplicate();
-      
+
       expect((duplicated as any).clientType).toBe('bclient');
     });
 
     test('allows override options', async () => {
-      const targetPort = process.env.REDIS_PORT ? Number(process.env.REDIS_PORT) : 6379;
+      const targetPort = process.env.REDIS_PORT
+        ? Number(process.env.REDIS_PORT)
+        : 6379;
       const duplicated = await redis.duplicate({ port: targetPort });
       expect((duplicated as any)._options.port).toBe(targetPort);
     });
@@ -206,7 +221,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
       const start = Date.now();
       const duplicated = await redis.duplicate();
       const elapsed = Date.now() - start;
-      
+
       expect(duplicated).toBeInstanceOf(Redis);
       expect(elapsed).toBeLessThan(100); // Should return immediately
     });

@@ -3,7 +3,7 @@
  * These tests are adapted from ioredis patterns to ensure compatibility
  */
 
-import { Redis } from "../../src";
+import { Redis } from '../../src';
 import { testUtils } from '../setup';
 
 describe('Connection Management (ioredis compatibility)', () => {
@@ -13,7 +13,9 @@ describe('Connection Management (ioredis compatibility)', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      throw new Error('Test servers not available. Please start Redis server before running tests.');
+      throw new Error(
+        'Test servers not available. Please start Redis server before running tests.'
+      );
     }
   });
 
@@ -236,7 +238,9 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      throw new Error('Test servers not available. Please start Redis server before running tests.');
+      throw new Error(
+        'Test servers not available. Please start Redis server before running tests.'
+      );
     }
   });
 
@@ -455,7 +459,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     test('should continue processing after command error', async () => {
       // Setup: Create a key with string value that can't be incremented
       await redis.set('non_numeric_key', 'not_a_number');
-      
+
       const pipeline = redis.pipeline();
 
       pipeline.set('good1', 'value1');

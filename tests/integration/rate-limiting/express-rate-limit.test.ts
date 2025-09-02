@@ -7,7 +7,7 @@ import express = require('express');
 const rateLimit = require('express-rate-limit');
 import { RedisStore } from 'rate-limit-redis';
 import supertest = require('supertest');
-import { Redis } from "../../../src";
+import { Redis } from '../../../src';
 import { testUtils } from '../../setup';
 
 describe('Rate Limiting Integration', () => {
@@ -19,7 +19,9 @@ describe('Rate Limiting Integration', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      throw new Error('Test servers not available - Redis connection required for rate limiting integration tests');
+      throw new Error(
+        'Test servers not available - Redis connection required for rate limiting integration tests'
+      );
       return;
     }
   });
@@ -28,7 +30,9 @@ describe('Rate Limiting Integration', () => {
     // Fail tests if servers are not available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      throw new Error('Test servers not available - Redis connection required for rate limiting integration tests');
+      throw new Error(
+        'Test servers not available - Redis connection required for rate limiting integration tests'
+      );
     }
 
     // Use test server configuration
@@ -38,7 +42,7 @@ describe('Rate Limiting Integration', () => {
 
     // Create Express app with rate limiting
     app = express();
-    
+
     // Trust proxy from local networks only (safer than 'true')
     app.set('trust proxy', 'loopback, linklocal, uniquelocal');
 

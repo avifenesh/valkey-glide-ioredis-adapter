@@ -7,21 +7,23 @@ import { ResultTranslator } from '../../src/utils/ResultTranslator';
 import { SortedSetDataType, GlideString } from '@valkey/valkey-glide';
 
 describe('ResultTranslator', () => {
-
   describe('flattenSortedSetData', () => {
     test('should flatten valid SortedSetDataType to ioredis format', () => {
       const glideResult: SortedSetDataType = [
         { element: 'member1', score: 1.0 },
         { element: 'member2', score: 2.5 },
-        { element: 'member3', score: 3.14159 }
+        { element: 'member3', score: 3.14159 },
       ];
 
       const result = ResultTranslator.flattenSortedSetData(glideResult);
-      
+
       expect(result).toEqual([
-        'member1', '1',
-        'member2', '2.5', 
-        'member3', '3.14159'
+        'member1',
+        '1',
+        'member2',
+        '2.5',
+        'member3',
+        '3.14159',
       ]);
     });
 
@@ -39,30 +41,30 @@ describe('ResultTranslator', () => {
     test('should handle SortedSetDataType with Buffer elements', () => {
       const glideResult: SortedSetDataType = [
         { element: Buffer.from('binary_member'), score: 1.0 },
-        { element: 'string_member', score: 2.0 }
+        { element: 'string_member', score: 2.0 },
       ];
 
       const result = ResultTranslator.flattenSortedSetData(glideResult);
-      
-      expect(result).toEqual([
-        'binary_member', '1',
-        'string_member', '2'
-      ]);
+
+      expect(result).toEqual(['binary_member', '1', 'string_member', '2']);
     });
 
     test('should handle SortedSetDataType with negative scores', () => {
       const glideResult: SortedSetDataType = [
         { element: 'negative', score: -1.5 },
         { element: 'positive', score: 1.5 },
-        { element: 'zero', score: 0 }
+        { element: 'zero', score: 0 },
       ];
 
       const result = ResultTranslator.flattenSortedSetData(glideResult);
-      
+
       expect(result).toEqual([
-        'negative', '-1.5',
-        'positive', '1.5',
-        'zero', '0'
+        'negative',
+        '-1.5',
+        'positive',
+        '1.5',
+        'zero',
+        '0',
       ]);
     });
 
@@ -71,11 +73,11 @@ describe('ResultTranslator', () => {
         { element: 'large', score: Number.MAX_SAFE_INTEGER },
         { element: 'small', score: Number.MIN_SAFE_INTEGER },
         { element: 'infinity', score: Infinity },
-        { element: 'negative_infinity', score: -Infinity }
+        { element: 'negative_infinity', score: -Infinity },
       ];
 
       const result = ResultTranslator.flattenSortedSetData(glideResult);
-      
+
       expect(result[1]).toBe(Number.MAX_SAFE_INTEGER.toString());
       expect(result[3]).toBe(Number.MIN_SAFE_INTEGER.toString());
       expect(result[5]).toBe('Infinity');
@@ -97,22 +99,17 @@ describe('ResultTranslator', () => {
     test('should pass through stream entries as placeholder', () => {
       const glideResult = [
         { id: '1234567890-0', fields: { field1: 'value1', field2: 'value2' } },
-        { id: '1234567891-0', fields: { field3: 'value3' } }
+        { id: '1234567891-0', fields: { field3: 'value3' } },
       ];
 
       const result = ResultTranslator.formatStreamEntries(glideResult);
-      
+
       // Currently passes through as-is (placeholder implementation)
       expect(result).toEqual(glideResult);
     });
 
     test('should handle mixed stream entry types', () => {
-      const glideResult = [
-        'stream_entry_1',
-        { complex: 'object' },
-        null,
-        123
-      ];
+      const glideResult = ['stream_entry_1', { complex: 'object' }, null, 123];
 
       const result = ResultTranslator.formatStreamEntries(glideResult);
       expect(result).toHaveLength(4);
@@ -122,10 +119,14 @@ describe('ResultTranslator', () => {
 
   describe('formatBlockingPopResult', () => {
     test('should format valid blocking pop result', () => {
-      const glideResult: [GlideString, GlideString, number] = ['key1', 'member1', 5.5];
-      
+      const glideResult: [GlideString, GlideString, number] = [
+        'key1',
+        'member1',
+        5.5,
+      ];
+
       const result = ResultTranslator.formatBlockingPopResult(glideResult);
-      
+
       expect(result).toEqual(['key1', 'member1', '5.5']);
     });
 
@@ -140,7 +141,9 @@ describe('ResultTranslator', () => {
     });
 
     test('should handle non-array input', () => {
-      const result = ResultTranslator.formatBlockingPopResult('not-an-array' as any);
+      const result = ResultTranslator.formatBlockingPopResult(
+        'not-an-array' as any
+      );
       expect(result).toBeNull();
     });
 
@@ -148,10 +151,18 @@ describe('ResultTranslator', () => {
       const result1 = ResultTranslator.formatBlockingPopResult(['key'] as any);
       expect(result1).toBeNull();
 
-      const result2 = ResultTranslator.formatBlockingPopResult(['key', 'member'] as any);
+      const result2 = ResultTranslator.formatBlockingPopResult([
+        'key',
+        'member',
+      ] as any);
       expect(result2).toBeNull();
 
-      const result3 = ResultTranslator.formatBlockingPopResult(['key', 'member', 1, 'extra'] as any);
+      const result3 = ResultTranslator.formatBlockingPopResult([
+        'key',
+        'member',
+        1,
+        'extra',
+      ] as any);
       expect(result3).toBeNull();
     });
 
@@ -159,20 +170,28 @@ describe('ResultTranslator', () => {
       const glideResult: [GlideString, GlideString, number] = [
         Buffer.from('buffer_key'),
         Buffer.from('buffer_member'),
-        42.7
+        42.7,
       ];
-      
+
       const result = ResultTranslator.formatBlockingPopResult(glideResult);
-      
+
       expect(result).toEqual(['buffer_key', 'buffer_member', '42.7']);
     });
 
     test('should handle zero and negative scores', () => {
-      const glideResult: [GlideString, GlideString, number] = ['key', 'member', 0];
+      const glideResult: [GlideString, GlideString, number] = [
+        'key',
+        'member',
+        0,
+      ];
       const result1 = ResultTranslator.formatBlockingPopResult(glideResult);
       expect(result1).toEqual(['key', 'member', '0']);
 
-      const negativeResult: [GlideString, GlideString, number] = ['key', 'member', -3.14];
+      const negativeResult: [GlideString, GlideString, number] = [
+        'key',
+        'member',
+        -3.14,
+      ];
       const result2 = ResultTranslator.formatBlockingPopResult(negativeResult);
       expect(result2).toEqual(['key', 'member', '-3.14']);
     });
@@ -181,9 +200,9 @@ describe('ResultTranslator', () => {
   describe('convertStringArray', () => {
     test('should convert valid GlideString array', () => {
       const glideResult: GlideString[] = ['string1', 'string2', 'string3'];
-      
+
       const result = ResultTranslator.convertStringArray(glideResult);
-      
+
       expect(result).toEqual(['string1', 'string2', 'string3']);
     });
 
@@ -201,11 +220,11 @@ describe('ResultTranslator', () => {
       const glideResult: GlideString[] = [
         Buffer.from('buffer1'),
         'regular_string',
-        Buffer.from('buffer2')
+        Buffer.from('buffer2'),
       ];
-      
+
       const result = ResultTranslator.convertStringArray(glideResult);
-      
+
       expect(result).toEqual(['buffer1', 'regular_string', 'buffer2']);
     });
 
@@ -214,11 +233,11 @@ describe('ResultTranslator', () => {
         'valid',
         null as any,
         undefined as any,
-        'another_valid'
+        'another_valid',
       ];
-      
+
       const result = ResultTranslator.convertStringArray(glideResult);
-      
+
       expect(result).toEqual(['valid', '', '', 'another_valid']);
     });
 
@@ -227,11 +246,11 @@ describe('ResultTranslator', () => {
         'string',
         Buffer.from('binary_data', 'utf8'),
         '',
-        Buffer.from('more_binary')
+        Buffer.from('more_binary'),
       ];
-      
+
       const result = ResultTranslator.convertStringArray(glideResult);
-      
+
       expect(result).toEqual(['string', 'binary_data', '', 'more_binary']);
     });
   });
@@ -240,19 +259,19 @@ describe('ResultTranslator', () => {
     test('should format SortedSetDataType when withScores is true', () => {
       const glideResult: SortedSetDataType = [
         { element: 'member1', score: 1.0 },
-        { element: 'member2', score: 2.0 }
+        { element: 'member2', score: 2.0 },
       ];
-      
+
       const result = ResultTranslator.formatRangeResult(glideResult, true);
-      
+
       expect(result).toEqual(['member1', '1', 'member2', '2']);
     });
 
     test('should format string array when withScores is false', () => {
       const glideResult: GlideString[] = ['member1', 'member2', 'member3'];
-      
+
       const result = ResultTranslator.formatRangeResult(glideResult, false);
-      
+
       expect(result).toEqual(['member1', 'member2', 'member3']);
     });
 
@@ -260,7 +279,10 @@ describe('ResultTranslator', () => {
       const result1 = ResultTranslator.formatRangeResult(null as any, true);
       expect(result1).toEqual([]);
 
-      const result2 = ResultTranslator.formatRangeResult(undefined as any, false);
+      const result2 = ResultTranslator.formatRangeResult(
+        undefined as any,
+        false
+      );
       expect(result2).toEqual([]);
     });
 
@@ -276,22 +298,22 @@ describe('ResultTranslator', () => {
       const glideResult: GlideString[] = [
         Buffer.from('binary1'),
         'string1',
-        Buffer.from('binary2')
+        Buffer.from('binary2'),
       ];
-      
+
       const result = ResultTranslator.formatRangeResult(glideResult, false);
-      
+
       expect(result).toEqual(['binary1', 'string1', 'binary2']);
     });
 
     test('should handle SortedSetDataType with Buffer elements when withScores is true', () => {
       const glideResult: SortedSetDataType = [
         { element: Buffer.from('buffer_member'), score: 1.5 },
-        { element: 'string_member', score: 2.5 }
+        { element: 'string_member', score: 2.5 },
       ];
-      
+
       const result = ResultTranslator.formatRangeResult(glideResult, true);
-      
+
       expect(result).toEqual(['buffer_member', '1.5', 'string_member', '2.5']);
     });
   });
@@ -319,15 +341,23 @@ describe('ResultTranslator', () => {
     });
 
     test('should handle very small numbers', () => {
-      expect(ResultTranslator.formatFloatResult(0.000000000000001)).toBe('1e-15');
+      expect(ResultTranslator.formatFloatResult(0.000000000000001)).toBe(
+        '1e-15'
+      );
       // Number.MIN_VALUE may be rounded to 0 due to precision handling
-      const minValueResult = ResultTranslator.formatFloatResult(Number.MIN_VALUE);
+      const minValueResult = ResultTranslator.formatFloatResult(
+        Number.MIN_VALUE
+      );
       expect(minValueResult === '5e-324' || minValueResult === '0').toBe(true);
     });
 
     test('should handle very large numbers', () => {
-      expect(ResultTranslator.formatFloatResult(Number.MAX_SAFE_INTEGER)).toBe('9007199254740991');
-      expect(ResultTranslator.formatFloatResult(1e20)).toBe('100000000000000000000');
+      expect(ResultTranslator.formatFloatResult(Number.MAX_SAFE_INTEGER)).toBe(
+        '9007199254740991'
+      );
+      expect(ResultTranslator.formatFloatResult(1e20)).toBe(
+        '100000000000000000000'
+      );
     });
 
     test('should handle special float values', () => {
@@ -347,7 +377,7 @@ describe('ResultTranslator', () => {
     test('should pass through Error instances unchanged', () => {
       const originalError = new Error('Test error message');
       const result = ResultTranslator.translateError(originalError);
-      
+
       expect(result).toBe(originalError);
       expect(result.message).toBe('Test error message');
     });
@@ -355,28 +385,28 @@ describe('ResultTranslator', () => {
     test('should convert error-like objects to Error instances', () => {
       const errorLike = { message: 'Custom error message' };
       const result = ResultTranslator.translateError(errorLike);
-      
+
       expect(result).toBeInstanceOf(Error);
       expect(result.message).toBe('Custom error message');
     });
 
     test('should handle null error input', () => {
       const result = ResultTranslator.translateError(null);
-      
+
       expect(result).toBeInstanceOf(Error);
       expect(result.message).toBe('Unknown GLIDE error');
     });
 
     test('should handle undefined error input', () => {
       const result = ResultTranslator.translateError(undefined);
-      
+
       expect(result).toBeInstanceOf(Error);
       expect(result.message).toBe('Unknown GLIDE error');
     });
 
     test('should handle string error input', () => {
       const result = ResultTranslator.translateError('String error');
-      
+
       expect(result).toBeInstanceOf(Error);
       expect(result.message).toBe('Unknown GLIDE error');
     });
@@ -384,14 +414,17 @@ describe('ResultTranslator', () => {
     test('should handle object without message property', () => {
       const errorObject = { code: 'ERR_CODE', details: 'Some details' };
       const result = ResultTranslator.translateError(errorObject);
-      
+
       expect(result).toBeInstanceOf(Error);
       expect(result.message).toBe('Unknown GLIDE error');
     });
 
     test('should preserve Error subclass types', () => {
       class CustomError extends Error {
-        constructor(message: string, public code: string) {
+        constructor(
+          message: string,
+          public code: string
+        ) {
           super(message);
           this.name = 'CustomError';
         }
@@ -399,7 +432,7 @@ describe('ResultTranslator', () => {
 
       const customError = new CustomError('Custom message', 'CUSTOM_CODE');
       const result = ResultTranslator.translateError(customError);
-      
+
       expect(result).toBe(customError);
       expect(result).toBeInstanceOf(CustomError);
       expect(result.message).toBe('Custom message');
@@ -409,7 +442,7 @@ describe('ResultTranslator', () => {
     test('should handle TypeError and other Error types', () => {
       const typeError = new TypeError('Type error message');
       const result = ResultTranslator.translateError(typeError);
-      
+
       expect(result).toBe(typeError);
       expect(result).toBeInstanceOf(TypeError);
       expect(result.message).toBe('Type error message');

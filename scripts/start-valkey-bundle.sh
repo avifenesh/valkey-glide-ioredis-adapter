@@ -41,10 +41,19 @@ check_docker() {
         exit 1
     fi
     
-    if ! command -v docker-compose &> /dev/null; then
-        log_error "docker-compose is not installed or not in PATH"
-        log "Please install docker-compose: https://docs.docker.com/compose/install/"
+    if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
+        log_error "docker compose is not available (neither V2 'docker compose' nor V1 'docker-compose')"
+        log "Please install docker compose: https://docs.docker.com/compose/install/"
         exit 1
+    fi
+}
+
+# Function to use appropriate docker compose command
+docker_compose_cmd() {
+    if docker compose version &> /dev/null; then
+        docker compose "$@"
+    else
+        docker-compose "$@"
     fi
 }
 
@@ -66,7 +75,7 @@ stop_existing_containers() {
     
     # Stop any running valkey-bundle containers
     if docker ps --filter "name=valkey-test" --format "{{.Names}}" | grep -q .; then
-        docker-compose -f docker-compose.valkey-bundle.yml down --remove-orphans >/dev/null 2>&1 || true
+        docker_compose_cmd -f docker-compose.valkey-bundle.yml down --remove-orphans >/dev/null 2>&1 || true
     fi
     
     # Stop regular test containers if running
@@ -81,7 +90,7 @@ start_valkey_bundle() {
     log "🚀 Starting Valkey Bundle with JSON and Search modules..."
     
     # Start the container
-    if docker-compose -f docker-compose.valkey-bundle.yml up -d; then
+    if docker_compose_cmd -f docker-compose.valkey-bundle.yml up -d; then
         log_success "✅ Valkey Bundle container started"
     else
         log_error "❌ Failed to start Valkey Bundle container"
@@ -97,7 +106,7 @@ wait_for_valkey_bundle() {
     log "⏳ Waiting for Valkey Bundle to be ready with all modules..."
     
     while true; do
-        if docker-compose -f docker-compose.valkey-bundle.yml ps valkey-bundle | grep -q "healthy"; then
+        if docker_compose_cmd -f docker-compose.valkey-bundle.yml ps valkey-bundle | grep -q "healthy"; then
             log_success "✅ Valkey Bundle is healthy"
             break
         fi
@@ -108,7 +117,7 @@ wait_for_valkey_bundle() {
         if [ $elapsed -ge $timeout ]; then
             log_error "❌ Timeout waiting for Valkey Bundle to be ready"
             log "Container logs:"
-            docker-compose -f docker-compose.valkey-bundle.yml logs valkey-bundle
+            docker_compose_cmd -f docker-compose.valkey-bundle.yml logs valkey-bundle
             exit 1
         fi
         
@@ -177,10 +186,10 @@ show_status() {
     log "   📝 Run JSON tests: npm test tests/unit/json-commands.test.ts"
     log "   📝 Run Search tests: npm test tests/unit/search-commands.test.ts"
     log "   📝 Run all tests: npm test"
-    log "   🔍 Check status: docker-compose -f docker-compose.valkey-bundle.yml ps"
-    log "   📋 View logs: docker-compose -f docker-compose.valkey-bundle.yml logs -f valkey-bundle"
-    log "   🛑 Stop: docker-compose -f docker-compose.valkey-bundle.yml down"
-    log "   🔧 Interactive CLI: docker-compose -f docker-compose.valkey-bundle.yml run --rm valkey-cli"
+    log "   🔍 Check status: docker compose -f docker-compose.valkey-bundle.yml ps"
+    log "   📋 View logs: docker compose -f docker-compose.valkey-bundle.yml logs -f valkey-bundle"
+    log "   🛑 Stop: docker compose -f docker-compose.valkey-bundle.yml down"
+    log "   🔧 Interactive CLI: docker compose -f docker-compose.valkey-bundle.yml run --rm valkey-cli"
 }
 
 # Main execution

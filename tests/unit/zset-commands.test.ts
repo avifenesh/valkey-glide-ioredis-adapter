@@ -3,7 +3,7 @@
  * Real-world patterns: Leaderboards, rankings, time-series data, priority queues
  */
 
-import { Redis } from "../../src";
+import { Redis } from '../../src';
 import { getRedisTestConfig } from '../utils/redis-config';
 
 describe('ZSet Commands - Real-World Patterns', () => {
@@ -21,7 +21,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
   describe('Gaming Leaderboard Pattern', () => {
     test('should handle game score updates with ZADD', async () => {
       const key = 'test:zadd:' + Math.random();
-      
+
       // Add initial players
       const result1 = await redis.zadd(key, 1000, 'player1');
       expect(result1).toBe(1);
@@ -36,7 +36,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
       // Verify final scores
       const players = await redis.zrange(key, 0, -1);
       expect(players).toEqual(['player2', 'player1', 'player3']);
-      
+
       // Check individual scores
       const player1Score = await redis.zscore(key, 'player1');
       expect(player1Score).toBe('1100');
@@ -44,9 +44,9 @@ describe('ZSet Commands - Real-World Patterns', () => {
 
     test('should increment player scores with ZINCRBY', async () => {
       const key = 'test:zincrby:' + Math.random();
-      
+
       await redis.zadd(key, 1000, 'player1');
-      
+
       // Player scores 50 points
       const newScore = await redis.zincrby(key, 50, 'player1');
       expect(newScore).toBe('1050');
@@ -58,14 +58,20 @@ describe('ZSet Commands - Real-World Patterns', () => {
 
     test('should get top players with ZREVRANGE', async () => {
       const key = 'test:zrevrange:' + Math.random();
-      
+
       // Setup leaderboard
-      await redis.zadd(key, 
-        1000, 'alice', 
-        850, 'bob', 
-        1200, 'charlie', 
-        950, 'diana',
-        1100, 'eve'
+      await redis.zadd(
+        key,
+        1000,
+        'alice',
+        850,
+        'bob',
+        1200,
+        'charlie',
+        950,
+        'diana',
+        1100,
+        'eve'
       );
 
       // Get top 3 players (names only for now)
@@ -76,20 +82,25 @@ describe('ZSet Commands - Real-World Patterns', () => {
       const charlieScore = await redis.zscore(key, 'charlie');
       const eveScore = await redis.zscore(key, 'eve');
       const aliceScore = await redis.zscore(key, 'alice');
-      
+
       expect(charlieScore).toBe('1200');
-      expect(eveScore).toBe('1100'); 
+      expect(eveScore).toBe('1100');
       expect(aliceScore).toBe('1000');
     });
 
     test('should find player rank with ZREVRANK and ZSCORE', async () => {
       const key = 'test:zrevrank:' + Math.random();
-      
-      await redis.zadd(key, 
-        1000, 'alice', 
-        850, 'bob', 
-        1200, 'charlie', 
-        950, 'diana'
+
+      await redis.zadd(
+        key,
+        1000,
+        'alice',
+        850,
+        'bob',
+        1200,
+        'charlie',
+        950,
+        'diana'
       );
 
       const rank = await redis.zrevrank(key, 'alice');
@@ -104,14 +115,21 @@ describe('ZSet Commands - Real-World Patterns', () => {
 
     test('should handle score range queries with ZRANGEBYSCORE', async () => {
       const key = 'test:zrangebyscore:' + Math.random();
-      
-      await redis.zadd(key, 
-        500, 'bronze1',
-        600, 'bronze2', 
-        800, 'silver1',
-        900, 'silver2',
-        1100, 'gold1',
-        1200, 'gold2'
+
+      await redis.zadd(
+        key,
+        500,
+        'bronze1',
+        600,
+        'bronze2',
+        800,
+        'silver1',
+        900,
+        'silver2',
+        1100,
+        'gold1',
+        1200,
+        'gold2'
       );
 
       // Get silver tier players (750-999 points)
@@ -123,7 +141,14 @@ describe('ZSet Commands - Real-World Patterns', () => {
       expect(goldPlayers).toEqual(['gold1', 'gold2']);
 
       // Get bottom 2 players with LIMIT
-      const bottomPlayers = await redis.zrangebyscore(key, '-inf', '+inf', 'LIMIT', '0', '2');
+      const bottomPlayers = await redis.zrangebyscore(
+        key,
+        '-inf',
+        '+inf',
+        'LIMIT',
+        '0',
+        '2'
+      );
       expect(bottomPlayers).toEqual(['bronze1', 'bronze2']);
     });
   });
@@ -132,22 +157,27 @@ describe('ZSet Commands - Real-World Patterns', () => {
     test('should manage activity timestamps with ZADD', async () => {
       const key = 'test:activity:' + Math.random();
       const now = Date.now();
-      
+
       // Add activities with timestamps as scores
-      await redis.zadd(key,
-        now - 3600000, 'login',        // 1 hour ago
-        now - 1800000, 'post_created', // 30 min ago  
-        now - 900000, 'comment_added', // 15 min ago
-        now, 'profile_updated'         // now
+      await redis.zadd(
+        key,
+        now - 3600000,
+        'login', // 1 hour ago
+        now - 1800000,
+        'post_created', // 30 min ago
+        now - 900000,
+        'comment_added', // 15 min ago
+        now,
+        'profile_updated' // now
       );
 
       // Get recent activities (last 45 minutes)
       const recentActivities = await redis.zrangebyscore(
-        key, 
+        key,
         now - 2700000, // 45 min ago
         now
       );
-      
+
       expect(recentActivities.length).toBe(3);
       expect(recentActivities).toContain('post_created');
       expect(recentActivities).toContain('comment_added');
@@ -158,12 +188,17 @@ describe('ZSet Commands - Real-World Patterns', () => {
       const key = 'test:cleanup:' + Math.random();
       const now = Date.now();
       const oneDayAgo = now - 86400000;
-      
-      await redis.zadd(key,
-        oneDayAgo - 3600000, 'old_activity1',
-        oneDayAgo - 1800000, 'old_activity2',
-        now - 3600000, 'recent_activity1',
-        now, 'recent_activity2'
+
+      await redis.zadd(
+        key,
+        oneDayAgo - 3600000,
+        'old_activity1',
+        oneDayAgo - 1800000,
+        'old_activity2',
+        now - 3600000,
+        'recent_activity1',
+        now,
+        'recent_activity2'
       );
 
       // Remove activities older than 1 day
@@ -178,13 +213,18 @@ describe('ZSet Commands - Real-World Patterns', () => {
   describe('Priority Queue Pattern', () => {
     test('should implement priority task queue', async () => {
       const key = 'test:priority:' + Math.random();
-      
+
       // Add tasks with priority scores (higher = more important)
-      await redis.zadd(key,
-        1, 'low_priority_cleanup',
-        5, 'medium_priority_email',
-        10, 'high_priority_payment',
-        15, 'critical_security_alert'
+      await redis.zadd(
+        key,
+        1,
+        'low_priority_cleanup',
+        5,
+        'medium_priority_email',
+        10,
+        'high_priority_payment',
+        15,
+        'critical_security_alert'
       );
 
       // Process highest priority task
@@ -202,7 +242,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
 
     test('should handle empty queue operations', async () => {
       const key = 'test:empty:' + Math.random();
-      
+
       const emptyResult = await redis.zpopmax(key);
       expect(emptyResult).toEqual([]);
 
@@ -214,12 +254,12 @@ describe('ZSet Commands - Real-World Patterns', () => {
   describe('Complex Scoring Scenarios', () => {
     test('should handle score updates correctly', async () => {
       const key = 'test:complex:' + Math.random();
-      
+
       // Add initial score
       const result1 = await redis.zadd(key, 100, 'player1');
       expect(result1).toBe(1);
 
-      // Update existing player score  
+      // Update existing player score
       const result2 = await redis.zadd(key, 200, 'player1');
       expect(result2).toBe(0); // No new members, but score updated
 
@@ -229,7 +269,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
 
     test('should handle large datasets efficiently', async () => {
       const key = 'test:large:' + Math.random();
-      
+
       // Add many members
       const members = [];
       for (let i = 0; i < 100; i++) {
@@ -250,7 +290,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
   describe('Error Handling and Edge Cases', () => {
     test('should handle invalid operations gracefully', async () => {
       const key = 'test:nonexistent:' + Math.random();
-      
+
       // Operations on non-existent keys
       const rank = await redis.zrank(key, 'member');
       expect(rank).toBeNull();
@@ -264,7 +304,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
 
     test('should handle type errors for wrong data types', async () => {
       const key = 'test:string:' + Math.random();
-      
+
       // Set a string value first
       await redis.set(key, 'not-a-zset');
 
@@ -275,11 +315,15 @@ describe('ZSet Commands - Real-World Patterns', () => {
 
     test('should handle floating point scores correctly', async () => {
       const key = 'test:float:' + Math.random();
-      
-      await redis.zadd(key, 
-        1.5, 'member1',
-        2.7, 'member2', 
-        1.5000001, 'member3' // Very close to member1
+
+      await redis.zadd(
+        key,
+        1.5,
+        'member1',
+        2.7,
+        'member2',
+        1.5000001,
+        'member3' // Very close to member1
       );
 
       // Get members in order
@@ -290,7 +334,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
       const score1 = await redis.zscore(key, 'member1');
       const score2 = await redis.zscore(key, 'member2');
       const score3 = await redis.zscore(key, 'member3');
-      
+
       expect(parseFloat(score1!)).toBeCloseTo(1.5, 10);
       expect(parseFloat(score2!)).toBeCloseTo(2.7, 10);
       expect(parseFloat(score3!)).toBeCloseTo(1.5000001, 10);

@@ -1,16 +1,16 @@
 /**
  * System Commands Test Suite
  * Tests for monitoring, metrics, and system operations
- * 
+ *
  * Based on real-world patterns from:
  * - Netflix's Redis monitoring dashboards
- * - Airbnb's performance tracking systems  
+ * - Airbnb's performance tracking systems
  * - Stripe's Redis health checks
  * - Discord's memory monitoring
  * - GitHub's system diagnostics
  */
 
-import { Redis } from "../../src";
+import { Redis } from '../../src';
 import { RedisOptions } from '../../src/types';
 
 describe('System Commands - Monitoring & Metrics', () => {
@@ -20,7 +20,7 @@ describe('System Commands - Monitoring & Metrics', () => {
     const config: RedisOptions = {
       host: 'localhost',
       port: 6379,
-      lazyConnect: true
+      lazyConnect: true,
     };
     redis = new Redis(config);
   });
@@ -34,10 +34,10 @@ describe('System Commands - Monitoring & Metrics', () => {
   describe('Server Information Commands', () => {
     test('should retrieve server info like Netflix monitoring', async () => {
       const info = await redis.info();
-      
+
       expect(typeof info).toBe('string');
       expect(info.length).toBeGreaterThan(0);
-      
+
       // Should contain standard Redis info sections
       expect(info).toContain('redis_version');
       expect(info).toContain('used_memory');
@@ -49,7 +49,7 @@ describe('System Commands - Monitoring & Metrics', () => {
       const memoryInfo = await redis.info('memory');
       expect(typeof memoryInfo).toBe('string');
       expect(memoryInfo).toContain('used_memory');
-      
+
       // Test stats section for performance metrics
       const statsInfo = await redis.info('stats');
       expect(typeof statsInfo).toBe('string');
@@ -60,11 +60,11 @@ describe('System Commands - Monitoring & Metrics', () => {
       // Get maxmemory configuration
       const maxmemory = await redis.config('GET', 'maxmemory');
       expect(Array.isArray(maxmemory)).toBe(true);
-      
+
       // Get timeout configuration
       const timeout = await redis.config('GET', 'timeout');
       expect(Array.isArray(timeout)).toBe(true);
-      
+
       // Pattern to get all save-related configs
       const saveConfigs = await redis.config('GET', 'save*');
       expect(Array.isArray(saveConfigs)).toBe(true);
@@ -76,7 +76,7 @@ describe('System Commands - Monitoring & Metrics', () => {
       await redis.set('monitor:test:2', 'value2');
       await redis.hset('monitor:hash', 'field1', 'value1');
       await redis.sadd('monitor:set', 'member1', 'member2');
-      
+
       // Get database size
       const dbsize = await redis.dbsize();
       expect(typeof dbsize).toBe('number');
@@ -88,23 +88,23 @@ describe('System Commands - Monitoring & Metrics', () => {
     test('should track memory usage patterns like Stripe', async () => {
       // Create data structures of different types
       const baseKey = 'memory:test:' + Math.random();
-      
+
       // String data
       await redis.set(`${baseKey}:string`, 'x'.repeat(1000));
-      
+
       // Hash data
       const hashData: Record<string, string> = {};
       for (let i = 0; i < 50; i++) {
         hashData[`field_${i}`] = `value_${i}_${'x'.repeat(20)}`;
       }
       await redis.hmset(`${baseKey}:hash`, hashData);
-      
+
       // List data
       const listKey = `${baseKey}:list`;
       for (let i = 0; i < 30; i++) {
         await redis.lpush(listKey, `item_${i}_${'x'.repeat(15)}`);
       }
-      
+
       // Get memory usage for specific key
       try {
         const memoryUsage = await redis.memory('USAGE', `${baseKey}:string`);
@@ -119,11 +119,11 @@ describe('System Commands - Monitoring & Metrics', () => {
     test('should analyze memory statistics for performance tuning', async () => {
       // Get overall memory stats from INFO
       const info = await redis.info('memory');
-      
+
       // Parse memory stats
       const lines = info.split('\r\n');
       const memoryStats: Record<string, string> = {};
-      
+
       for (const line of lines) {
         if (line.includes(':') && !line.startsWith('#')) {
           const [key, value] = line.split(':');
@@ -132,11 +132,11 @@ describe('System Commands - Monitoring & Metrics', () => {
           }
         }
       }
-      
+
       // Verify key memory metrics exist
       expect('used_memory' in memoryStats).toBe(true);
       expect('used_memory_rss' in memoryStats).toBe(true);
-      
+
       // Memory should be positive numbers
       const usedMemory = parseInt(memoryStats['used_memory'] || '0');
       expect(usedMemory).toBeGreaterThan(0);
@@ -150,7 +150,7 @@ describe('System Commands - Monitoring & Metrics', () => {
         const clients = await redis.client('LIST');
         expect(typeof clients).toBe('string');
         expect(clients.length).toBeGreaterThan(0);
-        
+
         // Should contain client information
         expect(clients).toContain('addr=');
         expect(clients).toContain('fd=');
@@ -167,22 +167,22 @@ describe('System Commands - Monitoring & Metrics', () => {
       await redis.hset('stats:hash', 'field', 'value');
       await redis.hget('stats:hash', 'field');
       await redis.incr('stats:counter');
-      
+
       // Get command statistics
       const info = await redis.info('commandstats');
       expect(typeof info).toBe('string');
-      
+
       if (info.includes('cmdstat_')) {
         // Parse command stats
         const lines = info.split('\r\n');
         let foundSetStat = false;
         let foundGetStat = false;
-        
+
         for (const line of lines) {
           if (line.includes('cmdstat_set')) foundSetStat = true;
           if (line.includes('cmdstat_get')) foundGetStat = true;
         }
-        
+
         expect(foundSetStat || foundGetStat).toBe(true);
       }
     });
@@ -191,14 +191,14 @@ describe('System Commands - Monitoring & Metrics', () => {
   describe('Performance Monitoring Commands', () => {
     test('should measure latency like Netflix systems', async () => {
       const key = 'latency:test:' + Math.random();
-      
+
       // Measure SET operation latency
       const startTime = Date.now();
       await redis.set(key, 'test_value');
       const setLatency = Date.now() - startTime;
       expect(setLatency).toBeGreaterThanOrEqual(0);
       expect(setLatency).toBeLessThan(1000); // Should be fast
-      
+
       // Measure GET operation latency
       const getStartTime = Date.now();
       const value = await redis.get(key);
@@ -213,7 +213,7 @@ describe('System Commands - Monitoring & Metrics', () => {
         // Get slow log entries
         const slowlog = await redis.slowlog('GET', '10');
         expect(Array.isArray(slowlog)).toBe(true);
-        
+
         // Each entry should be an array with [id, timestamp, duration, command]
         for (const entry of slowlog.slice(0, 3)) {
           expect(Array.isArray(entry)).toBe(true);
@@ -233,7 +233,7 @@ describe('System Commands - Monitoring & Metrics', () => {
     test('should benchmark operations for capacity planning', async () => {
       const operations = 100;
       const testKey = 'benchmark:' + Math.random();
-      
+
       // Benchmark SET operations
       const setStartTime = Date.now();
       for (let i = 0; i < operations; i++) {
@@ -241,9 +241,9 @@ describe('System Commands - Monitoring & Metrics', () => {
       }
       const setDuration = Date.now() - setStartTime;
       const setOpsPerSecond = (operations / setDuration) * 1000;
-      
+
       expect(setOpsPerSecond).toBeGreaterThan(0);
-      
+
       // Benchmark GET operations
       const getStartTime = Date.now();
       for (let i = 0; i < operations; i++) {
@@ -251,9 +251,9 @@ describe('System Commands - Monitoring & Metrics', () => {
       }
       const getDuration = Date.now() - getStartTime;
       const getOpsPerSecond = (operations / getDuration) * 1000;
-      
+
       expect(getOpsPerSecond).toBeGreaterThan(0);
-      
+
       // Performance should be reasonable
       expect(setOpsPerSecond).toBeGreaterThan(10); // At least 10 ops/sec
       expect(getOpsPerSecond).toBeGreaterThan(10);
@@ -264,7 +264,7 @@ describe('System Commands - Monitoring & Metrics', () => {
     test('should provide debug information for troubleshooting', async () => {
       const key = 'debug:test:' + Math.random();
       await redis.set(key, 'debug_value');
-      
+
       try {
         // Get object information for debugging
         const objectInfo = await redis.debug('OBJECT', key);
@@ -280,7 +280,7 @@ describe('System Commands - Monitoring & Metrics', () => {
       // Basic ping
       const pong = await redis.ping();
       expect(pong).toBe('PONG');
-      
+
       // Ping with custom message
       const customMessage = 'health_check_' + Math.random();
       const response = await redis.ping(customMessage);
@@ -297,11 +297,11 @@ describe('System Commands - Monitoring & Metrics', () => {
       const time = await redis.time();
       expect(Array.isArray(time)).toBe(true);
       expect(time).toHaveLength(2);
-      
+
       // First element should be Unix timestamp (seconds)
       expect(typeof time[0]).toBe('string');
       expect(parseInt(time[0])).toBeGreaterThan(1600000000); // After 2020
-      
+
       // Second element should be microseconds
       expect(typeof time[1]).toBe('string');
       expect(parseInt(time[1])).toBeGreaterThanOrEqual(0);

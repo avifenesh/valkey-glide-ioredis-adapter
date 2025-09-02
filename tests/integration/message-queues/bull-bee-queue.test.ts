@@ -1,6 +1,6 @@
 /**
  * Message Queue Systems Integration Test
- * 
+ *
  * Tests that our ioredis adapter works correctly with popular message queue libraries:
  * - Bull (legacy but still widely used)
  * - Bee-queue (simple, fast job queue)
@@ -8,7 +8,7 @@
 
 import Queue = require('bull');
 import BeeQueue = require('bee-queue');
-import { Redis } from "../../../src";
+import { Redis } from '../../../src';
 import { testUtils } from '../../setup';
 
 describe('Message Queue Systems Integration', () => {
@@ -21,14 +21,13 @@ describe('Message Queue Systems Integration', () => {
   });
 
   beforeEach(async () => {
-    
     // Use direct standalone config to avoid port discovery
     const config = { host: 'localhost', port: 6379 };
     redisClient = new Redis({
       ...config,
-      keyPrefix: keyPrefix
+      keyPrefix: keyPrefix,
     });
-    
+
     await redisClient.connect();
   });
 
@@ -57,36 +56,34 @@ describe('Message Queue Systems Integration', () => {
         const config = { host: 'localhost', port: 6379 }; // Direct config to avoid server discovery
         queue = new Queue('test-bull-queue', {
           createClient: (_type: 'client' | 'subscriber' | 'bclient') => {
-            const options: any = { 
-              host: config.host, 
+            const options: any = {
+              host: config.host,
               port: config.port,
               keyPrefix: keyPrefix + 'bull:',
               // CRITICAL: ALL Bull clients need to connect immediately
-              lazyConnect: false // No lazy connections for Bull clients
+              lazyConnect: false, // No lazy connections for Bull clients
             };
-            
+
             // Set maxRetriesPerRequest to null for bclient and subscriber types (Bull requirement)
             if (_type === 'bclient' || _type === 'subscriber') {
               options.maxRetriesPerRequest = null;
             }
-            
+
             if (_type === 'bclient') {
             }
-            
+
             const client = new Redis(options);
             return client as any;
-          }
+          },
         });
 
         // Add error event listener to debug issues
-        queue.on('error', (_error) => {
-        });
-        
-        queue.on('failed', (_job, _err) => {
-        });
+        queue.on('error', _error => {});
+
+        queue.on('failed', (_job, _err) => {});
 
         // Setup default job processor (will be overridden in specific tests)
-        processor = jest.fn(async (_job) => {
+        processor = jest.fn(async _job => {
           return { processed: true };
         });
       } catch (error) {
@@ -101,26 +98,27 @@ describe('Message Queue Systems Integration', () => {
     });
 
     test('should create and process simple jobs', async () => {
-      
       // Skip test if Bull can't connect properly
       try {
         const testConnection = await Promise.race([
           queue.isReady().then(() => {
             return true;
           }),
-          new Promise<boolean>((resolve) => setTimeout(() => {
-            resolve(false);
-          }, 3000))
+          new Promise<boolean>(resolve =>
+            setTimeout(() => {
+              resolve(false);
+            }, 3000)
+          ),
         ]);
-        
+
         expect(testConnection).toBe(true);
       } catch (e) {
         throw e;
       }
-      
+
       // Setup processor for this test
       queue.process('test-job', processor);
-      
+
       const jobData = {
         message: 'Hello Bull!',
         timestamp: Date.now(),
@@ -132,18 +130,20 @@ describe('Message Queue Systems Integration', () => {
 
       // Wait for job to be processed with timeout
       const processed = await Promise.race([
-        new Promise<boolean>((resolve) => {
+        new Promise<boolean>(resolve => {
           queue.on('completed', completedJob => {
             if (completedJob.id === job.id) {
               resolve(true);
             }
           });
         }),
-        new Promise<boolean>((resolve) => setTimeout(() => {
-          resolve(false);
-        }, 8000))
+        new Promise<boolean>(resolve =>
+          setTimeout(() => {
+            resolve(false);
+          }, 8000)
+        ),
       ]);
-      
+
       if (processed) {
         expect(processor).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -159,7 +159,7 @@ describe('Message Queue Systems Integration', () => {
       try {
         // Setup processor for this test
         queue.process('delayed-job', processor);
-        
+
         const delayMs = 200;
         const startTime = Date.now();
 
@@ -172,18 +172,22 @@ describe('Message Queue Systems Integration', () => {
         );
 
         const completed = await Promise.race([
-          new Promise<boolean>((resolve) => {
+          new Promise<boolean>(resolve => {
             queue.on('completed', completedJob => {
               if (completedJob.id === job.id) {
                 const endTime = Date.now();
-                expect(endTime - startTime).toBeGreaterThanOrEqual(delayMs - 50); // Allow some tolerance
+                expect(endTime - startTime).toBeGreaterThanOrEqual(
+                  delayMs - 50
+                ); // Allow some tolerance
                 resolve(true);
               }
             });
           }),
-          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000))
+          new Promise<boolean>(resolve =>
+            setTimeout(() => resolve(false), 8000)
+          ),
         ]);
-        
+
         expect(completed).toBe(true);
       } catch (e) {
         throw e;
@@ -199,7 +203,7 @@ describe('Message Queue Systems Integration', () => {
           processedJobs.push(job.data);
           return { processed: true };
         };
-        
+
         queue.process('low', jobProcessor);
         queue.process('high', jobProcessor);
         queue.process('medium', jobProcessor);
@@ -211,7 +215,7 @@ describe('Message Queue Systems Integration', () => {
 
         // Wait for all jobs to complete with timeout
         const allCompleted = await Promise.race([
-          new Promise<boolean>((resolve) => {
+          new Promise<boolean>(resolve => {
             let completedCount = 0;
             queue.on('completed', () => {
               completedCount++;
@@ -220,20 +224,24 @@ describe('Message Queue Systems Integration', () => {
               }
             });
           }),
-          new Promise<boolean>((resolve) => {
+          new Promise<boolean>(resolve => {
             setTimeout(() => resolve(false), 5000);
-          })
+          }),
         ]);
 
         if (allCompleted) {
           // Test that jobs were processed (allow flexibility in order due to Redis adapter differences)
           expect(processedJobs.length).toBe(3);
           expect(processedJobs.some(job => job.priority === 'high')).toBe(true);
-          expect(processedJobs.some(job => job.priority === 'medium')).toBe(true);
+          expect(processedJobs.some(job => job.priority === 'medium')).toBe(
+            true
+          );
           expect(processedJobs.some(job => job.priority === 'low')).toBe(true);
         }
         if (!allCompleted) {
-          throw new Error('Bull priority test timeout - Redis adapter priority handling incompatible');
+          throw new Error(
+            'Bull priority test timeout - Redis adapter priority handling incompatible'
+          );
         }
       } catch (e) {
         throw e;
@@ -276,7 +284,7 @@ describe('Message Queue Systems Integration', () => {
         );
 
         const completed = await Promise.race([
-          new Promise<boolean>((resolve) => {
+          new Promise<boolean>(resolve => {
             retryQueue.on('completed', completedJob => {
               if (completedJob.id === job.id) {
                 expect(attemptCount).toBe(3);
@@ -284,13 +292,15 @@ describe('Message Queue Systems Integration', () => {
               }
             });
           }),
-          new Promise<boolean>((resolve) => {
+          new Promise<boolean>(resolve => {
             setTimeout(() => resolve(false), 10000); // Longer timeout for retries
-          })
+          }),
         ]);
 
         if (!completed) {
-          throw new Error('Bull retry test timeout - Redis adapter does not support Bull retry mechanisms');
+          throw new Error(
+            'Bull retry test timeout - Redis adapter does not support Bull retry mechanisms'
+          );
         }
 
         await retryQueue.close();
@@ -305,36 +315,36 @@ describe('Message Queue Systems Integration', () => {
         const config = { host: 'localhost', port: 6379 };
         const statsQueue = new Queue('test-bull-stats', {
           createClient: (_type: 'client' | 'subscriber' | 'bclient') => {
-            const options: any = { 
-              host: config.host, 
+            const options: any = {
+              host: config.host,
               port: config.port,
               keyPrefix: keyPrefix + 'stats:',
-              lazyConnect: false
+              lazyConnect: false,
             };
-            
+
             if (_type === 'bclient' || _type === 'subscriber') {
               options.maxRetriesPerRequest = null;
             }
-            
+
             return new Redis(options) as any;
           },
           defaultJobOptions: {
-            removeOnComplete: false,  // Keep completed jobs for statistics
-            removeOnFail: false,      // Keep failed jobs for statistics
-          }
+            removeOnComplete: false, // Keep completed jobs for statistics
+            removeOnFail: false, // Keep failed jobs for statistics
+          },
         });
 
-        // Setup processor to handle jobs  
+        // Setup processor to handle jobs
         statsQueue.process('job1', processor);
         statsQueue.process('job2', processor);
         statsQueue.process('job3', processor);
-        
+
         // Track completed jobs
         let completedCount = 0;
-        statsQueue.on('completed', (_job) => {
+        statsQueue.on('completed', _job => {
           completedCount++;
         });
-        
+
         // Add some jobs
         await statsQueue.add('job1', { data: 'test1' });
         await statsQueue.add('job2', { data: 'test2' });
@@ -358,13 +368,15 @@ describe('Message Queue Systems Integration', () => {
         const waiting = await statsQueue.getWaiting();
         const active = await statsQueue.getActive();
         const completed = await statsQueue.getCompleted();
-        
+
         const totalJobs = waiting.length + active.length + completed.length;
-        
+
         await statsQueue.close();
-        
+
         if (totalJobs === 0) {
-          throw new Error('Bull statistics test - no jobs found. Redis adapter compatibility issues with Bull job tracking detected');
+          throw new Error(
+            'Bull statistics test - no jobs found. Redis adapter compatibility issues with Bull job tracking detected'
+          );
         }
         expect(totalJobs).toBeGreaterThan(0);
       } catch (e) {
@@ -456,23 +468,24 @@ describe('Message Queue Systems Integration', () => {
 
         // Wait for job to be processed with more lenient timeout and error handling
         const processed = await Promise.race([
-          new Promise<boolean>((resolve) => {
+          new Promise<boolean>(resolve => {
             queue.on('succeeded', () => {
               const actualDelay = processedAt - startTime;
-              if (actualDelay >= delayMs - 100) { // Allow some tolerance
+              if (actualDelay >= delayMs - 100) {
+                // Allow some tolerance
                 resolve(true);
               } else {
                 resolve(false);
               }
             });
           }),
-          new Promise<boolean>((resolve) => {
+          new Promise<boolean>(resolve => {
             setTimeout(() => {
               resolve(false);
             }, delayMs + 3000); // More generous timeout
-          })
+          }),
         ]);
-        
+
         if (processed && processedAt > 0) {
           expect(processedAt - startTime).toBeGreaterThanOrEqual(delayMs - 100);
         } else {
@@ -522,7 +535,7 @@ describe('Message Queue Systems Integration', () => {
       });
 
       // Check queue health - bee-queue uses single parameter callback
-      const health = await new Promise<any>((resolve) => {
+      const health = await new Promise<any>(resolve => {
         try {
           queue.checkHealth((counts: any) => {
             if (counts === null || counts === undefined) {
@@ -531,7 +544,7 @@ describe('Message Queue Systems Integration', () => {
                 waiting: 1,
                 active: 0,
                 succeeded: 0,
-                failed: 0
+                failed: 0,
               });
             } else {
               resolve(counts);
@@ -543,7 +556,7 @@ describe('Message Queue Systems Integration', () => {
             waiting: 1,
             active: 0,
             succeeded: 0,
-            failed: 0
+            failed: 0,
           });
         }
       });
@@ -588,7 +601,6 @@ describe('Message Queue Systems Integration', () => {
 
       expect(jobs.length).toBe(jobCount);
       expect(duration).toBeLessThan(5000); // Should complete within 5 seconds
-
 
       await bullQueue.close();
     });
@@ -638,7 +650,7 @@ describe('Message Queue Systems Integration', () => {
       const config = await testUtils.getStandaloneConfig();
       customRedisClient = new Redis({
         ...config,
-        keyPrefix: keyPrefix + 'custom:'
+        keyPrefix: keyPrefix + 'custom:',
       });
       await customRedisClient.connect();
 
@@ -655,7 +667,7 @@ describe('Message Queue Systems Integration', () => {
           redis.call('SET', KEYS[1], newValue)
           return newValue
         `,
-        numberOfKeys: 1
+        numberOfKeys: 1,
       });
     });
 
@@ -671,25 +683,32 @@ describe('Message Queue Systems Integration', () => {
     test('should support defineCommand for custom Lua scripts', async () => {
       // Clean up any existing test data first
       await customRedisClient.del('test:counter');
-      
+
       // Test the custom command directly with enhanced error handling
       try {
-        const result1 = await (customRedisClient as any).incrementAndGet('test:counter', '5');
+        const result1 = await (customRedisClient as any).incrementAndGet(
+          'test:counter',
+          '5'
+        );
         expect(result1).toBe(5);
 
-        const result2 = await (customRedisClient as any).incrementAndGet('test:counter', '3');
+        const result2 = await (customRedisClient as any).incrementAndGet(
+          'test:counter',
+          '3'
+        );
         expect(result2).toBe(8);
 
         // Verify the value is actually stored
         const storedValue = await customRedisClient.get('test:counter');
         expect(parseInt(storedValue as string)).toBe(8);
-        
       } catch (err) {
-        
         // Provide detailed error information
-        if (err instanceof Error && err.message.includes('arguments must be strings or integers')) {
+        if (
+          err instanceof Error &&
+          err.message.includes('arguments must be strings or integers')
+        ) {
         }
-        
+
         // Re-throw to fail the test with proper error details
         throw err;
       }
@@ -697,25 +716,26 @@ describe('Message Queue Systems Integration', () => {
 
     test('should integrate with Bull using createClient option', async () => {
       const config = await testUtils.getStandaloneConfig();
-      
+
       // Create Bull queue with custom createClient function using our enhanced adapter
       queue = new Queue('custom-client-queue', {
         createClient: (type: 'client' | 'subscriber') => {
-          
           // Create our enhanced Redis adapter
           const client = new Redis({
             ...config,
-            keyPrefix: keyPrefix + `bull-${type}:`
+            keyPrefix: keyPrefix + `bull-${type}:`,
           });
-          
+
           // Enhanced connection pattern: start connecting immediately
-          client.connect().then(() => {
-          }).catch(err => {
-            client.emit('error', err);
-          });
-          
+          client
+            .connect()
+            .then(() => {})
+            .catch(err => {
+              client.emit('error', err);
+            });
+
           return client as any;
-        }
+        },
       });
 
       // Wait for Bull to initialize with better timeout handling
@@ -724,7 +744,7 @@ describe('Message Queue Systems Integration', () => {
       // Test that the queue works with our custom clients
       const processedJobs: any[] = [];
 
-      queue.process('custom-client-job', async (job) => {
+      queue.process('custom-client-job', async job => {
         processedJobs.push(job.data);
         return { success: true, processedBy: 'customClient' };
       });
@@ -732,20 +752,20 @@ describe('Message Queue Systems Integration', () => {
       // Add a job
       const job = await queue.add('custom-client-job', {
         message: 'Using custom Redis adapter!',
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
 
       expect(job.id).toBeDefined();
 
       // Wait for job processing with enhanced error handling
       const processed = await Promise.race([
-        new Promise<boolean>((resolve) => {
-          queue.on('completed', (completedJob) => {
+        new Promise<boolean>(resolve => {
+          queue.on('completed', completedJob => {
             if (completedJob.id === job.id) {
               resolve(true);
             }
           });
-          
+
           // Also listen for failures
           queue.on('failed', (failedJob, err) => {
             if (failedJob.id === job.id) {
@@ -754,27 +774,29 @@ describe('Message Queue Systems Integration', () => {
             }
           });
         }),
-        new Promise<boolean>((resolve) => {
+        new Promise<boolean>(resolve => {
           setTimeout(() => {
             resolve(false);
           }, 8000); // Increased timeout for better reliability
-        })
+        }),
       ]);
 
       if (processed) {
         expect(processedJobs.length).toBe(1);
         expect(processedJobs[0].message).toBe('Using custom Redis adapter!');
       } else {
-        throw new Error('Bull createClient integration test timed out - Bull compatibility issue with enhanced adapter');
-        
+        throw new Error(
+          'Bull createClient integration test timed out - Bull compatibility issue with enhanced adapter'
+        );
+
         // Instead of failing, let's check what happened
         const waiting = await queue.getWaiting();
         const active = await queue.getActive();
         const completed = await queue.getCompleted();
         const failed = await queue.getFailed();
-        
+
         // Bull queue status check completed
-        
+
         // Test passes if we can at least interact with Bull's APIs (shows basic compatibility)
         expect(typeof waiting.length).toBe('number');
         expect(typeof active.length).toBe('number');
@@ -785,11 +807,11 @@ describe('Message Queue Systems Integration', () => {
 
     test('should demonstrate Bull can access custom commands through our adapter', async () => {
       const config = await testUtils.getStandaloneConfig();
-      
+
       // Create a shared Redis client with custom commands
       const sharedClient = new Redis({
         ...config,
-        keyPrefix: keyPrefix + 'shared:'
+        keyPrefix: keyPrefix + 'shared:',
       });
       await sharedClient.connect();
 
@@ -808,27 +830,26 @@ describe('Message Queue Systems Integration', () => {
           
           return count
         `,
-        numberOfKeys: 0
+        numberOfKeys: 0,
       });
 
-      // Create Bull queue that uses the shared client  
+      // Create Bull queue that uses the shared client
       queue = new Queue('shared-client-queue', {
         createClient: (type: 'client' | 'subscriber') => {
-          
           // For this test, return the same shared client for both types
           // In production, you'd want separate client instances
           if (type === 'subscriber') {
             // Create a separate client for subscriber to avoid conflicts
             const subClient = new Redis({
               ...config,
-              keyPrefix: keyPrefix + 'shared-sub:'
+              keyPrefix: keyPrefix + 'shared-sub:',
             });
             subClient.connect().catch(console.error);
             return subClient as any;
           }
-          
+
           return sharedClient as any;
-        }
+        },
       });
 
       let jobsCompleted = 0;
@@ -836,55 +857,56 @@ describe('Message Queue Systems Integration', () => {
       // Set up processors for each job type
       const jobProcessor = async (job: any) => {
         jobsCompleted++;
-        
+
         // Use the custom command via the shared client
         try {
-          const completionCount = await (sharedClient as any).trackJobCompletion(
+          const completionCount = await (
+            sharedClient as any
+          ).trackJobCompletion(
             job.id?.toString() || 'unknown',
             'completed',
             Date.now().toString()
           );
-          
-          
-          return { 
-            processed: true, 
+
+          return {
+            processed: true,
             completionCount,
-            customCommandUsed: true 
+            customCommandUsed: true,
           };
         } catch (err) {
           console.error('Custom command failed:', err);
           return {
             processed: true,
             customCommandUsed: false,
-            error: err instanceof Error ? err.message : String(err)
+            error: err instanceof Error ? err.message : String(err),
           };
         }
       };
-      
+
       queue.process('tracked-job-1', jobProcessor);
       queue.process('tracked-job-2', jobProcessor);
 
       // Add multiple jobs to test the custom command
       const jobs = await Promise.all([
         queue.add('tracked-job-1', { data: 'job1' }),
-        queue.add('tracked-job-2', { data: 'job2' })
+        queue.add('tracked-job-2', { data: 'job2' }),
       ]);
 
       expect(jobs.length).toBe(2);
 
       // Wait for both jobs to complete with enhanced error handling
       const allCompleted = await Promise.race([
-        new Promise<boolean>((resolve) => {
+        new Promise<boolean>(resolve => {
           let completedCount = 0;
           let failedCount = 0;
-          
+
           queue.on('completed', (_job, _result) => {
             completedCount++;
             if (completedCount + failedCount >= 2) {
               resolve(true);
             }
           });
-          
+
           queue.on('failed', (job, err) => {
             failedCount++;
             console.error(`❌ Job ${job.id} failed:`, err.message);
@@ -893,33 +915,43 @@ describe('Message Queue Systems Integration', () => {
             }
           });
         }),
-        new Promise<boolean>((resolve) => {
+        new Promise<boolean>(resolve => {
           setTimeout(() => {
             resolve(false);
           }, 12000);
-        })
+        }),
       ]);
 
       if (allCompleted) {
         // Verify the custom command worked
         try {
-          const totalCompletions = await sharedClient.get('jobs:completed:count');
+          const totalCompletions = await sharedClient.get(
+            'jobs:completed:count'
+          );
           if (totalCompletions) {
-            expect(parseInt(totalCompletions as string)).toBeGreaterThanOrEqual(2);
+            expect(parseInt(totalCompletions as string)).toBeGreaterThanOrEqual(
+              2
+            );
           } else {
-            throw new Error('Custom command counter not found - compatibility issues detected');
+            throw new Error(
+              'Custom command counter not found - compatibility issues detected'
+            );
           }
         } catch (err) {
-          throw new Error(`Error checking custom command results: ${err instanceof Error ? err.message : String(err)}`);
+          throw new Error(
+            `Error checking custom command results: ${err instanceof Error ? err.message : String(err)}`
+          );
         }
       } else {
-        throw new Error('Jobs did not complete as expected - Bull queue compatibility issue');
-        
+        throw new Error(
+          'Jobs did not complete as expected - Bull queue compatibility issue'
+        );
+
         // Check queue status for debugging
         try {
           const waiting = await queue.getWaiting();
           const failed = await queue.getFailed();
-          
+
           // Test passes if we can at least get queue status (basic functionality works)
           expect(typeof waiting.length).toBe('number');
           expect(typeof failed.length).toBe('number');

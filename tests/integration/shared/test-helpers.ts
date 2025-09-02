@@ -2,7 +2,7 @@
  * Shared utilities for integration tests
  */
 
-import { Redis } from "../../src";
+import { Redis } from '../../src';
 import { testUtils } from '../../setup';
 
 export interface IntegrationTestConfig {
@@ -25,13 +25,15 @@ export class IntegrationTestHelper {
   async setupRedis(): Promise<Redis> {
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      throw new Error('Test servers not available. Please run: ./scripts/start-test-servers.sh');
+      throw new Error(
+        'Test servers not available. Please run: ./scripts/start-test-servers.sh'
+      );
     }
 
     const serverConfig = testUtils.getStandaloneConfig();
     this.redisClient = new Redis({
       ...serverConfig,
-      keyPrefix: this.config.keyPrefix
+      keyPrefix: this.config.keyPrefix,
     });
 
     await this.redisClient.connect();
@@ -46,7 +48,7 @@ export class IntegrationTestHelper {
     return {
       port: serverConfig.port,
       host: serverConfig.host,
-      keyPrefix: this.config.keyPrefix
+      keyPrefix: this.config.keyPrefix,
     };
   }
 
@@ -60,7 +62,7 @@ export class IntegrationTestHelper {
       // Clean up test keys
       const patterns = [
         `${this.config.keyPrefix}*`,
-        ...(this.config.cleanupKeys || [])
+        ...(this.config.cleanupKeys || []),
       ];
 
       for (const pattern of patterns) {
@@ -101,14 +103,14 @@ export class IntegrationTestHelper {
     intervalMs: number = 100
   ): Promise<void> {
     const startTime = Date.now();
-    
+
     while (Date.now() - startTime < timeoutMs) {
       if (await condition()) {
         return;
       }
       await testUtils.delay(intervalMs);
     }
-    
+
     throw new Error(`Condition not met within ${timeoutMs}ms`);
   }
 
@@ -117,13 +119,13 @@ export class IntegrationTestHelper {
    */
   createTestKey(suffix: string): string {
     const key = `${this.config.keyPrefix}${suffix}:${Date.now()}:${Math.random()}`;
-    
+
     // Add to cleanup list
     if (!this.config.cleanupKeys) {
       this.config.cleanupKeys = [];
     }
     this.config.cleanupKeys.push(key);
-    
+
     return key;
   }
 }
@@ -143,7 +145,9 @@ export function createIntegrationTestSuite(
       // Check if test servers are available
       const serversAvailable = await testUtils.checkTestServers();
       if (!serversAvailable) {
-        console.warn('⚠️  Test servers not available. Please run: ./scripts/start-test-servers.sh');
+        console.warn(
+          '⚠️  Test servers not available. Please run: ./scripts/start-test-servers.sh'
+        );
         console.warn(`   Skipping ${suiteName}...`);
       }
     });
@@ -180,10 +184,10 @@ export class PerformanceMeasurement {
     const start = process.hrtime.bigint();
     const result = await operation();
     const end = process.hrtime.bigint();
-    
+
     const durationMs = Number(end - start) / 1_000_000; // Convert to milliseconds
     this.measurements.push({ name, duration: durationMs });
-    
+
     return result;
   }
 
@@ -194,7 +198,7 @@ export class PerformanceMeasurement {
   getAverageDuration(name: string): number {
     const filtered = this.measurements.filter(m => m.name === name);
     if (filtered.length === 0) return 0;
-    
+
     const total = filtered.reduce((sum, m) => sum + m.duration, 0);
     return total / filtered.length;
   }
@@ -217,12 +221,12 @@ export const mockData = {
       payload: {
         message: `Test job ${index}`,
         timestamp: Date.now(),
-        randomValue: Math.random()
+        randomValue: Math.random(),
       },
       metadata: {
         created: new Date().toISOString(),
-        version: '1.0.0'
-      }
+        version: '1.0.0',
+      },
     };
   },
 
@@ -236,7 +240,7 @@ export const mockData = {
       loginTime: Date.now(),
       lastActivity: Date.now(),
       userAgent: 'test-agent',
-      ipAddress: '127.0.0.1'
+      ipAddress: '127.0.0.1',
     };
   },
 
@@ -247,7 +251,7 @@ export const mockData = {
     return [
       { windowMs: 1000, max: 5, name: 'strict' },
       { windowMs: 5000, max: 20, name: 'moderate' },
-      { windowMs: 10000, max: 100, name: 'lenient' }
+      { windowMs: 10000, max: 100, name: 'lenient' },
     ];
-  }
+  },
 };

@@ -3,7 +3,7 @@
  * These tests are adapted from ioredis patterns to ensure compatibility
  */
 
-import { Redis } from "../../src";
+import { Redis } from '../../src';
 import { testUtils } from '../setup';
 
 describe('String Commands (ioredis compatibility)', () => {
@@ -13,7 +13,9 @@ describe('String Commands (ioredis compatibility)', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      throw new Error('Test servers not available. Please start Redis server before running tests.');
+      throw new Error(
+        'Test servers not available. Please start Redis server before running tests.'
+      );
     }
   });
 

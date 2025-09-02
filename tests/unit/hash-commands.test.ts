@@ -1,9 +1,9 @@
 /**
- * Hash Commands Comprehensive Tests  
+ * Hash Commands Comprehensive Tests
  * Real-world patterns: Session storage, user profiles, object caching, shopping carts
  */
 
-import { Redis } from "../../src";
+import { Redis } from '../../src';
 import { getRedisTestConfig } from '../utils/redis-config';
 
 describe('Hash Commands - Real-World Patterns', () => {
@@ -21,12 +21,18 @@ describe('Hash Commands - Real-World Patterns', () => {
   describe('User Session Management', () => {
     test('should manage user session data with HSET/HGET', async () => {
       const sessionKey = 'session:' + Math.random();
-      
+
       // Create session
       const result1 = await redis.hset(sessionKey, 'userId', '12345');
       expect(result1).toBe(1);
 
-      const result2 = await redis.hset(sessionKey, 'username', 'john_doe', 'email', 'john@example.com');
+      const result2 = await redis.hset(
+        sessionKey,
+        'username',
+        'john_doe',
+        'email',
+        'john@example.com'
+      );
       expect(result2).toBe(2);
 
       // Retrieve session data
@@ -42,21 +48,27 @@ describe('Hash Commands - Real-World Patterns', () => {
 
     test('should handle bulk session operations with HMGET/HMSET', async () => {
       const sessionKey = 'session:bulk:' + Math.random();
-      
+
       // Set multiple fields at once with object
       const sessionData = {
         userId: '67890',
         username: 'jane_doe',
         email: 'jane@example.com',
         role: 'admin',
-        lastLogin: '2024-01-01T12:00:00Z'
+        lastLogin: '2024-01-01T12:00:00Z',
       };
-      
+
       const result = await redis.hmset(sessionKey, sessionData);
       expect(result).toBe('OK');
 
       // Get multiple fields at once
-      const values = await redis.hmget(sessionKey, 'userId', 'username', 'email', 'nonexistent');
+      const values = await redis.hmget(
+        sessionKey,
+        'userId',
+        'username',
+        'email',
+        'nonexistent'
+      );
       expect(values).toEqual(['67890', 'jane_doe', 'jane@example.com', null]);
 
       // Get all session data
@@ -66,7 +78,7 @@ describe('Hash Commands - Real-World Patterns', () => {
 
     test('should update session counters with HINCRBY', async () => {
       const sessionKey = 'session:counter:' + Math.random();
-      
+
       // Initialize session with login count
       await redis.hset(sessionKey, 'loginCount', '1');
 
@@ -86,13 +98,13 @@ describe('Hash Commands - Real-World Patterns', () => {
   describe('User Profile Caching', () => {
     test('should cache user profiles with HGETALL', async () => {
       const profileKey = 'profile:user:' + Math.random();
-      
+
       // Store user profile
       const profileData = {
         id: '123',
         name: 'Alice Johnson',
         email: 'alice@example.com',
-        preferences: JSON.stringify({ theme: 'dark', notifications: true })
+        preferences: JSON.stringify({ theme: 'dark', notifications: true }),
       };
 
       const result = await redis.hmset(profileKey, profileData);
@@ -102,7 +114,7 @@ describe('Hash Commands - Real-World Patterns', () => {
       const storedProfile = await redis.hgetall(profileKey);
       expect(storedProfile.id).toBe('123');
       expect(storedProfile.name).toBe('Alice Johnson');
-      
+
       const preferences = JSON.parse(storedProfile.preferences!);
       expect(preferences.theme).toBe('dark');
       expect(preferences.notifications).toBe(true);
@@ -110,7 +122,7 @@ describe('Hash Commands - Real-World Patterns', () => {
 
     test('should handle profile field operations', async () => {
       const profileKey = 'profile:fields:' + Math.random();
-      
+
       await redis.hset(profileKey, 'name', 'Bob Smith', 'age', '30');
 
       // Check field existence
@@ -137,21 +149,29 @@ describe('Hash Commands - Real-World Patterns', () => {
   describe('Shopping Cart Implementation', () => {
     test('should manage shopping cart items', async () => {
       const cartKey = 'cart:user:' + Math.random();
-      
-      // Add items to cart
-      await redis.hset(cartKey, 'item_1', JSON.stringify({
-        productId: 'PROD-001',
-        name: 'Laptop',
-        price: 999.99,
-        quantity: 1
-      }));
 
-      await redis.hset(cartKey, 'item_2', JSON.stringify({
-        productId: 'PROD-002', 
-        name: 'Mouse',
-        price: 29.99,
-        quantity: 2
-      }));
+      // Add items to cart
+      await redis.hset(
+        cartKey,
+        'item_1',
+        JSON.stringify({
+          productId: 'PROD-001',
+          name: 'Laptop',
+          price: 999.99,
+          quantity: 1,
+        })
+      );
+
+      await redis.hset(
+        cartKey,
+        'item_2',
+        JSON.stringify({
+          productId: 'PROD-002',
+          name: 'Mouse',
+          price: 29.99,
+          quantity: 2,
+        })
+      );
 
       // Get cart contents
       const cartItems = await redis.hgetall(cartKey);
@@ -171,7 +191,7 @@ describe('Hash Commands - Real-World Patterns', () => {
 
     test('should handle cart item quantity updates', async () => {
       const cartKey = 'cart:quantity:' + Math.random();
-      
+
       // Add item with quantity
       await redis.hset(cartKey, 'item_quantity_1', '3');
 
@@ -180,7 +200,11 @@ describe('Hash Commands - Real-World Patterns', () => {
       expect(newQuantity).toBe(5);
 
       // Decrease quantity
-      const decreasedQuantity = await redis.hincrby(cartKey, 'item_quantity_1', -1);
+      const decreasedQuantity = await redis.hincrby(
+        cartKey,
+        'item_quantity_1',
+        -1
+      );
       expect(decreasedQuantity).toBe(4);
     });
   });
@@ -188,22 +212,30 @@ describe('Hash Commands - Real-World Patterns', () => {
   describe('Advanced Hash Operations', () => {
     test('should handle floating point increments', async () => {
       const metricsKey = 'metrics:' + Math.random();
-      
+
       // Initialize metrics
       await redis.hset(metricsKey, 'cpu_usage', '45.5');
 
       // Increment with float
-      const newCpuUsage = await redis.hincrbyfloat(metricsKey, 'cpu_usage', 2.3);
+      const newCpuUsage = await redis.hincrbyfloat(
+        metricsKey,
+        'cpu_usage',
+        2.3
+      );
       expect(parseFloat(newCpuUsage.toString())).toBeCloseTo(47.8, 1);
 
       // Initialize new field with float increment
-      const diskUsage = await redis.hincrbyfloat(metricsKey, 'disk_usage', 33.7);
+      const diskUsage = await redis.hincrbyfloat(
+        metricsKey,
+        'disk_usage',
+        33.7
+      );
       expect(parseFloat(diskUsage.toString())).toBeCloseTo(33.7, 1);
     });
 
     test('should handle conditional field setting with HSETNX', async () => {
       const configKey = 'config:app:' + Math.random();
-      
+
       // Set default configuration
       const result1 = await redis.hsetnx(configKey, 'theme', 'light');
       expect(result1).toBe(1); // Field was set
@@ -222,20 +254,25 @@ describe('Hash Commands - Real-World Patterns', () => {
 
     test('should handle bulk field deletion', async () => {
       const tempKey = 'temp:data:' + Math.random();
-      
+
       // Create hash with multiple fields
       await redis.hmset(tempKey, {
         field1: 'value1',
-        field2: 'value2', 
+        field2: 'value2',
         field3: 'value3',
-        field4: 'value4'
+        field4: 'value4',
       });
 
       const initialCount = await redis.hlen(tempKey);
       expect(initialCount).toBe(4);
 
       // Delete multiple fields
-      const deletedCount = await redis.hdel(tempKey, 'field1', 'field3', 'nonexistent');
+      const deletedCount = await redis.hdel(
+        tempKey,
+        'field1',
+        'field3',
+        'nonexistent'
+      );
       expect(deletedCount).toBe(2); // Only 2 fields existed and were deleted
 
       const remainingCount = await redis.hlen(tempKey);
@@ -246,7 +283,7 @@ describe('Hash Commands - Real-World Patterns', () => {
   describe('Error Handling and Edge Cases', () => {
     test('should handle operations on non-existent hashes', async () => {
       const nonExistentKey = 'nonexistent:hash:' + Math.random();
-      
+
       // Operations on non-existent hash should return appropriate defaults
       const value = await redis.hget(nonExistentKey, 'field');
       expect(value).toBeNull();
@@ -272,7 +309,7 @@ describe('Hash Commands - Real-World Patterns', () => {
 
     test('should handle type conflicts gracefully', async () => {
       const stringKey = 'string:key:' + Math.random();
-      
+
       // Set a string value
       await redis.set(stringKey, 'not-a-hash');
 
@@ -283,7 +320,7 @@ describe('Hash Commands - Real-World Patterns', () => {
 
     test('should handle empty field names and values', async () => {
       const edgeCaseKey = 'edge:case:' + Math.random();
-      
+
       // Test empty value
       const result = await redis.hset(edgeCaseKey, 'empty_value', '');
       expect(result).toBe(1);

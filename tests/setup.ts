@@ -6,7 +6,12 @@
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
-import { PortDiscovery, DiscoveredServer, ServerConfig, portUtils } from './utils/port-discovery';
+import {
+  PortDiscovery,
+  DiscoveredServer,
+  ServerConfig,
+  portUtils,
+} from './utils/port-discovery';
 
 // Load test environment variables if they exist
 const envTestPath = path.join(process.cwd(), '.env.test');
@@ -33,31 +38,46 @@ const STANDALONE_CONFIG_CACHE_TTL = 0; // Disable caching for now
 
 // Global test utilities
 export const testUtils = {
-  delay: (ms: number): Promise<void> => 
+  delay: (ms: number): Promise<void> =>
     new Promise(resolve => setTimeout(resolve, ms)),
-  
-  randomString: (length = 8): string => 
-    Math.random().toString(36).substring(2, 2 + length),
-  
-  randomPort: (): number => 
-    PortDiscovery.generateRandomPort(),
-    
+
+  randomString: (length = 8): string =>
+    Math.random()
+      .toString(36)
+      .substring(2, 2 + length),
+
+  randomPort: (): number => PortDiscovery.generateRandomPort(),
+
   // Get test server configuration with dynamic discovery
   async getStandaloneConfig(): Promise<ServerConfig> {
     const now = Date.now();
-    
+
     // Return cached config if still valid
-    if (cachedStandaloneConfig && (now - lastStandaloneConfigTime) < STANDALONE_CONFIG_CACHE_TTL) {
+    if (
+      cachedStandaloneConfig &&
+      now - lastStandaloneConfigTime < STANDALONE_CONFIG_CACHE_TTL
+    ) {
       return cachedStandaloneConfig;
     }
-    
+
     try {
       // Highest priority: explicit env (support both REDIS_ and VALKEY_ prefixes)
-      if ((process.env.REDIS_HOST && process.env.REDIS_PORT) || 
-          (process.env.VALKEY_STANDALONE_HOST && process.env.VALKEY_STANDALONE_PORT)) {
+      if (
+        (process.env.REDIS_HOST && process.env.REDIS_PORT) ||
+        (process.env.VALKEY_STANDALONE_HOST &&
+          process.env.VALKEY_STANDALONE_PORT)
+      ) {
         const envConfig = {
-          host: process.env.VALKEY_STANDALONE_HOST || process.env.REDIS_HOST || 'localhost',
-          port: parseInt(process.env.VALKEY_STANDALONE_PORT || process.env.REDIS_PORT || '6379', 10)
+          host:
+            process.env.VALKEY_STANDALONE_HOST ||
+            process.env.REDIS_HOST ||
+            'localhost',
+          port: parseInt(
+            process.env.VALKEY_STANDALONE_PORT ||
+              process.env.REDIS_PORT ||
+              '6379',
+            10
+          ),
         } as ServerConfig;
         cachedStandaloneConfig = envConfig;
         lastStandaloneConfigTime = now;
@@ -67,37 +87,54 @@ export const testUtils = {
       // For Bull/BeeQueue tests, always use standalone Redis on port 6379
       // These libraries are not designed for cluster mode
       const config = { host: 'localhost', port: 6379 };
-      
+
       // Cache the result
       cachedStandaloneConfig = config;
       lastStandaloneConfigTime = now;
-      
+
       return config;
-      
     } catch (error) {
       const defaultConfig = { host: 'localhost', port: 6379 };
-      
+
       // Cache the default config too
       cachedStandaloneConfig = defaultConfig;
       lastStandaloneConfigTime = now;
-      
+
       return defaultConfig;
     }
   },
-  
+
   async getClusterConfig(): Promise<ServerConfig[]> {
     // Try environment variables first for cluster config
     if (process.env.VALKEY_CLUSTER_PORT_1) {
       return [
-        { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_1, 10) },
-        { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_2 || '7001', 10) },
-        { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_3 || '7002', 10) },
-        { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_4 || '7003', 10) },
-        { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_5 || '7004', 10) },
-        { host: 'localhost', port: parseInt(process.env.VALKEY_CLUSTER_PORT_6 || '7005', 10) }
+        {
+          host: 'localhost',
+          port: parseInt(process.env.VALKEY_CLUSTER_PORT_1, 10),
+        },
+        {
+          host: 'localhost',
+          port: parseInt(process.env.VALKEY_CLUSTER_PORT_2 || '7001', 10),
+        },
+        {
+          host: 'localhost',
+          port: parseInt(process.env.VALKEY_CLUSTER_PORT_3 || '7002', 10),
+        },
+        {
+          host: 'localhost',
+          port: parseInt(process.env.VALKEY_CLUSTER_PORT_4 || '7003', 10),
+        },
+        {
+          host: 'localhost',
+          port: parseInt(process.env.VALKEY_CLUSTER_PORT_5 || '7004', 10),
+        },
+        {
+          host: 'localhost',
+          port: parseInt(process.env.VALKEY_CLUSTER_PORT_6 || '7005', 10),
+        },
       ];
     }
-    
+
     // Generate dynamic cluster configuration
     try {
       const config = await portUtils.generateTestConfig(true);
@@ -109,19 +146,25 @@ export const testUtils = {
         { host: 'localhost', port: 7002 },
         { host: 'localhost', port: 7003 },
         { host: 'localhost', port: 7004 },
-        { host: 'localhost', port: 7005 }
+        { host: 'localhost', port: 7005 },
       ];
     }
   },
-  
+
   // Enhanced server discovery with caching
-  async discoverAvailableServers(forceRefresh = false): Promise<DiscoveredServer[]> {
+  async discoverAvailableServers(
+    forceRefresh = false
+  ): Promise<DiscoveredServer[]> {
     const now = Date.now();
-    
-    if (!forceRefresh && discoveredServers && (now - lastDiscoveryTime) < DISCOVERY_CACHE_TTL) {
+
+    if (
+      !forceRefresh &&
+      discoveredServers &&
+      now - lastDiscoveryTime < DISCOVERY_CACHE_TTL
+    ) {
       return discoveredServers;
     }
-    
+
     try {
       discoveredServers = await PortDiscovery.discoverRedisServers();
       lastDiscoveryTime = now;
@@ -130,24 +173,17 @@ export const testUtils = {
       return [];
     }
   },
-  
+
   // Check if test servers are available with enhanced discovery
   async checkTestServers(): Promise<boolean> {
     try {
-      // Quick check for default Redis port first
-      if (await portUtils.isDefaultRedisAvailable()) {
-        return true;
-      }
-      
-      // Broader discovery if default port is not available
-      const servers = await this.discoverAvailableServers();
-      const responsiveServers = servers.filter(s => s.responsive);
-      
-      if (responsiveServers.length > 0) {
-        return true;
-      }
-      
-      return false;
+      // Use our new TestEnvironment for server checking
+      const { TestEnvironment } = await import('./utils/testEnvironment');
+      const testEnv = TestEnvironment.getInstance();
+
+      // Check standalone server health
+      const standaloneHealth = await testEnv.checkStandaloneHealth();
+      return standaloneHealth.available && standaloneHealth.responsive;
     } catch (error) {
       return false;
     }
@@ -156,29 +192,29 @@ export const testUtils = {
   // Validate Redis connection with dynamic configuration
   async validateRedisConnection(config?: ServerConfig): Promise<boolean> {
     try {
-      const targetConfig = config || await this.getStandaloneConfig();
+      const targetConfig = config || (await this.getStandaloneConfig());
       const serverInfo = await PortDiscovery.validateRedisServer(targetConfig);
       return serverInfo?.responsive ?? false;
     } catch (error) {
       return false;
     }
   },
-  
+
   // Get or allocate a Redis server for testing
   async getOrAllocateTestServer(): Promise<ServerConfig> {
     return PortDiscovery.getOrAllocateRedisServer();
   },
-  
+
   // Check if any Redis server is available anywhere
   async hasAnyRedisServer(): Promise<boolean> {
     return PortDiscovery.hasAnyRedisServer();
   },
-  
+
   // Generate unique test configuration
   async generateUniqueTestConfig(): Promise<ServerConfig> {
     const availablePort = await PortDiscovery.findAvailablePort();
     return { host: 'localhost', port: availablePort };
-  }
+  },
 };
 
 // Type for test utilities
@@ -188,7 +224,9 @@ interface TestUtils {
   randomPort: () => number;
   getStandaloneConfig: () => Promise<ServerConfig>;
   getClusterConfig: () => Promise<ServerConfig[]>;
-  discoverAvailableServers: (forceRefresh?: boolean) => Promise<DiscoveredServer[]>;
+  discoverAvailableServers: (
+    forceRefresh?: boolean
+  ) => Promise<DiscoveredServer[]>;
   checkTestServers: () => Promise<boolean>;
   validateRedisConnection: (config?: ServerConfig) => Promise<boolean>;
   getOrAllocateTestServer: () => Promise<ServerConfig>;

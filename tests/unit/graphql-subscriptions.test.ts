@@ -3,7 +3,7 @@
  * Real-world patterns: Pub/Sub messaging, real-time updates, pattern subscriptions
  */
 
-import { Redis } from "../../src";
+import { Redis } from '../../src';
 import { getRedisTestConfig } from '../utils/redis-config';
 
 describe('GraphQL Subscriptions Patterns', () => {
@@ -25,7 +25,7 @@ describe('GraphQL Subscriptions Patterns', () => {
         type: 'USER_UPDATED',
         userId: 123,
         data: { name: 'John Doe', email: 'john@example.com' },
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       // Publish message
@@ -36,11 +36,11 @@ describe('GraphQL Subscriptions Patterns', () => {
 
     test('should handle multiple message types on same channel', async () => {
       const channel = 'graphql:events:' + Math.random();
-      
+
       const messages = [
         { type: 'USER_CREATED', userId: 1, data: { name: 'Alice' } },
         { type: 'USER_UPDATED', userId: 1, data: { name: 'Alice Smith' } },
-        { type: 'USER_DELETED', userId: 1, data: null }
+        { type: 'USER_DELETED', userId: 1, data: null },
       ];
 
       // Publish multiple message types
@@ -55,7 +55,7 @@ describe('GraphQL Subscriptions Patterns', () => {
     test('should simulate subscription to post comments', async () => {
       const postId = 'post_' + Math.random();
       const commentChannel = `post:${postId}:comments`;
-      
+
       // Simulate new comment event
       const newComment = {
         subscription: 'COMMENT_ADDED',
@@ -64,52 +64,65 @@ describe('GraphQL Subscriptions Patterns', () => {
           id: 'comment_1',
           author: 'John Doe',
           content: 'Great post!',
-          createdAt: new Date().toISOString()
-        }
+          createdAt: new Date().toISOString(),
+        },
       };
 
-      const published = await redis.publish(commentChannel, JSON.stringify(newComment));
+      const published = await redis.publish(
+        commentChannel,
+        JSON.stringify(newComment)
+      );
       expect(typeof published).toBe('number');
 
       // Simulate comment update
       const updatedComment = {
-        subscription: 'COMMENT_UPDATED', 
+        subscription: 'COMMENT_UPDATED',
         postId,
         comment: {
           id: 'comment_1',
           content: 'Great post! Thanks for sharing.',
-          updatedAt: new Date().toISOString()
-        }
+          updatedAt: new Date().toISOString(),
+        },
       };
 
-      const updatePublished = await redis.publish(commentChannel, JSON.stringify(updatedComment));
+      const updatePublished = await redis.publish(
+        commentChannel,
+        JSON.stringify(updatedComment)
+      );
       expect(typeof updatePublished).toBe('number');
     });
 
     test('should simulate user activity subscriptions', async () => {
       const userId = 'user_' + Math.random();
       const activityChannel = `user:${userId}:activity`;
-      
+
       const activities = [
         {
           type: 'LOGIN',
           userId,
-          data: { timestamp: Date.now(), ip: '192.168.1.1' }
+          data: { timestamp: Date.now(), ip: '192.168.1.1' },
         },
         {
           type: 'PROFILE_UPDATE',
           userId,
-          data: { field: 'email', oldValue: 'old@example.com', newValue: 'new@example.com' }
+          data: {
+            field: 'email',
+            oldValue: 'old@example.com',
+            newValue: 'new@example.com',
+          },
         },
         {
           type: 'LOGOUT',
           userId,
-          data: { timestamp: Date.now(), duration: 3600000 }
-        }
+          data: { timestamp: Date.now(), duration: 3600000 },
+        },
       ];
 
       for (const activity of activities) {
-        const subscribers = await redis.publish(activityChannel, JSON.stringify(activity));
+        const subscribers = await redis.publish(
+          activityChannel,
+          JSON.stringify(activity)
+        );
         expect(typeof subscribers).toBe('number');
       }
     });
@@ -117,7 +130,7 @@ describe('GraphQL Subscriptions Patterns', () => {
     test('should handle chat room subscriptions', async () => {
       const roomId = 'room_' + Math.random();
       const chatChannel = `chat:${roomId}:messages`;
-      
+
       const chatMessage = {
         subscription: 'MESSAGE_SENT',
         roomId,
@@ -126,11 +139,14 @@ describe('GraphQL Subscriptions Patterns', () => {
           userId: 'user_123',
           username: 'alice',
           content: 'Hello everyone!',
-          timestamp: Date.now()
-        }
+          timestamp: Date.now(),
+        },
       };
 
-      const result = await redis.publish(chatChannel, JSON.stringify(chatMessage));
+      const result = await redis.publish(
+        chatChannel,
+        JSON.stringify(chatMessage)
+      );
       expect(typeof result).toBe('number');
 
       // System message
@@ -138,13 +154,16 @@ describe('GraphQL Subscriptions Patterns', () => {
         subscription: 'USER_JOINED',
         roomId,
         data: {
-          userId: 'user_456', 
+          userId: 'user_456',
           username: 'bob',
-          joinedAt: Date.now()
-        }
+          joinedAt: Date.now(),
+        },
       };
 
-      const sysResult = await redis.publish(chatChannel, JSON.stringify(systemMessage));
+      const sysResult = await redis.publish(
+        chatChannel,
+        JSON.stringify(systemMessage)
+      );
       expect(typeof sysResult).toBe('number');
     });
   });
@@ -152,60 +171,66 @@ describe('GraphQL Subscriptions Patterns', () => {
   describe('Pattern-based Subscriptions', () => {
     test('should handle wildcard pattern subscriptions', async () => {
       // Pattern for wildcard subscriptions
-      
+
       // Different notification types
       const channels = [
         `notifications:email:${Math.random()}`,
-        `notifications:push:${Math.random()}`,  
-        `notifications:sms:${Math.random()}`
+        `notifications:push:${Math.random()}`,
+        `notifications:sms:${Math.random()}`,
       ];
 
       const notificationData = {
         id: 'notif_1',
         title: 'New Message',
         body: 'You have a new message',
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       // Publish to different notification channels
       for (const channel of channels) {
-        const result = await redis.publish(channel, JSON.stringify({
-          type: channel.split(':')[1]?.toUpperCase() || 'UNKNOWN',
-          ...notificationData
-        }));
+        const result = await redis.publish(
+          channel,
+          JSON.stringify({
+            type: channel.split(':')[1]?.toUpperCase() || 'UNKNOWN',
+            ...notificationData,
+          })
+        );
         expect(typeof result).toBe('number');
       }
     });
 
     test('should simulate global event broadcasting', async () => {
       const globalChannel = 'global:events:' + Math.random();
-      
+
       const globalEvents = [
         {
           type: 'SYSTEM_MAINTENANCE',
-          data: { 
+          data: {
             message: 'System maintenance in 10 minutes',
-            scheduledAt: Date.now() + 600000 
-          }
+            scheduledAt: Date.now() + 600000,
+          },
         },
         {
           type: 'NEW_FEATURE_ANNOUNCEMENT',
           data: {
             feature: 'Real-time Collaboration',
-            description: 'Now you can work together in real-time!'
-          }
+            description: 'Now you can work together in real-time!',
+          },
         },
         {
           type: 'SECURITY_ALERT',
           data: {
             severity: 'HIGH',
-            message: 'Unusual login activity detected'
-          }
-        }
+            message: 'Unusual login activity detected',
+          },
+        },
       ];
 
       for (const event of globalEvents) {
-        const subscribers = await redis.publish(globalChannel, JSON.stringify(event));
+        const subscribers = await redis.publish(
+          globalChannel,
+          JSON.stringify(event)
+        );
         expect(typeof subscribers).toBe('number');
       }
     });
@@ -215,14 +240,15 @@ describe('GraphQL Subscriptions Patterns', () => {
     test('should manage subscription metadata', async () => {
       const subscriptionId = 'sub_' + Math.random();
       const metadataKey = `subscriptions:${subscriptionId}:meta`;
-      
+
       const subscriptionMeta = {
         id: subscriptionId,
         userId: 'user_123',
-        query: 'subscription { commentAdded(postId: "123") { id, content, author } }',
+        query:
+          'subscription { commentAdded(postId: "123") { id, content, author } }',
         variables: { postId: '123' },
         createdAt: Date.now(),
-        lastActivity: Date.now()
+        lastActivity: Date.now(),
       };
 
       // Store subscription metadata
@@ -231,7 +257,7 @@ describe('GraphQL Subscriptions Patterns', () => {
       // Retrieve and verify
       const stored = await redis.get(metadataKey);
       expect(stored).toBeTruthy();
-      
+
       if (stored) {
         const parsed = JSON.parse(stored);
         expect(parsed.id).toBe(subscriptionId);
@@ -247,7 +273,7 @@ describe('GraphQL Subscriptions Patterns', () => {
       const subscriptionId = 'cleanup_' + Math.random();
       const metadataKey = `subscriptions:${subscriptionId}:meta`;
       const channelMappingKey = `subscriptions:${subscriptionId}:channels`;
-      
+
       // Setup subscription data
       await redis.set(metadataKey, JSON.stringify({ id: subscriptionId }));
       await redis.sadd(channelMappingKey, 'channel1', 'channel2', 'channel3');
@@ -267,9 +293,9 @@ describe('GraphQL Subscriptions Patterns', () => {
     test('should track active subscriptions per user', async () => {
       const userId = 'user_' + Math.random();
       const userSubscriptionsKey = `user:${userId}:subscriptions`;
-      
+
       const subscriptionIds = ['sub_1', 'sub_2', 'sub_3'];
-      
+
       // Add subscriptions to user's active list
       for (const subId of subscriptionIds) {
         await redis.sadd(userSubscriptionsKey, subId);
@@ -292,13 +318,16 @@ describe('GraphQL Subscriptions Patterns', () => {
 
   describe('Performance and Batching Patterns', () => {
     test('should handle batch message publishing', async () => {
-      const channels = Array.from({ length: 5 }, (_, i) => `batch:channel:${i}:${Math.random()}`);
-      
+      const channels = Array.from(
+        { length: 5 },
+        (_, i) => `batch:channel:${i}:${Math.random()}`
+      );
+
       const batchMessage = {
         type: 'BATCH_UPDATE',
         batchId: 'batch_' + Math.random(),
         timestamp: Date.now(),
-        data: { updated: true }
+        data: { updated: true },
       };
 
       // Publish to multiple channels
@@ -316,21 +345,21 @@ describe('GraphQL Subscriptions Patterns', () => {
       const channel = 'dedup:channel:' + Math.random();
       const messageId = 'msg_' + Math.random();
       const dedupKey = `message:dedup:${messageId}`;
-      
+
       const message = {
         id: messageId,
         type: 'DUPLICATE_TEST',
         content: 'This message should only be sent once',
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
       // Check if message already sent
       const alreadySent = await redis.get(dedupKey);
-      
+
       if (!alreadySent) {
         // Mark as sent for 5 minutes
         await redis.setex(dedupKey, 300, '1');
-        
+
         // Publish message
         const result = await redis.publish(channel, JSON.stringify(message));
         expect(typeof result).toBe('number');
@@ -346,18 +375,19 @@ describe('GraphQL Subscriptions Patterns', () => {
       const rateLimitKey = `ratelimit:subscription:${userId}`;
       const windowSize = 60; // 1 minute window
       const maxSubscriptions = 5;
-      
+
       // Track subscription attempts
       let currentCount = 0;
-      
-      for (let i = 0; i < 7; i++) { // Attempt 7 subscriptions
+
+      for (let i = 0; i < 7; i++) {
+        // Attempt 7 subscriptions
         const current = await redis.incr(rateLimitKey);
-        
+
         if (current === 1) {
           // First request in window, set expiration
           await redis.expire(rateLimitKey, windowSize);
         }
-        
+
         if (current <= maxSubscriptions) {
           currentCount = current;
           // Allow subscription
@@ -367,9 +397,9 @@ describe('GraphQL Subscriptions Patterns', () => {
           break;
         }
       }
-      
+
       expect(currentCount).toBeLessThanOrEqual(maxSubscriptions);
-      
+
       const finalCount = await redis.get(rateLimitKey);
       expect(parseInt(finalCount!)).toBeGreaterThan(maxSubscriptions);
     });
@@ -378,16 +408,19 @@ describe('GraphQL Subscriptions Patterns', () => {
   describe('Error Handling and Resilience', () => {
     test('should handle malformed subscription messages', async () => {
       const channel = 'error:channel:' + Math.random();
-      
+
       // Valid message
       const validMessage = { type: 'VALID', data: 'test' };
-      const validResult = await redis.publish(channel, JSON.stringify(validMessage));
+      const validResult = await redis.publish(
+        channel,
+        JSON.stringify(validMessage)
+      );
       expect(typeof validResult).toBe('number');
-      
+
       // Invalid JSON (would be handled by subscriber)
       const invalidResult = await redis.publish(channel, 'invalid-json{');
       expect(typeof invalidResult).toBe('number');
-      
+
       // Empty message
       const emptyResult = await redis.publish(channel, '');
       expect(typeof emptyResult).toBe('number');
@@ -397,23 +430,27 @@ describe('GraphQL Subscriptions Patterns', () => {
       const subscriptionId = 'timeout_' + Math.random();
       const timeoutKey = `subscription:timeout:${subscriptionId}`;
       const heartbeatKey = `subscription:heartbeat:${subscriptionId}`;
-      
+
       // Set initial heartbeat
       await redis.setex(heartbeatKey, 30, Date.now().toString());
-      
+
       // Set subscription timeout (longer than heartbeat)
-      await redis.setex(timeoutKey, 60, JSON.stringify({
-        id: subscriptionId,
-        createdAt: Date.now()
-      }));
-      
+      await redis.setex(
+        timeoutKey,
+        60,
+        JSON.stringify({
+          id: subscriptionId,
+          createdAt: Date.now(),
+        })
+      );
+
       // Simulate heartbeat update
       await redis.setex(heartbeatKey, 30, Date.now().toString());
-      
+
       // Check if subscription is still active
       const isActive = await redis.get(timeoutKey);
       expect(isActive).toBeTruthy();
-      
+
       // Check heartbeat
       const lastHeartbeat = await redis.get(heartbeatKey);
       expect(lastHeartbeat).toBeTruthy();
@@ -422,30 +459,33 @@ describe('GraphQL Subscriptions Patterns', () => {
     test('should handle connection recovery scenarios', async () => {
       const recoveryChannel = 'recovery:test:' + Math.random();
       const reconnectKey = `reconnect:${Math.random()}`;
-      
+
       // Store connection state
       const connectionState = {
         subscriptions: ['sub1', 'sub2', 'sub3'],
         lastMessageId: 'msg_123',
-        reconnectedAt: Date.now()
+        reconnectedAt: Date.now(),
       };
-      
+
       await redis.setex(reconnectKey, 300, JSON.stringify(connectionState));
-      
+
       // Simulate publishing after reconnection
       const recoveryMessage = {
         type: 'CONNECTION_RECOVERED',
         restoredSubscriptions: connectionState.subscriptions.length,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
-      
-      const result = await redis.publish(recoveryChannel, JSON.stringify(recoveryMessage));
+
+      const result = await redis.publish(
+        recoveryChannel,
+        JSON.stringify(recoveryMessage)
+      );
       expect(typeof result).toBe('number');
-      
+
       // Verify stored state
       const stored = await redis.get(reconnectKey);
       expect(stored).toBeTruthy();
-      
+
       if (stored) {
         const parsed = JSON.parse(stored);
         expect(parsed.subscriptions).toHaveLength(3);

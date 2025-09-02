@@ -10,7 +10,7 @@
  * - Netflix's A/B testing assignment with stateful Lua scripts
  */
 
-import { Redis } from "../../src";
+import { Redis } from '../../src';
 import { getRedisTestConfig } from '../utils/redis-config';
 
 describe('Script Commands - Atomic Operations & Business Logic', () => {
@@ -48,11 +48,11 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
           return {0, 0}  -- [not_allowed, remaining]
         end
       `;
-      
+
       const key = `rate_limit:user:${Math.random()}`;
       const windowMs = 60000; // 1 minute
       const limit = 5; // 5 requests per minute
-      
+
       // Make 3 requests - all should be allowed
       for (let i = 0; i < 3; i++) {
         const result = await redis.eval(
@@ -63,16 +63,16 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
           limit.toString(),
           Date.now().toString()
         );
-        
+
         expect(Array.isArray(result)).toBe(true);
         expect(result[0]).toBe(1); // Request allowed
         expect(result[1]).toBe(limit - i - 1); // Remaining requests (after current request)
       }
-      
+
       // Make 3 more requests - 2 should be allowed, 1 should be blocked
       let allowedCount = 0;
       let blockedCount = 0;
-      
+
       for (let i = 0; i < 3; i++) {
         const result = await redis.eval(
           rateLimitScript,
@@ -82,14 +82,14 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
           limit.toString(),
           Date.now().toString()
         );
-        
+
         if (result[0] === 1) {
           allowedCount++;
         } else {
           blockedCount++;
         }
       }
-      
+
       // Verify overall behavior - requests were processed
       expect(allowedCount + blockedCount).toBe(3);
       expect(allowedCount).toBeGreaterThanOrEqual(0); // At least some should be processed
@@ -126,12 +126,12 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
           return {0, current_tokens}  -- [denied, remaining_tokens]
         end
       `;
-      
+
       const bucketKey = `token_bucket:api:${Math.random()}`;
       const maxTokens = 10;
       const refillRate = 2; // 2 tokens per second
       const currentTime = Date.now();
-      
+
       // Request 3 tokens - should be granted
       const result1 = await redis.eval(
         tokenBucketScript,
@@ -142,10 +142,10 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         currentTime.toString(),
         '3'
       );
-      
+
       expect(result1[0]).toBe(1); // Granted
       expect(result1[1]).toBe(7); // 7 tokens remaining
-      
+
       // Request 8 tokens - should be denied (only 7 available)
       const result2 = await redis.eval(
         tokenBucketScript,
@@ -156,10 +156,10 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         (currentTime + 100).toString(),
         '8'
       );
-      
+
       expect(result2[0]).toBe(0); // Denied
       expect(result2[1]).toBe(7); // Still 7 tokens
-      
+
       // Wait and request again - should get more tokens due to refill
       const result3 = await redis.eval(
         tokenBucketScript,
@@ -170,7 +170,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         (currentTime + 2000).toString(), // 2 seconds later
         '5'
       );
-      
+
       expect(result3[0]).toBe(1); // Granted (bucket refilled)
       expect(result3[1]).toBeGreaterThanOrEqual(0); // Some tokens remaining
     });
@@ -198,13 +198,13 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
           return {0, 0, reset_time}  -- [denied, remaining, reset_time]
         end
       `;
-      
+
       const key = `fixed_rate:channel:${Math.random()}`;
       const windowSeconds = 10; // 10 second window
       const limit = 3; // 3 messages per 10 seconds
       // Use fixed timestamp to avoid timing-related flakiness in CI
       const baseTime = 1600000000000; // Fixed timestamp (2020-09-13)
-      
+
       // Send 3 messages in the same window - all should be allowed
       for (let i = 0; i < 3; i++) {
         const result = await redis.eval(
@@ -215,12 +215,12 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
           limit.toString(),
           (baseTime + i * 100).toString()
         );
-        
+
         expect(result[0]).toBe(1); // Allowed
         expect(result[1]).toBe(limit - i - 1); // Remaining
         expect(result[2]).toBeGreaterThan(0); // Reset time
       }
-      
+
       // 4th message should be denied
       const result4 = await redis.eval(
         fixedWindowScript,
@@ -230,7 +230,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         limit.toString(),
         (baseTime + 400).toString()
       );
-      
+
       expect(result4[0]).toBe(0); // Denied
       expect(result4[1]).toBe(0); // No remaining
       expect(result4[2]).toBeGreaterThan(0); // Time until reset
@@ -272,16 +272,20 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
           return {0, available, reserved, 'insufficient_stock'}  -- [failure, available, reserved, error]
         end
       `;
-      
+
       const productKey = `inventory:product:${Math.random()}`;
-      
+
       // Initialize inventory
-      await redis.hmset(productKey, 
-        'available', '100',
-        'reserved', '0',
-        'total', '100'
+      await redis.hmset(
+        productKey,
+        'available',
+        '100',
+        'reserved',
+        '0',
+        'total',
+        '100'
       );
-      
+
       // Reserve 25 items for order 1
       const reservation1 = await redis.eval(
         inventoryScript,
@@ -290,12 +294,12 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         'ORD-001',
         '25'
       );
-      
+
       expect(reservation1[0]).toBe(1); // Success
       expect(reservation1[1]).toBe(75); // 75 available
       expect(reservation1[2]).toBe(25); // 25 reserved
       expect(reservation1[3]).toBe('reserved');
-      
+
       // Reserve 80 items for order 2 - should fail
       const reservation2 = await redis.eval(
         inventoryScript,
@@ -304,12 +308,12 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         'ORD-002',
         '80'
       );
-      
+
       expect(reservation2[0]).toBe(0); // Failure
       expect(reservation2[1]).toBe(75); // Still 75 available
       expect(reservation2[2]).toBe(25); // Still 25 reserved
       expect(reservation2[3]).toBe('insufficient_stock');
-      
+
       // Reserve 50 items for order 3 - should succeed
       const reservation3 = await redis.eval(
         inventoryScript,
@@ -318,7 +322,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         'ORD-003',
         '50'
       );
-      
+
       expect(reservation3[0]).toBe(1); // Success
       expect(reservation3[1]).toBe(25); // 25 available
       expect(reservation3[2]).toBe(75); // 75 reserved
@@ -350,12 +354,12 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
           return {0, current_lock, ttl}  -- [failed, owner, remaining_time]
         end
       `;
-      
+
       const lockKey = `repo:lock:${Math.random()}`;
       const process1Id = 'process-1-uuid';
       const process2Id = 'process-2-uuid';
       const expirationMs = 5000; // 5 seconds
-      
+
       // Process 1 acquires lock
       const lock1 = await redis.eval(
         distributedLockScript,
@@ -365,11 +369,11 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         expirationMs.toString(),
         Date.now().toString()
       );
-      
+
       expect(lock1[0]).toBe(1); // Acquired
       expect(lock1[1]).toBe(process1Id); // Correct owner
       expect(lock1[2]).toBe(expirationMs); // Correct expiration
-      
+
       // Process 2 tries to acquire same lock - should fail
       const lock2 = await redis.eval(
         distributedLockScript,
@@ -379,11 +383,11 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         expirationMs.toString(),
         Date.now().toString()
       );
-      
+
       expect(lock2[0]).toBe(0); // Failed
       expect(lock2[1]).toBe(process1Id); // Lock owned by process 1
       expect(lock2[2]).toBeLessThanOrEqual(expirationMs); // TTL remaining
-      
+
       // Process 1 extends its own lock - should succeed
       const lock3 = await redis.eval(
         distributedLockScript,
@@ -393,7 +397,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         expirationMs.toString(),
         Date.now().toString()
       );
-      
+
       expect(lock3[0]).toBe(1); // Extended
       expect(lock3[1]).toBe(process1Id); // Still owned by process 1
     });
@@ -443,11 +447,11 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         
         return counters_updated
       `;
-      
+
       const eventType = `page_view_${Math.random()}`;
       const userId = `user_${Math.random()}`;
       const timestamp = Math.floor(Date.now() / 1000);
-      
+
       // Record multiple events
       const result1 = await redis.eval(
         analyticsScript,
@@ -456,10 +460,10 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         userId,
         timestamp.toString()
       );
-      
+
       expect(Array.isArray(result1)).toBe(true);
       expect(result1).toHaveLength(5); // 5 counters updated
-      
+
       // Verify counter types and values - use unique events to avoid interference
       const counterMap = new Map(result1);
       expect(counterMap.get('daily')).toBeGreaterThanOrEqual(1);
@@ -467,7 +471,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       expect(counterMap.get('user')).toBeGreaterThanOrEqual(1);
       expect(counterMap.get('global')).toBeGreaterThanOrEqual(1);
       expect(counterMap.get('unique_users')).toBeGreaterThanOrEqual(1);
-      
+
       // Record another event for same user - unique users should not increase
       const result2 = await redis.eval(
         analyticsScript,
@@ -476,11 +480,15 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         userId,
         timestamp.toString()
       );
-      
+
       const counterMap2 = new Map(result2);
-      expect(counterMap2.get('daily')).toBeGreaterThan(counterMap.get('daily') as number);
-      expect(counterMap2.get('unique_users')).toBe(counterMap.get('unique_users')); // Same user, so no change
-      
+      expect(counterMap2.get('daily')).toBeGreaterThan(
+        counterMap.get('daily') as number
+      );
+      expect(counterMap2.get('unique_users')).toBe(
+        counterMap.get('unique_users')
+      ); // Same user, so no change
+
       // Record event for different user - unique users should increase
       const result3 = await redis.eval(
         analyticsScript,
@@ -489,9 +497,11 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         `user_different_${Math.random()}`,
         timestamp.toString()
       );
-      
+
       const counterMap3 = new Map(result3);
-      expect(counterMap3.get('unique_users')).toBeGreaterThan(counterMap.get('unique_users') as number); // More unique users
+      expect(counterMap3.get('unique_users')).toBeGreaterThan(
+        counterMap.get('unique_users') as number
+      ); // More unique users
     });
   });
 
@@ -500,15 +510,18 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       const simpleScript = `
         return "Hello from cached script: " .. ARGV[1]
       `;
-      
+
       // First execution with EVAL
       const result1 = await redis.eval(simpleScript, 0, 'World');
       expect(result1).toBe('Hello from cached script: World');
-      
+
       // Calculate script SHA1 (simple approach - in production use crypto)
       const crypto = require('crypto');
-      const scriptSha1 = crypto.createHash('sha1').update(simpleScript).digest('hex');
-      
+      const scriptSha1 = crypto
+        .createHash('sha1')
+        .update(simpleScript)
+        .digest('hex');
+
       // Execute with EVALSHA - script should be cached
       try {
         const result2 = await redis.evalsha(scriptSha1, 0, 'Cached');
@@ -538,9 +551,9 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         
         return result
       `;
-      
+
       const result = await redis.eval(complexScript, 0);
-      
+
       expect(Array.isArray(result)).toBe(true);
       expect(result).toHaveLength(4);
       expect(result[0]).toBe('string_value');
@@ -556,7 +569,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       const simpleScript = `
         return redis.call('TIME')[1]
       `;
-      
+
       const result = await redis.eval(simpleScript, 0);
       expect(typeof result).toBe('string');
       expect(parseInt(result)).toBeGreaterThan(1600000000); // After 2020
@@ -573,17 +586,17 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         
         return result
       `;
-      
+
       const keys = ['key1', 'key2', 'key3', 'key4', 'key5'];
       const args = ['val1', 'val2', 'val3', 'val4', 'val5'];
-      
+
       const result = await redis.eval(
         multiKeyScript,
         keys.length,
         ...keys,
         ...args
       );
-      
+
       expect(Array.isArray(result)).toBe(true);
       expect(result).toHaveLength(5);
       expect(result[0]).toBe('key1:val1');
@@ -595,7 +608,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         -- This script does nothing
         return nil
       `;
-      
+
       const result = await redis.eval(emptyScript, 0);
       expect(result).toBeNull();
     });
@@ -606,9 +619,9 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         local invalid_operation = redis.call('UNKNOWN_COMMAND', key)
         return invalid_operation
       `;
-      
+
       const key = `error:test:${Math.random()}`;
-      
+
       try {
         await redis.eval(errorScript, 1, key);
         // Should not reach here

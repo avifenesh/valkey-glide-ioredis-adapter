@@ -3,7 +3,7 @@
  * Tests current pub/sub implementation and validates incremental improvements
  */
 
-import { Redis } from "../../src";
+import { Redis } from '../../src';
 import { testUtils } from '../setup';
 
 describe('Basic Pub/Sub Functionality', () => {
@@ -15,7 +15,9 @@ describe('Basic Pub/Sub Functionality', () => {
     // Check if test servers are available
     const serversAvailable = await testUtils.checkTestServers();
     if (!serversAvailable) {
-      throw new Error('Test servers not available. Please start Redis server before running tests.');
+      throw new Error(
+        'Test servers not available. Please start Redis server before running tests.'
+      );
     }
 
     config = await testUtils.getStandaloneConfig();
@@ -25,10 +27,10 @@ describe('Basic Pub/Sub Functionality', () => {
     // Create separate clients for publishing and subscribing
     publisher = new Redis(config);
     subscriber = new Redis(config);
-    
+
     await publisher.connect();
     await subscriber.connect();
-    
+
     // Clear any existing state
     await publisher.flushall();
   });
@@ -44,7 +46,7 @@ describe('Basic Pub/Sub Functionality', () => {
       }
       await subscriber.disconnect();
     }
-    
+
     if (publisher) {
       await publisher.disconnect();
     }
@@ -93,7 +95,7 @@ describe('Basic Pub/Sub Functionality', () => {
     test('pattern subscription works', async () => {
       const result = await subscriber.psubscribe('test.*');
       expect(result).toBe(1);
-      
+
       const unsubResult = await subscriber.punsubscribe('test.*');
       expect(unsubResult).toBe(0);
     });
@@ -113,12 +115,12 @@ describe('Basic Pub/Sub Functionality', () => {
       });
 
       await subscriber.subscribe('test-channel');
-      
+
       // Give subscription time to establish
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       await publisher.publish('test-channel', 'hello world');
-      
+
       // Give message time to be received
       await new Promise(resolve => setTimeout(resolve, 100));
 
@@ -148,11 +150,11 @@ describe('Basic Pub/Sub Functionality', () => {
       });
 
       await subscriber.psubscribe('test.*');
-      
+
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       await publisher.publish('test.news', 'breaking news');
-      
+
       await new Promise(resolve => setTimeout(resolve, 100));
 
       if (patternMessageReceived) {
@@ -160,7 +162,9 @@ describe('Basic Pub/Sub Functionality', () => {
         expect(receivedChannel).toBe('test.news');
         expect(receivedMessage).toBe('breaking news');
       } else {
-        console.log('📝 Current limitation: Pattern message reception not implemented');
+        console.log(
+          '📝 Current limitation: Pattern message reception not implemented'
+        );
         expect(patternMessageReceived).toBe(false);
       }
     });
@@ -171,7 +175,7 @@ describe('Basic Pub/Sub Functionality', () => {
       // Bull often subscribes to the same channel multiple times
       await subscriber.subscribe('bull:queue:events');
       await subscriber.subscribe('bull:queue:events'); // Second subscription
-      
+
       // Should handle multiple subscriptions gracefully
       const result = await subscriber.unsubscribe('bull:queue:events');
       expect(typeof result).toBe('number');
@@ -179,10 +183,10 @@ describe('Basic Pub/Sub Functionality', () => {
 
     test('should handle subscription cleanup on disconnect', async () => {
       await subscriber.subscribe('test-channel');
-      
+
       // Disconnect should clean up subscriptions
       await subscriber.disconnect();
-      
+
       // Should be able to reconnect and subscribe again
       await subscriber.connect();
       const result = await subscriber.subscribe('test-channel');
