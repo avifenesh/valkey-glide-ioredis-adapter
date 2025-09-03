@@ -29,6 +29,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm test -- tests/unit/json-commands.test.ts` - Run specific test file
 - `npm test -- --testNamePattern="pattern"` - Run tests matching pattern
 - `npm run test:json` - Run JSON module tests specifically
+- `npm run test:search` - Run Search module tests specifically (currently disabled)
+- `npm run test:modules` - Run both JSON and Search module tests
 
 ### Node.js Native Test Commands
 - `VALKEY_HOST=localhost VALKEY_PORT=6381 timeout 30 node --test tests/unit/smoke.test.mjs` - Run specific native test
@@ -124,6 +126,11 @@ ioredis-compatible Results
 - Full JSONPath support for complex document operations
 - Array and object manipulation methods
 
+**ValkeySearch (RediSearch v2 compatible)**:
+- ⚠️ TEMPORARILY REMOVED - Search functionality removed in commit abae1d8 until GLIDE supports valkey-bundle syntax
+- Previously had 18/20 tests passing with comprehensive FT command coverage
+- Will be re-enabled when GLIDE adds proper valkey-bundle module support
+
 
 ## Development Patterns
 
@@ -214,3 +221,17 @@ The adapter maintains **complete compatibility** with:
 - Never work in a methodology of fail and retry
 - Always check GLIDE implementation AND ioredis implementation first
 - Then fix with knowledge, not trial and error
+
+## Recent Changes & Status
+
+### Current Development Focus (as of commit abae1d8)
+- **Search functionality temporarily removed** due to GLIDE not supporting valkey-bundle syntax
+- **Node.js built-in test runner migration completed** - 100% test pass rate achieved
+- **All core Valkey data types fully functional** - String, Hash, List, Set, ZSet operations production-ready
+- **JSON module remains fully functional** with 29 commands implemented
+
+### Test Framework Migration
+- Successfully migrated from Jest to Node.js built-in test runner
+- All tests now use native Node.js testing capabilities
+- Isolated test execution with proper cleanup via `./scripts/test-isolated.sh`
+- Environment variable support: `VALKEY_HOST`, `VALKEY_PORT`, `VALKEY_BUNDLE_HOST`, `VALKEY_BUNDLE_PORT`
