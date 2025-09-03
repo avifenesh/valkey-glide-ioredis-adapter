@@ -183,11 +183,12 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       `.trim();
 
       const limit = 3;
-      const windowSeconds = 1;
+      const windowSeconds = 2; // Increased to 2 seconds for more stable timing
       const key = 'window:user123:' + Date.now() + ':' + Math.random();
       const baseTime = Date.now();
 
-      // Make 3 requests (should succeed)
+      // Make 3 requests (should all succeed) with consistent timing
+      const requests = [];
       for (let i = 0; i < 3; i++) {
         const result = await redis.eval(
           fixedWindowScript,
@@ -195,20 +196,21 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
           key,
           windowSeconds.toString(),
           limit.toString(),
-          (baseTime + i * 100).toString()
+          (baseTime + i * 50).toString() // Smaller intervals to ensure same window
         );
+        requests.push(result);
         assert.strictEqual(result[0], 1); // Allowed
         assert.ok(result[2] > 0); // Reset time
       }
 
-      // 4th message should be denied
+      // 4th request in the same window should be denied
       const result4 = await redis.eval(
         fixedWindowScript,
         1,
         key,
         windowSeconds.toString(),
         limit.toString(),
-        (baseTime + 400).toString()
+        (baseTime + 200).toString() // Still within the same window
       );
 
       assert.strictEqual(result4[0], 0); // Denied

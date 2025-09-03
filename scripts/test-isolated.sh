@@ -87,8 +87,18 @@ done
 # Cleanup
 echo -e "\n${YELLOW}Cleaning up Valkey infrastructure...${NC}"
 if [ "$DOCKER_AVAILABLE" = true ]; then
-    docker stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
-    docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    # Ensure cleanup doesn't affect exit code
+    if docker ps -q --filter "name=$CONTAINER_NAME" | grep -q .; then
+        echo -e "${YELLOW}Stopping container $CONTAINER_NAME...${NC}"
+        docker stop "$CONTAINER_NAME" >/dev/null 2>&1 || echo -e "${YELLOW}Container already stopped${NC}"
+    fi
+    
+    if docker ps -aq --filter "name=$CONTAINER_NAME" | grep -q .; then
+        echo -e "${YELLOW}Removing container $CONTAINER_NAME...${NC}"
+        docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || echo -e "${YELLOW}Container already removed${NC}"
+    fi
+    
+    echo -e "${GREEN}✓ Valkey Docker cleanup completed${NC}"
 else
     echo -e "${YELLOW}No Valkey Docker cleanup needed${NC}"
 fi
@@ -99,13 +109,17 @@ echo -e "Total files: ${#TEST_FILES[@]}"
 echo -e "${GREEN}Passed: $PASSED${NC}"
 echo -e "${RED}Failed: $FAILED${NC}"
 
+# Explicit exit handling
 if [ $FAILED -gt 0 ]; then
     echo -e "\n${RED}Failed tests:${NC}"
     for failed_test in "${FAILED_TESTS[@]}"; do
         echo -e "  - $failed_test"
     done
+    echo -e "\n${RED}❌ Test run failed with $FAILED failed tests${NC}"
     exit 1
 else
     echo -e "\n${GREEN}🎉 All tests passed!${NC}"
+    echo -e "${GREEN}✅ Test run completed successfully with $PASSED passed tests${NC}"
+    # Force successful exit
     exit 0
 fi
