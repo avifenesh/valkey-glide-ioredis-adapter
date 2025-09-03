@@ -1,5 +1,5 @@
 /**
- * Main entry point for ioredis adapter
+ * Valkey GLIDE ioredis adapter
  * Drop-in replacement for ioredis with Valkey GLIDE backend
  */
 

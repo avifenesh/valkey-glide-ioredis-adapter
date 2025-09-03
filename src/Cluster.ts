@@ -1,5 +1,5 @@
 /**
- * Cluster - Valkey/Redis Cluster client (External API)
+ * Cluster - Valkey Cluster client (External API)
  * Drop-in replacement for ioredis Cluster class
  * Wraps internal ClusterClient with ioredis-compatible naming
  */

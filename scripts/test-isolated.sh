@@ -13,7 +13,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${GREEN}=== Isolated Test Runner ===${NC}"
+echo -e "${GREEN}=== Isolated Test Runner (Valkey) ===${NC}"
 
 # Find available ports
 find_free_port() {
@@ -28,24 +28,33 @@ find_free_port() {
 VALKEY_PORT=$(find_free_port 6380)
 CONTAINER_NAME="isolated-test-valkey-$$"
 
-echo -e "${YELLOW}Starting test infrastructure on port $VALKEY_PORT...${NC}"
+echo -e "${YELLOW}Starting Valkey test infrastructure on port $VALKEY_PORT...${NC}"
 
-# Start container
-docker run -d \
-    --name "$CONTAINER_NAME" \
-    -p "$VALKEY_PORT:6379" \
-    --health-cmd "valkey-cli ping" \
-    --health-interval 1s \
-    --health-timeout 3s \
-    --health-retries 5 \
-    valkey/valkey-bundle:latest >/dev/null
+# Check if Docker is available
+if ! command -v docker &> /dev/null; then
+    echo -e "${YELLOW}⚠️  Docker not found. Running tests without Valkey Bundle infrastructure.${NC}"
+    echo -e "${YELLOW}   Tests that require Valkey modules will be skipped or may fail.${NC}"
+    DOCKER_AVAILABLE=false
+else
+    DOCKER_AVAILABLE=true
+    
+    # Start container
+    docker run -d \
+        --name "$CONTAINER_NAME" \
+        -p "$VALKEY_PORT:6379" \
+        --health-cmd "valkey-cli ping" \
+        --health-interval 1s \
+        --health-timeout 3s \
+        --health-retries 5 \
+        valkey/valkey-bundle:latest >/dev/null
 
-# Wait for health
-while [ "$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo 'starting')" != "healthy" ]; do
-    sleep 0.5
-done
+    # Wait for health
+    while [ "$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo 'starting')" != "healthy" ]; do
+        sleep 0.5
+    done
+fi
 
-echo -e "${GREEN}✓ Infrastructure ready${NC}"
+echo -e "${GREEN}✓ Valkey infrastructure ready${NC}"
 
 # Set environment
 export VALKEY_HOST=localhost
@@ -76,9 +85,13 @@ for test_file in "${TEST_FILES[@]}"; do
 done
 
 # Cleanup
-echo -e "\n${YELLOW}Cleaning up infrastructure...${NC}"
-docker stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
-docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+echo -e "\n${YELLOW}Cleaning up Valkey infrastructure...${NC}"
+if [ "$DOCKER_AVAILABLE" = true ]; then
+    docker stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
+    docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
+else
+    echo -e "${YELLOW}No Valkey Docker cleanup needed${NC}"
+fi
 
 # Summary
 echo -e "\n${GREEN}=== Test Summary ===${NC}"
