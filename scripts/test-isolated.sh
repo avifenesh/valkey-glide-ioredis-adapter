@@ -37,9 +37,13 @@ CONTAINER_NAME="isolated-test-valkey-$$"
 
 echo -e "${YELLOW}Starting Valkey test infrastructure on port $VALKEY_PORT...${NC}"
 
-# Check if Docker is available
+# Check if Docker is available and working
 if ! command -v docker &> /dev/null; then
     echo -e "${YELLOW}⚠️  Docker not found. Running tests without Valkey Bundle infrastructure.${NC}"
+    echo -e "${YELLOW}   Tests that require Valkey modules will be skipped or may fail.${NC}"
+    DOCKER_AVAILABLE=false
+elif ! docker info &> /dev/null; then
+    echo -e "${YELLOW}⚠️  Docker daemon not running. Running tests without Valkey Bundle infrastructure.${NC}"
     echo -e "${YELLOW}   Tests that require Valkey modules will be skipped or may fail.${NC}"
     DOCKER_AVAILABLE=false
 else
@@ -55,31 +59,41 @@ else
         --health-retries 5 \
         valkey/valkey-bundle:latest >/dev/null
 
-    # Wait for health with timeout
+    # Wait for health with timeout (shorter in CI)
+    HEALTH_TIMEOUT=${CI:+20}  # 20 attempts in CI, 60 locally
+    HEALTH_TIMEOUT=${HEALTH_TIMEOUT:-60}
+    
     echo -e "${YELLOW}Waiting for container to be healthy...${NC}"
     HEALTH_CHECK_COUNT=0
-    while [ $HEALTH_CHECK_COUNT -lt 60 ]; do
+    while [ $HEALTH_CHECK_COUNT -lt $HEALTH_TIMEOUT ]; do
         HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo 'starting')
         if [ "$HEALTH_STATUS" = "healthy" ]; then
             break
         fi
-        echo -e "${YELLOW}Health check $((HEALTH_CHECK_COUNT + 1))/60: $HEALTH_STATUS${NC}"
+        echo -e "${YELLOW}Health check $((HEALTH_CHECK_COUNT + 1))/$HEALTH_TIMEOUT: $HEALTH_STATUS${NC}"
         sleep 0.5
         ((HEALTH_CHECK_COUNT++))
     done
     
-    if [ $HEALTH_CHECK_COUNT -ge 60 ]; then
-        echo -e "${RED}Container failed to become healthy after 30 seconds${NC}"
-        docker logs "$CONTAINER_NAME" || true
-        exit 1
+    if [ $HEALTH_CHECK_COUNT -ge $HEALTH_TIMEOUT ]; then
+        echo -e "${RED}Container failed to become healthy after $((HEALTH_TIMEOUT / 2)) seconds${NC}"
+        docker logs "$CONTAINER_NAME" 2>/dev/null || true
+        echo -e "${YELLOW}Continuing without Docker - tests may fail gracefully${NC}"
+        DOCKER_AVAILABLE=false
     fi
 fi
 
-echo -e "${GREEN}✓ Valkey infrastructure ready${NC}"
-
-# Set environment
-export VALKEY_HOST=localhost
-export VALKEY_PORT=$VALKEY_PORT
+# Set environment variables
+if [ "$DOCKER_AVAILABLE" = true ]; then
+    echo -e "${GREEN}✓ Valkey infrastructure ready${NC}"
+    export VALKEY_HOST=localhost
+    export VALKEY_PORT=$VALKEY_PORT
+else
+    echo -e "${YELLOW}✓ Running without Docker - using existing Valkey if available${NC}"
+    # Use system Valkey if available, otherwise tests will adapt
+    export VALKEY_HOST=${VALKEY_HOST:-localhost}
+    export VALKEY_PORT=${VALKEY_PORT:-6379}
+fi
 
 # Find all test files
 TEST_FILES=($(find tests -name "*.test.mjs" | sort))
@@ -94,8 +108,11 @@ echo -e "${YELLOW}Running ${#TEST_FILES[@]} test files...${NC}"
 for test_file in "${TEST_FILES[@]}"; do
     echo -e "\n🧪 ${test_file}..."
     
-    # Run test with timeout and proper environment
-    if timeout 60 node --test "$test_file" 2>/dev/null; then
+    # Run test with timeout and proper environment (shorter timeout for CI)
+    TEST_TIMEOUT=${CI:+30}  # 30s in CI, 60s locally
+    TEST_TIMEOUT=${TEST_TIMEOUT:-60}
+    
+    if timeout $TEST_TIMEOUT node --test "$test_file" 2>/dev/null; then
         echo -e "${GREEN}✅ $test_file - PASSED${NC}"
         ((PASSED++))
     else
