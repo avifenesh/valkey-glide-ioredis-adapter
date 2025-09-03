@@ -248,7 +248,7 @@ All ioredis connection options are supported, plus GLIDE-specific enhancements:
 | `clientName` | `string` | - | Client name for identification |
 | **🚀 GLIDE-Specific Extensions** ||||
 | `readFrom` | `ReadFrom` | - | ⚠️ **GLIDE-only**: Read preference (replaces ioredis `scaleReads`) |
-| `clientAz` | `string` | - | 🆕 **NEW**: AZ affinity (GLIDE 1.2+, Valkey 8.0+) |
+| `clientAz` | `string` | - | ⚠️ **GLIDE-only**: Availability Zone affinity (requires Valkey 8.0+) |
 | `enableEventBasedPubSub` | `boolean` | `false` | ⚠️ **Adapter-only**: Binary pub/sub compatibility mode |
 | `inflightRequestsLimit` | `number` | `1000` | ⚠️ **GLIDE-only**: Max concurrent requests (ioredis has no equivalent) |
 
@@ -288,7 +288,7 @@ GLIDE uses sophisticated exponential backoff with jitter. The adapter automatica
 | **Request Queuing** | `enableOfflineQueue: boolean` | `inflightRequestsLimit: number` | ✅ Mapped automatically |
 | **Connection Timeout** | `connectTimeout: ms` | `connectionTimeout: ms` | ✅ Direct mapping |
 | **Retry Strategy** | `maxRetriesPerRequest` + `retryDelayOnFailover` | `connectionBackoff: {numberOfRetries, jitterPercent}` | ✅ Advanced mapping |
-| **AZ Affinity** | ❌ Not available | ✅ `clientAz: string` | 🆕 **NEW**: Nov 2024 (GLIDE 1.2) |
+| **AZ Affinity** | ❌ Not available | ✅ `clientAz: string` | ⚠️ GLIDE-only feature |
 | **Binary Pub/Sub** | ❌ Limited support | ✅ Native + TCP modes | ⚠️ Adapter enhancement |
 
 ### **🔗 Connection Examples**
@@ -306,13 +306,13 @@ const client = new Redis({
   tls: true
 });
 
-// GLIDE-specific features
+// GLIDE-specific features (requires Valkey 8.0+)
 const client = new Redis({
   host: 'localhost',
   port: 6379,
-  readFrom: ReadFrom.Replica, // Read from replicas when possible
-  clientAz: 'us-west-2a',     // Availability zone affinity
-  enableEventBasedPubSub: true // Binary pub/sub compatibility
+  readFrom: ReadFrom.AzAffinity, // AZ-aware read preference
+  clientAz: 'us-west-2a',        // Availability zone affinity
+  enableEventBasedPubSub: true   // Binary pub/sub compatibility
 });
 
 // Performance-tuned configuration  
@@ -694,6 +694,12 @@ await client.ping(); // May take longer on first call
 // ⚠️ Tied to Valkey GLIDE release cycle
 // Features depend on GLIDE capabilities
 // Check compatibility: npm list @valkey/valkey-glide
+
+// AZ affinity requires Valkey 8.0+
+const client = new Redis({
+  clientAz: 'us-east-1a',           // Availability Zone for affinity routing
+  readFrom: ReadFrom.AzAffinity     // Requires Valkey 8.0+
+});
 ```
 
 #### **Node.js Version Requirements**
