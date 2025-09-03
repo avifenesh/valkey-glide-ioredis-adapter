@@ -1,5 +1,5 @@
 /**
- * Redis Adapter Edge Cases & Uncovered Methods Tests
+ * Valkey Adapter Edge Cases & Uncovered Methods Tests
  *
  * Production edge cases and error scenarios:
  * - Connection recovery patterns from Netflix, Stripe

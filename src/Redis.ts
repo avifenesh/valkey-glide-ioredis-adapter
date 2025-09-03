@@ -1,7 +1,8 @@
 /**
- * Redis - Standalone client (External API)
+ * Redis - Valkey Standalone client (External API)
  * Drop-in replacement for ioredis Redis class
  * Wraps internal StandaloneClient with ioredis-compatible naming
+ * Uses Valkey GLIDE backend for high performance
  */
 
 import { StandaloneClient } from './StandaloneClient';

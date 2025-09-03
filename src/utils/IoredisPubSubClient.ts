@@ -1,7 +1,8 @@
 /**
- * ioredis-Compatible Pub/Sub Client
+ * ioredis-Compatible Pub/Sub Client for Valkey
  * 
  * Direct TCP connection with RESP protocol parsing for full binary data support.
+ * Connects to Valkey server using Redis protocol for full ioredis compatibility.
  * Used for Socket.IO compatibility and applications requiring binary message handling.
  * 
  * Part of the dual pub/sub architecture:

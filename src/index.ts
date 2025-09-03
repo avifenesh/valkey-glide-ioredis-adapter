@@ -1,6 +1,11 @@
 /**
- * Main entry point for ioredis adapter
- * Drop-in replacement for ioredis with Valkey GLIDE backend
+ * Valkey GLIDE ioredis adapter  
+ * High-performance Rust-backed drop-in replacement for ioredis
+ * 
+ * Architecture:
+ * - ioredis API compatibility layer
+ * - Valkey GLIDE native client (Rust core)
+ * - Parameter/result translation for seamless integration
  */
 
 // Primary exports - drop-in ioredis compatibility
