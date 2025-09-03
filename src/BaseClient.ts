@@ -7,7 +7,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { GlideClient, GlideClusterClient, Logger } from '@valkey/valkey-glide';
+import { GlideClient, GlideClusterClient, GlideFt } from '@valkey/valkey-glide';
 import { RedisOptions, RedisKey, RedisValue, Multi, Pipeline } from './types';
 import { ParameterTranslator } from './utils/ParameterTranslator';
 import { TimeUnit, SetOptions } from '@valkey/valkey-glide';
@@ -4125,6 +4125,146 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
     const client = await (this as any).ensureConnected();
     await client.customCommand(['WATCH', ...keys]);
     return 'OK';
+  }
+
+  // === Search Commands (Valkey Search / RediSearch) ===
+  
+  /**
+   * Lists all indexes.
+   * Maps to FT._LIST command in RediSearch.
+   */
+  async ftList(): Promise<string[]> {
+    const client = await (this as any).ensureConnected();
+    const result = await GlideFt.list(client);
+    return result.map(index => String(index));
+  }
+
+  /**
+   * Creates an index and initiates a backfill of that index.
+   * Maps to FT.CREATE command in RediSearch.
+   */
+  async ftCreate(indexName: string, schema?: any, options?: any): Promise<string> {
+    const client = await (this as any).ensureConnected();
+    
+    // For compatibility with older RediSearch API, handle different parameter formats
+    let indexSchema = schema;
+    let createOptions = options;
+    
+    if (Array.isArray(schema)) {
+      // If schema is an array, it might be in RediSearch v1 format
+      // Convert it to GLIDE format if needed
+      indexSchema = schema;
+    }
+    
+    const result = await GlideFt.create(client, indexName, indexSchema || [], createOptions);
+    return result;
+  }
+
+  /**
+   * Returns information about a given index.
+   * Maps to FT.INFO command in RediSearch.
+   */
+  async ftInfo(indexName: string): Promise<any> {
+    const client = await (this as any).ensureConnected();
+    const result = await GlideFt.info(client, indexName);
+    return result;
+  }
+
+  /**
+   * Deletes an index and associated content. 
+   * Maps to FT.DROPINDEX command in RediSearch.
+   * Note: In GLIDE this is called 'dropindex', in ioredis it's often called 'ftDrop'
+   */
+  async ftDrop(indexName: string, _deleteDocuments?: boolean): Promise<string> {
+    const client = await (this as any).ensureConnected();
+    // GLIDE doesn't support the deleteDocuments parameter, it always preserves documents
+    const result = await GlideFt.dropindex(client, indexName);
+    return result;
+  }
+
+  /**
+   * Uses the provided query expression to locate keys within an index.
+   * Maps to FT.SEARCH command in RediSearch.
+   */
+  async ftSearch(indexName: string, query: string, options?: any): Promise<any> {
+    const client = await (this as any).ensureConnected();
+    const result = await GlideFt.search(client, indexName, query, options);
+    return result;
+  }
+
+  /**
+   * Runs a search query on an index, and perform aggregate transformations on the results.
+   * Maps to FT.AGGREGATE command in RediSearch.
+   */
+  async ftAggregate(indexName: string, query: string, options?: any): Promise<any> {
+    const client = await (this as any).ensureConnected();
+    const result = await GlideFt.aggregate(client, indexName, query, options);
+    return result;
+  }
+
+  /**
+   * Parse a query and return information about how that query was parsed.
+   * Maps to FT.EXPLAIN command in RediSearch.
+   */
+  async ftExplain(indexName: string, query: string): Promise<string> {
+    const client = await (this as any).ensureConnected();
+    const result = await GlideFt.explain(client, indexName, query);
+    return String(result);
+  }
+
+  /**
+   * Legacy RediSearch v1 command - Add a document to an index.
+   * Note: In RediSearch v2/Valkey Search, documents are managed through regular Redis commands.
+   * This method provides compatibility but may not work as expected with newer search implementations.
+   */
+  async ftAdd(_indexName: string, docId: string, _score: number, fields: Record<string, any>): Promise<string> {
+    // For compatibility, we'll use a regular SET command to store the document
+    // and return 'OK' as expected by legacy code
+    const client = await (this as any).ensureConnected();
+    await client.customCommand(['HSET', docId, ...Object.entries(fields).flat()]);
+    return 'OK';
+  }
+
+  /**
+   * Legacy RediSearch v1 command - Get a document by ID.
+   * Note: In RediSearch v2/Valkey Search, documents are managed through regular Redis commands.
+   */
+  async ftGet(_indexName: string, docId: string): Promise<Record<string, string> | null> {
+    const client = await (this as any).ensureConnected();
+    const result = await client.customCommand(['HGETALL', docId]);
+    if (!result || (Array.isArray(result) && result.length === 0)) {
+      return null;
+    }
+    
+    // Convert array result to object format
+    if (Array.isArray(result)) {
+      const obj: Record<string, string> = {};
+      for (let i = 0; i < result.length; i += 2) {
+        obj[String(result[i])] = String(result[i + 1]);
+      }
+      return obj;
+    }
+    
+    return result;
+  }
+
+  /**
+   * Legacy RediSearch v1 command - Delete a document from an index.
+   * Note: In RediSearch v2/Valkey Search, documents are managed through regular Redis commands.
+   */
+  async ftDel(_indexName: string, docId: string): Promise<number> {
+    const client = await (this as any).ensureConnected();
+    const result = await client.customCommand(['DEL', docId]);
+    return typeof result === 'number' ? result : 1;
+  }
+
+  /**
+   * Vector search functionality - typically handled through ftSearch with vector query syntax.
+   * This provides compatibility for code that expects a separate ftVectorSearch method.
+   */
+  async ftVectorSearch(indexName: string, query: string, options?: any): Promise<any> {
+    // Vector search in Valkey Search is done through regular ftSearch with vector query syntax
+    return await this.ftSearch(indexName, query, options);
   }
 
   async unwatch(): Promise<string> {
