@@ -87,10 +87,22 @@ function generateUniqueIndexName(baseName) {
 describe('Search Commands - Valkey Search Compatibility', () => {
   let valkey;
   let searchAvailable = false;
+  
+  // Dynamic index names to avoid conflicts
+  let indexNames = {};
 
   before(async () => {
     const config = await testUtils.getStandaloneConfig();
     valkey = new Redis(config);
+    
+    // Generate unique index names for this test run
+    indexNames = {
+      test_products: generateUniqueIndexName('test_products'),
+      test_json_docs: generateUniqueIndexName('test_json_docs'), 
+      test_ecommerce: generateUniqueIndexName('test_ecommerce'),
+      test_content: generateUniqueIndexName('test_content'),
+      products: generateUniqueIndexName('products')
+    };
     
     try {
       await valkey.connect();
@@ -138,7 +150,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
         return;
       }
       const index = {
-        index_name: 'test_products',
+        index_name: indexNames.test_products,
         index_options: ['ON', 'HASH', 'PREFIX', '1', 'product:'],
         schema_fields: [
           { field_name: 'name', field_type: 'TAG' },
@@ -171,20 +183,20 @@ describe('Search Commands - Valkey Search Compatibility', () => {
 
         // Verify index was created
         const indexes = await valkey.ftList();
-        assert.ok(indexes.includes('test_products'));
+        assert.ok(indexes.includes(indexNames.test_products));
 
         // Get index info
-        const info = await valkey.ftInfo('test_products');
+        const info = await valkey.ftInfo(indexNames.test_products);
         assert.ok(info && typeof info === 'object');
       } catch (error) {
         if (error.message.includes('already exists')) {
           // FT.DROP not supported in Valkey Search, so index already exists
           // This is expected behavior - just verify the index exists
           const indexes = await valkey.ftList();
-          assert.ok(indexes.includes('test_products'));
+          assert.ok(indexes.includes(indexNames.test_products));
 
           // Get index info to verify it works
-          const info = await valkey.ftInfo('test_products');
+          const info = await valkey.ftInfo(indexNames.test_products);
           assert.ok(info && typeof info === 'object');
         } else {
           throw error;

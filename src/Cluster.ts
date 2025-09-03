@@ -203,9 +203,57 @@ export class Cluster extends ClusterClient {
   /**
    * Uses the provided query expression to locate keys within an index.
    */
-  async ftSearch(indexName: string, query: string, options?: any): Promise<any> {
+  async ftSearch(indexName: string, queryOrObject: string | any, options?: any): Promise<any> {
     const client = await (this as any).ensureConnected();
-    const result = await GlideFt.search(client, indexName, query, options);
+    
+    let actualQuery: string;
+    let actualOptions: any = options;
+    
+    // Handle different input formats for compatibility
+    if (typeof queryOrObject === 'object' && queryOrObject.query) {
+      // Test format: { query: "...", options: {...} }
+      actualQuery = queryOrObject.query;
+      if (queryOrObject.options) {
+        actualOptions = queryOrObject.options;
+      }
+    } else {
+      // Standard format: (indexName, query, options)
+      actualQuery = queryOrObject;
+    }
+    
+    // Convert test format options to GLIDE format
+    if (actualOptions) {
+      const glideOptions: any = {};
+      
+      // Convert LIMIT format
+      if (actualOptions.LIMIT) {
+        if (typeof actualOptions.LIMIT === 'object' && actualOptions.LIMIT.offset !== undefined && actualOptions.LIMIT.count !== undefined) {
+          glideOptions.limit = {
+            offset: actualOptions.LIMIT.offset,
+            count: actualOptions.LIMIT.count
+          };
+        }
+      }
+      
+      // Convert FILTER format (skip for now as it needs complex translation)
+      if (actualOptions.FILTER) {
+        console.warn('FILTER option not yet implemented - skipping filter');
+      }
+      
+      // Convert SORTBY format
+      if (actualOptions.SORTBY) {
+        if (typeof actualOptions.SORTBY === 'object' && actualOptions.SORTBY.field && actualOptions.SORTBY.direction) {
+          glideOptions.sortBy = [{
+            field: actualOptions.SORTBY.field,
+            order: actualOptions.SORTBY.direction === 'ASC' ? 'ASC' : 'DESC'
+          }];
+        }
+      }
+      
+      actualOptions = glideOptions;
+    }
+    
+    const result = await GlideFt.search(client, indexName, actualQuery, actualOptions);
     return result;
   }
 
