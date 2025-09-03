@@ -12,15 +12,13 @@ Version 0.4.0 delivers **battle-tested compatibility** with ioredis across the m
 - ✅ **Real-time**: Socket.IO Redis adapter - **fully compatible**
 - ✅ **Caching**: All Redis data types and operations - **fully compatible**
 - ✅ **Documents**: JSON storage with 29 ValkeyJSON commands - **fully compatible**
-- ✅ **Search**: Full-text and vector search - **fully compatible**
 
 ## 🏆 **Overall Compatibility Status**
 
 | Component | Status | Tests Passing | Coverage |
 |-----------|--------|---------------|----------|
-| **Core Redis Commands** | ✅ **Complete** | 150+ tests | All data types validated |
+| **Core Redis Commands** | ✅ **Complete** | 286 tests | All data types validated |
 | **ValkeyJSON Module** | ✅ **Complete** | 29/29 | All JSON commands |
-| **Valkey Search Module** | ✅ **Complete** | 21/21 | All search operations |
 | **Bull/BullMQ Integration** | ✅ **Complete** | 10/10 | Job queue systems |
 | **Express Sessions** | ✅ **Complete** | 10/10 | Session store patterns |
 | **Socket.IO** | ✅ **Complete** | 7/7 | Real-time applications |
@@ -29,14 +27,14 @@ Version 0.4.0 delivers **battle-tested compatibility** with ioredis across the m
 
 ## 📋 **Core Valkey Commands - Real-World Patterns**
 
-### ✅ **String Operations (33/33 Tests Passing)**
+### ✅ **String Operations (37 Tests Passing)**
 - `GET`/`SET` with all options and expiration (EX, PX, NX, XX)
 - `SETEX`/`PSETEX` with TTL for session stores
 - `INCR`/`DECR`/`INCRBY`/`DECRBY`/`INCRBYFLOAT` for counters
 - `APPEND`, `STRLEN`, `GETRANGE`, `SETRANGE` string manipulation
 - `MGET`/`MSET` bulk operations with both array and object formats
 
-### ✅ **Hash Operations (13/13 Tests Passing)**
+### ✅ **Hash Operations (13 Tests Passing)**
 - Object-based `HSET` with automatic field expansion
 - Individual `HGET`, `HEXISTS`, `HINCRBY`, `HINCRBYFLOAT` operations
 - `HGETALL`, `HKEYS`, `HVALS`, `HLEN` for full hash access
@@ -140,38 +138,7 @@ Version 0.4.0 delivers **battle-tested compatibility** with ioredis across the m
 | `JSON.RESP` | ✅ | RESP format conversion |
 | `JSON.FORGET` | ✅ | Legacy compatibility alias |
 
-## 🔍 **Valkey Search Module - Full Search Compatibility**
 
-### **✅ Index Management (Complete)**
-| Command | Status | Notes |
-|---------|--------|-------|
-| `FT.CREATE` | ✅ | Vector-first architecture with automatic VECTOR fields |
-| `FT.INFO` | ✅ | Index information with GLIDE format parsing |
-| `FT.LIST` | ✅ | Index enumeration |
-| `FT.DROP` | ✅ | Graceful handling (not supported in Valkey Search) |
-
-### **✅ Document Operations (Complete)**
-| Command | Status | Notes |
-|---------|--------|-------|
-| `FT.ADD` | ✅ | Via HSET with index integration |
-| `FT.GET` | ✅ | Via HGETALL with document parsing |
-| `FT.DEL` | ✅ | Via DEL with index cleanup |
-| `FT.MGET` | ✅ | Bulk document retrieval |
-
-### **✅ Search Operations (Complete)**
-| Command | Status | Notes |
-|---------|--------|-------|
-| `FT.SEARCH` | ✅ | Automatic query conversion to vector format |
-| `FT.AGGREGATE` | ✅ | With graceful fallback for unsupported features |
-| Vector Search | ✅ | Native KNN queries with similarity scoring |
-
-### **🔧 Valkey Search Optimizations**
-Our implementation leverages Valkey Search's vector-first architecture:
-
-- **Query Conversion**: Text queries → Vector KNN queries with `=>` syntax
-- **Field Type Optimization**: `TEXT` → `TAG` for better compatibility
-- **Parameter Handling**: Proper PARAMS formatting for vector operations
-- **Unsupported Feature Graceful Handling**: `SORTBY`, `FILTER` arguments removed with fallbacks
 
 ## 🚀 **Framework Integration Compatibility**
 
@@ -220,7 +187,6 @@ app.use(session({
 | Basic GET/SET | Complete | Complete | Equivalent |
 | Hash Operations | Complete | Complete | Equivalent |
 | JSON Operations | N/A | Complete | Native Valkey speed |
-| Vector Search | N/A | Complete | Native Valkey speed |
 | Complex Queries | Complete | Complete | Equivalent |
 
 *Performance may vary based on network conditions and data size*
@@ -251,10 +217,6 @@ app.use(session({
 
 ## ⚠️ **Known Limitations**
 
-### **Valkey Search Specific**
-- `FT.DROP` command not available (Valkey Search manages indexes automatically)
-- `FT.EXPLAIN` command not supported (graceful error thrown)
-- Complex aggregations may have limited functionality compared to RediSearch
 
 ### **General**
 - Some advanced clustering features may require additional configuration
@@ -282,8 +244,7 @@ We validated compatibility by:
 - All tested real-world patterns (19/19)
 - Core Redis operations used in production
 - Major framework integrations (Bull, Express, Socket.IO)
-- ValkeyJSON operations (31/31 commands)
-- Valkey Search operations (21/21 commands)
+- ValkeyJSON operations (29/29 commands)
 
 **If you find any compatibility issue not covered here, please [open an issue](https://github.com/avifenesh/valkey-glide-ioredis-adapter/issues) - we're committed to maintaining Complete compatibility.**
 

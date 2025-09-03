@@ -1,6 +1,6 @@
-# Testing Valkey JSON and Search Modules
+# Testing Valkey JSON Module
 
-This document explains how to test the JSON and Search functionality using **valkey-bundle** instead of Redis Stack.
+This document explains how to test the JSON functionality using **valkey-bundle** instead of Redis Stack.
 
 ## 🚀 Quick Start with Valkey Bundle
 
@@ -24,15 +24,6 @@ npm test tests/unit/json-commands.test.ts
 npm test tests/unit/json-commands.test.ts -- --verbose
 ```
 
-### 3. Run Search Tests
-
-```bash
-# Test Search operations (Valkey Search / RediSearch compatible)
-npm test tests/unit/search-commands.test.ts
-
-# Or run with coverage
-npm run test:coverage tests/unit/search-commands.test.ts
-```
 
 ### 4. Clean Up
 
@@ -68,13 +59,6 @@ The `valkey/valkey-bundle` container includes:
 - ✅ `jsonObjKeys()` / `jsonObjLen()` - Object operations
 - ✅ `jsonToggle()` / `jsonClear()` - Advanced operations
 
-#### Search Commands (12 Methods)
-- ✅ `ftCreate()` - Create search indexes
-- ✅ `ftSearch()` - Full-text search with filters
-- ✅ `ftAggregate()` - Aggregation queries
-- ✅ `ftVectorSearch()` - Vector similarity search
-- ✅ `ftAdd()` / `ftGet()` / `ftDel()` - Document management
-- ✅ `ftInfo()` / `ftList()` / `ftExplain()` - Index management
 
 ## 🔧 Configuration
 
@@ -86,7 +70,7 @@ export VALKEY_BUNDLE_HOST=localhost
 export VALKEY_BUNDLE_PORT=6379
 
 # Enable specific modules (optional)
-export VALKEY_MODULES=json,search,bloom
+export VALKEY_MODULES=json,bloom
 ```
 
 ### Test Configuration
@@ -127,62 +111,6 @@ const cpu = await redis.jsonGet('product:123', '$.specs.cpu');
 const reviews = await redis.jsonGet('product:123', '$.reviews[*].rating');
 ```
 
-### Full-Text Search Index (Search)
-
-```typescript
-// Create product search index
-const index: SearchIndex = {
-  index_name: 'products',
-  index_options: ['ON', 'HASH', 'PREFIX', '1', 'product:'],
-  schema_fields: [
-    { field_name: 'name', field_type: 'TEXT', field_options: ['WEIGHT', '2.0'] },
-    { field_name: 'description', field_type: 'TEXT' },
-    { field_name: 'price', field_type: 'NUMERIC', field_options: ['SORTABLE'] },
-    { field_name: 'category', field_type: 'TAG' }
-  ]
-};
-
-await redis.ftCreate(index);
-
-// Search with filters and sorting
-const results = await redis.ftSearch('products', {
-  query: 'gaming laptop',
-  options: {
-    FILTER: { field: 'price', min: 500, max: 2000 },
-    SORTBY: { field: 'price', direction: 'ASC' },
-    LIMIT: { offset: 0, count: 10 }
-  }
-});
-```
-
-### Vector Similarity Search (AI/ML)
-
-```typescript
-// Create vector index for embeddings
-const vectorIndex: SearchIndex = {
-  index_name: 'embeddings',
-  schema_fields: [
-    {
-      field_name: 'embedding',
-      field_type: 'VECTOR',
-      field_options: [
-        'HNSW', '6',
-        'TYPE', 'FLOAT32', 
-        'DIM', '768',
-        'DISTANCE_METRIC', 'COSINE'
-      ]
-    }
-  ]
-};
-
-// Search similar vectors
-const results = await redis.ftVectorSearch(
-  'embeddings',
-  'embedding', 
-  queryVector,
-  { KNN: 10 }
-);
-```
 
 ## 🚨 Troubleshooting
 
@@ -225,7 +153,6 @@ npm test -- --testNamePattern="should set and get simple JSON documents"
 
 - [Valkey Bundle Documentation](https://valkey.io/topics/valkey-bundle/)
 - [Valkey JSON Commands](https://github.com/valkey-io/valkey-json)
-- [Valkey Search Commands](https://github.com/valkey-io/valkey-search)
 - [ValkeyJSON API Reference](https://github.com/valkey-io/valkey-rfc/blob/main/ValkeyJSON.md)
 
 ## 🎯 Integration Examples

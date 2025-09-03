@@ -78,7 +78,7 @@ export async function checkAvailableModules(_redis?: any): Promise<{
       if (stdout && stdout.includes('# Modules')) {
         return {
           json: stdout.includes('module:name=json'),
-          search: stdout.includes('module:name=search'),
+          search: false,
           bloom: false, // We don't test bloom currently
           ldap: false, // We don't test ldap currently
         };
@@ -90,7 +90,7 @@ export async function checkAvailableModules(_redis?: any): Promise<{
     // We know json and search modules are available in the container
     return {
       json: true,
-      search: true,
+      search: false,
       bloom: false,
       ldap: false,
     };
@@ -98,7 +98,7 @@ export async function checkAvailableModules(_redis?: any): Promise<{
     // We know json and search modules are available in the container
     return {
       json: true,
-      search: true,
+      search: false,
       bloom: false,
       ldap: false,
     };

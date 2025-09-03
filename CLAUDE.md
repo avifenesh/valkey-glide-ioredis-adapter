@@ -29,8 +29,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm test -- tests/unit/json-commands.test.ts` - Run specific test file
 - `npm test -- --testNamePattern="pattern"` - Run tests matching pattern
 - `npm run test:json` - Run JSON module tests specifically
-- `npm run test:search` - Run Search module tests specifically
-- `npm run test:modules` - Run both JSON and Search module tests
 
 ### Node.js Native Test Commands
 - `VALKEY_HOST=localhost VALKEY_PORT=6381 timeout 30 node --test tests/unit/smoke.test.mjs` - Run specific native test
@@ -87,8 +85,8 @@ ioredis-compatible Results
 
 **✅ Production Ready Features:**
 - All Valkey data types (String, Hash, List, Set, ZSet) - 100% functional
-- ValkeyJSON module support - 31 commands implemented
-- Valkey Search module support - 21 commands implemented  
+- ValkeyJSON module support - 29 commands implemented
+  
 - Bull/BullMQ integration - Complete compatibility with createClient factory
 - Express sessions, Socket.IO, rate limiting - All validated
 - Transaction support (MULTI/EXEC, WATCH/UNWATCH)
@@ -103,7 +101,6 @@ ioredis-compatible Results
 **✅ COMPLETE (Production Ready)**
 - All Valkey data types: String, Hash, List, Set, ZSet - fully functional
 - JSON module: 29 commands fully implemented and tested
-- Search module: Full-text and vector search working
 - Integration libraries: Bull/BullMQ, Socket.IO, Express Sessions - all validated
 - Connection management: Pipelines, transactions, connection lifecycle
 - Core cluster operations: All database commands work in cluster mode
@@ -123,14 +120,10 @@ ioredis-compatible Results
 ### Module Support
 
 **ValkeyJSON (RedisJSON v2 compatible)**:
-- 31 complete JSON commands (jsonSet, jsonGet, jsonDel, etc.)
+- 29 complete JSON commands (jsonSet, jsonGet, jsonDel, etc.)
 - Full JSONPath support for complex document operations
 - Array and object manipulation methods
 
-**Valkey Search (RediSearch compatible)**:
-- 21 complete search commands (ftCreate, ftSearch, ftAggregate, etc.)
-- Full-text search, vector similarity, aggregations
-- AI/ML ready with vector embeddings support
 
 ## Development Patterns
 
@@ -159,7 +152,7 @@ ioredis-compatible Results
 
 ### Key Implementation Notes
 - ZSET operations require special `WITHSCORES` result handling
-- JSON and Search modules are optional (graceful fallbacks)
+- JSON module is optional (graceful fallback)
 - Connection validation prevents cluster/standalone mismatches
 - Dual pub/sub architecture: Direct GLIDE callbacks (high-performance) + ioredis-compatible TCP (binary support)
 - Transaction support through MultiAdapter/PipelineAdapter
@@ -179,10 +172,10 @@ ioredis-compatible Results
 - Valkey/Redis server running on localhost:6379 (or use environment variables)
 - Tests automatically use `VALKEY_BUNDLE_HOST=localhost VALKEY_BUNDLE_PORT=6380` when available
 
-### For Module Tests (JSON/Search)
+### For Module Tests (JSON)
 - Use valkey-bundle Docker container: `npm run valkey:start`
 - Or manually: `docker-compose -f docker-compose.valkey-bundle.yml up -d`
-- JSON and Search modules must be loaded on the server for full functionality
+- JSON module must be loaded on the server for full functionality
 
 ### Test Execution Patterns
 - **Sequential execution**: Jest configured with maxWorkers: 1 for connection stability

@@ -9,23 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### ✨ Features Added
 - **Complete JSON Module Support**: Full ValkeyJSON/RedisJSON v2 compatibility with 31 commands
-- **Complete Search Module Support**: Full Valkey Search/RediSearch compatibility with 21 commands  
+  
 - **Advanced Error Handling**: Comprehensive error handling for GLIDE Map response limitations
 - **Code Quality Improvements**: Eliminated 20 code duplication issues and reduced complexity
 - **CI/CD Automation**: Complete release automation with semantic versioning and npm publishing
 - **Parameter Translation Layer**: Centralized utility for ZSET operations and complex parameter handling
 
 ### 🐛 Bug Fixes
-- **Search Filter Format**: Graceful handling of valkey-bundle filter format requirements
 - **Script Error Messages**: Compatible error message format for both Valkey and Redis
-- **FT.AGGREGATE Support**: Proper fallback handling for unsupported aggregation commands
 - **CI Test Failures**: Resolved all 9 failing tests to achieve 100% CI success (539/539 tests)
 - **Dependency Compatibility**: Updated to Node.js 20/22 for modern package requirements
 - **Connection Stability**: Fixed valkey-bundle service integration in CI pipeline
 
 ### 🔄 CI/CD Improvements
 - **Node Version Updates**: Migrated from Node 18 to Node 20/22 for dependency compatibility
-- **Valkey-Bundle Integration**: Complete CI integration with JSON and Search modules
+- **Valkey-Bundle Integration**: Complete CI integration with JSON module
 - **Release Automation**: Semantic versioning with automated npm publishing and GitHub releases
 - **Test Infrastructure**: Docker-based valkey-bundle setup for reliable module testing
 - **Coverage Reporting**: Maintained 80%+ test coverage across all new features
@@ -33,7 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### 📚 Documentation
 - **Conventional Commits**: Added commit message templates for better release notes
 - **Release Process**: Automated changelog generation from commit history
-- **API Documentation**: Enhanced documentation for JSON and Search module usage
+- **API Documentation**: Enhanced documentation for JSON module usage
 
 ### 🔧 Technical Improvements
 - **100% Test Success**: Achieved complete CI success rate (539/539 tests passing)

@@ -7,7 +7,7 @@
 
 > **🎯 TRUE DROP-IN REPLACEMENT** powered by **Valkey GLIDE**'s high-performance Rust core
 > 
-> **Production-Ready Core Features** - BullMQ, Socket.IO, Express Sessions, JSON/Search modules fully validated
+> **Production-Ready Core Features** - BullMQ, Socket.IO, Express Sessions, JSON module fully validated
 
 A **production-ready ioredis replacement** that seamlessly integrates **Valkey GLIDE**'s high-performance Rust core with your existing Node.js applications. **Zero code changes required** for core functionality - simply change your import statement and gain the benefits of GLIDE's resilient, high-performance architecture while maintaining API compatibility.
 
@@ -19,13 +19,12 @@ This project uses **exclusively Valkey GLIDE** - a high-performance, language-in
 
 | Component | Status | Test Coverage | Production Use |
 |-----------|--------|---------------|----------------|
-| **Valkey Data Types** | ✅ **Production Ready** | String (33/33), Hash (13/13), List (16/16), Set (19/19) | Core operations validated |
-| **ValkeyJSON Module** | ✅ **Production Ready** | 29/29 commands tested | Document storage ready |
-| **Valkey Search Module** | ✅ **Production Ready** | Full-text & vector search | AI/ML applications ready |
+| **Valkey Data Types** | ✅ **Production Ready** | String (37), Hash (13), List (16), Set (19), ZSet (14) | Core operations validated |
+| **ValkeyJSON Module** | ✅ **Production Ready** | 29 commands tested | Document storage ready |
 | **Bull/BullMQ Integration** | ✅ **Production Ready** | 10/10 integration tests | Job queues validated |
 | **Express Sessions** | ✅ **Production Ready** | 10/10 session tests | Web apps validated |
 | **Socket.IO** | ✅ **Production Ready** | 7/7 real-time tests | Live apps validated |
-| **Connection Management** | ✅ **Production Ready** | 23/23 pipeline tests | Enterprise ready |
+| **Connection Management** | ✅ **Production Ready** | 24 pipeline tests | Enterprise ready |
 | **Cluster Support** | 🔧 **Minor Issues** | Core functionality works | TypeScript edge cases |
 
 ### Status & Quality Assurance
@@ -47,8 +46,6 @@ This project uses **exclusively Valkey GLIDE** - a high-performance, language-in
 ### Module Support
 
 [![JSON Module](https://img.shields.io/badge/ValkeyJSON-✅%20Complete%20(31/31)-orange?style=flat-square)](https://github.com/valkey-io/valkey-json)
-[![Search Module](https://img.shields.io/badge/Valkey%20Search-✅%20Complete%20(21/21)-orange?style=flat-square)](https://github.com/valkey-io/valkey-search)
-[![Vector Search](https://img.shields.io/badge/Vector%20Search-🤖%20AI%20Ready-purple?style=flat-square)](#vector-similarity-search)
 [![Real-World Patterns](https://img.shields.io/badge/Real--World%20Patterns-✅%20Validated%20(19/19)-brightgreen?style=flat-square)](#-real-world-compatibility-validation)
 
 ## ✅ **What Works Right Now**
@@ -59,7 +56,6 @@ This project uses **exclusively Valkey GLIDE** - a high-performance, language-in
 - **Express Sessions**: Session storage with connect-redis - **production ready**  
 - **Socket.IO Real-time**: Cross-instance messaging - **production ready**
 - **JSON Document Storage**: 29 ValkeyJSON commands - **production ready**
-- **Full-text Search**: Valkey Search with vector similarity - **production ready**
 
 ### **🔧 Advanced Features (Minor Limitations)**
 - **Cluster Operations**: Core functionality works, some TypeScript edge cases
@@ -170,73 +166,19 @@ const hobbyCount = await redis.jsonArrLen('user:123', '$.hobbies');
 const removedHobby = await redis.jsonArrPop('user:123', '$.hobbies', 0);
 ```
 
-**31 JSON Commands Available**: Complete ValkeyJSON/RedisJSON v2 compatibility with `jsonSet`, `jsonGet`, `jsonDel`, `jsonType`, `jsonNumIncrBy`, `jsonArrAppend`, `jsonObjKeys`, `jsonToggle`, and more!
+**29 JSON Commands Available**: Complete ValkeyJSON/RedisJSON v2 compatibility with `jsonSet`, `jsonGet`, `jsonDel`, `jsonType`, `jsonNumIncrBy`, `jsonArrAppend`, `jsonObjKeys`, `jsonToggle`, and more!
 
-## 🔍 **Search Module Support (Valkey Search)**
 
-Full-text search, vector similarity, and aggregations with **RediSearch compatibility**:
+### 🧪 **Testing JSON Module**
 
-```typescript
-// Create search index
-await redis.ftCreate({
-  index_name: 'products',
-  index_options: ['ON', 'HASH', 'PREFIX', '1', 'product:'],
-  schema_fields: [
-    { field_name: 'name', field_type: 'TEXT', field_options: ['WEIGHT', '2.0'] },
-    { field_name: 'price', field_type: 'NUMERIC', field_options: ['SORTABLE'] },
-    { field_name: 'category', field_type: 'TAG' }
-  ]
-});
-
-// Add documents to index
-await redis.ftAdd('products', 'product:1', 1.0, {
-  name: 'Gaming Laptop',
-  price: '1299.99',
-  category: 'Electronics'
-});
-
-// Full-text search with filters
-const results = await redis.ftSearch('products', {
-  query: 'gaming laptop',
-  options: {
-    FILTER: { field: 'price', min: 500, max: 2000 },
-    SORTBY: { field: 'price', direction: 'ASC' },
-    LIMIT: { offset: 0, count: 10 }
-  }
-});
-
-// Vector similarity search (AI/ML)
-const vectorResults = await redis.ftVectorSearch(
-  'embeddings_index',
-  'embedding_field',
-  [0.1, 0.2, 0.3, 0.4], // Query vector
-  { KNN: 5 }
-);
-
-// Aggregation queries
-const stats = await redis.ftAggregate('products', '*', {
-  GROUPBY: {
-    fields: ['@category'],
-    REDUCE: [{ function: 'COUNT', args: [], AS: 'count' }]
-  }
-});
-```
-
-**21 Search Commands Available**: Complete Valkey Search/RediSearch compatibility with `ftCreate`, `ftSearch`, `ftAggregate`, `ftVectorSearch`, `ftAdd`, `ftDel`, `ftInfo`, `ftList`, and more!
-
-### 🧪 **Testing JSON & Search Modules**
-
-Use **valkey-bundle** for testing without Redis Stack:
+Use **valkey-bundle** for testing JSON functionality:
 
 ```bash
-# Start valkey-bundle with all modules
+# Start valkey-bundle with JSON module
 docker-compose -f docker-compose.valkey-bundle.yml up -d
 
 # Test JSON functionality
-npm test tests/unit/json-commands.test.ts
-
-# Test Search functionality  
-npm test tests/unit/search-commands.test.ts
+npm test tests/unit/json-commands.test.mjs
 
 # Clean up
 docker-compose -f docker-compose.valkey-bundle.yml down
@@ -319,14 +261,17 @@ npm test tests/integration/real-world-patterns.test.ts
 ### **✅ Validated Production Use Cases**
 ```bash
 # Core Valkey Operations (All Pass)
-npm test tests/unit/string-commands.test.ts    # String ops: GET/SET/INCR/etc ✅
-npm test tests/unit/hash-commands.test.ts      # Hash ops: HSET/HGET/sessions ✅  
-npm test tests/unit/list-commands.test.ts      # List ops: LPUSH/RPOP/queues ✅
-npm test tests/unit/set-commands.test.ts       # Set ops: SADD/social patterns ✅
+npm test tests/unit/string-commands.test.mjs   # String ops: 37 tests ✅
+npm test tests/unit/hash-commands.test.mjs     # Hash ops: 13 tests ✅  
+npm test tests/unit/list-commands.test.mjs     # List ops: 16 tests ✅
+npm test tests/unit/set-commands.test.mjs      # Set ops: 19 tests ✅
+npm test tests/unit/zset-commands.test.mjs     # ZSet ops: 14 tests ✅
 
 # Advanced Modules (All Pass)
-npm test tests/unit/json-commands.test.ts      # JSON documents: 29 commands ✅
-npm test tests/unit/search-commands.test.ts    # Full-text & vector search ✅
+npm test tests/unit/json-commands.test.mjs     # JSON documents: 29 tests ✅
+npm test tests/unit/stream-commands.test.mjs   # Stream ops: 15 tests ✅
+npm test tests/unit/script-commands.test.mjs   # Lua scripts: 12 tests ✅
+npm test tests/unit/transaction-commands.test.mjs # Transactions: 3 tests ✅
 
 # Real-World Integrations (All Pass)
 npm test tests/integration/bullmq/            # Job queues: Bull/BullMQ ✅
@@ -458,6 +403,5 @@ Apache-2.0 License - see [LICENSE](./LICENSE) file for details.
 
 ### Module Ecosystems
 - **[ValkeyJSON](https://github.com/valkey-io/valkey-json)** - JSON document storage and manipulation module
-- **[Valkey Search](https://github.com/valkey-io/valkey-search)** - Full-text search and vector similarity module
 - **[Valkey](https://github.com/valkey-io/valkey)** - High-performance server with module support
 

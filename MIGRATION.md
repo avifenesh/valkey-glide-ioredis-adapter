@@ -320,25 +320,6 @@ const name = await redis.jsonGet('user:123', '$.name');
 await redis.jsonArrAppend('user:123', '$.hobbies', 'reading');
 ```
 
-### **Search Operations (New Feature)**
-
-```javascript
-// Optional: Add full-text search to your app
-await redis.ftCreate({
-  index_name: 'products',
-  schema_fields: [
-    { field_name: 'name', field_type: 'TEXT' },
-    { field_name: 'price', field_type: 'NUMERIC' }
-  ]
-});
-
-await redis.ftAdd('products', 'prod:1', 1.0, {
-  name: 'Gaming Laptop',
-  price: '1299.99'
-});
-
-const results = await redis.ftSearch('products', { query: 'gaming' });
-```
 
 ## 🧪 **Testing Your Migration**
 
@@ -378,7 +359,7 @@ npm run test:e2e
 After migration, you can expect:
 
 - **Equivalent Performance**: Similar to original ioredis performance for basic operations
-- **Better Performance**: Enhanced performance for JSON and Search operations
+- **Better Performance**: Enhanced performance for JSON operations
 - **Same Memory Usage**: Similar memory patterns as ioredis
 - **Improved Reliability**: Benefits from GLIDE's Rust core stability
 
@@ -432,7 +413,7 @@ Once you've made the import change, your application is successfully migrated to
 
 - ✅ **100% ioredis compatibility** maintained
 - ✅ **High-performance Rust core** under the hood
-- ✅ **Optional JSON and Search capabilities** available
+- ✅ **Optional JSON capabilities** available
 - ✅ **Zero application logic changes** required
 - ✅ **Same deployment and monitoring** patterns
 
