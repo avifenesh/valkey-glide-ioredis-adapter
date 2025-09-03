@@ -1,0 +1,87 @@
+# Dependabot configuration for valkey-glide-ioredis-adapter
+# This file configures automated dependency updates for the repository
+# All dependency updates require PR approval - no auto-merge enabled
+
+version: 2
+updates:
+  # Monitor npm dependencies
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    reviewers:
+      - "avifenesh"
+    assignees:
+      - "avifenesh"
+    labels:
+      - "dependencies"
+      - "npm"
+    # Group patch updates to reduce noise
+    groups:
+      production-dependencies:
+        patterns:
+          - "@valkey/valkey-glide"
+          - "events"
+        update-types:
+          - "patch"
+          - "minor"
+      development-dependencies:
+        patterns:
+          - "@types/*"
+          - "@typescript-eslint/*"
+          - "typescript"
+          - "eslint*"
+          - "prettier"
+          - "jest"
+          - "@semantic-release/*"
+          - "semantic-release"
+        update-types:
+          - "patch"
+          - "minor"
+    # Allow major version updates but handle them separately
+    ignore:
+      # Ignore major version updates for critical dependencies
+      # These should be reviewed manually
+      - dependency-name: "@valkey/valkey-glide"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+
+  # Monitor GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+      include: "scope"
+    reviewers:
+      - "avifenesh"
+    assignees:
+      - "avifenesh"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    # Group GitHub Actions updates
+    groups:
+      github-actions:
+        patterns:
+          - "actions/*"
+          - "codecov/*"
+        update-types:
+          - "patch"
+          - "minor"
+          - "major"
