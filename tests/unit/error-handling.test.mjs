@@ -61,16 +61,16 @@ describe('Error Handling and Edge Cases', () => {
       await redis.set(key, 'string_value');
 
       // Try to use - should throw appropriate error
-      await assert.ok(redis.lpush(key, 'value')).rejects.toThrow();
+      await assert.rejects(redis.lpush(key, 'value'));
 
       // Try to use - should throw appropriate error
-      await assert.ok(redis.hset(key, 'field', 'value')).rejects.toThrow();
+      await assert.rejects(redis.hset(key, 'field', 'value'));
 
       // Try to use - should throw appropriate error
-      await assert.ok(redis.sadd(key, 'member')).rejects.toThrow();
+      await assert.rejects(redis.sadd(key, 'member'));
 
       // Try to use - should throw appropriate error
-      await assert.ok(redis.zadd(key, 1, 'member')).rejects.toThrow();
+      await assert.rejects(redis.zadd(key, 1, 'member'));
     });
 
     it('should handle invalid command arguments', async () => {
@@ -78,12 +78,12 @@ describe('Error Handling and Edge Cases', () => {
 
       // Invalid LSET arguments
       await redis.rpush(key, 'a', 'b', 'c');
-      await assert.ok(redis.lset(key, 999, 'value')).rejects.toThrow();
-      await assert.ok(redis.lset(key, -999, 'value')).rejects.toThrow();
+      await assert.rejects(redis.lset(key, 999, 'value'));
+      await assert.rejects(redis.lset(key, -999, 'value'));
 
       // Invalid INCR on non-numeric value
-      await redis.set(key + '', 'not_a_number');
-      await assert.ok(redis.incr(key + '')).rejects.toThrow();
+      await redis.set(key + 'text', 'not_a_number');
+      await assert.rejects(redis.incr(key + 'text'));
     });
 
     it('should handle memory pressure scenarios', async () => {
@@ -183,47 +183,47 @@ describe('Error Handling and Edge Cases', () => {
       const baseKey = 'empty:' + Math.random();
 
       // Empty list operations
-      const listKey = baseKey + '';
-      assert.ok(await redis.llen(listKey)).toBe(0);
-      assert.ok(await redis.lpop(listKey)).toBeNull();
-      assert.ok(await redis.lrange(listKey, 0, -1)).toEqual([]);
+      const listKey = baseKey + 'list';
+      assert.strictEqual(await redis.llen(listKey), 0);
+      assert.strictEqual(await redis.lpop(listKey), null);
+      assert.deepStrictEqual(await redis.lrange(listKey, 0, -1), []);
 
       // Empty set operations
-      const setKey = baseKey + '';
-      assert.ok(await redis.scard(setKey)).toBe(0);
-      assert.ok(await redis.spop(setKey)).toBeNull();
-      assert.ok(await redis.smembers(setKey)).toEqual([]);
+      const setKey = baseKey + 'set';
+      assert.strictEqual(await redis.scard(setKey), 0);
+      assert.strictEqual(await redis.spop(setKey), null);
+      assert.deepStrictEqual(await redis.smembers(setKey), []);
 
       // Empty hash operations
-      const hashKey = baseKey + '';
-      assert.ok(await redis.hlen(hashKey)).toBe(0);
-      assert.ok(await redis.hkeys(hashKey)).toEqual([]);
-      assert.ok(await redis.hgetall(hashKey)).toEqual({});
+      const hashKey = baseKey + 'hash';
+      assert.strictEqual(await redis.hlen(hashKey), 0);
+      assert.deepStrictEqual(await redis.hkeys(hashKey), []);
+      assert.deepStrictEqual(await redis.hgetall(hashKey), {});
 
       // Empty zset operations
-      const zsetKey = baseKey + '';
-      assert.ok(await redis.zcard(zsetKey)).toBe(0);
-      assert.ok(await redis.zrange(zsetKey, 0, -1)).toEqual([]);
+      const zsetKey = baseKey + 'zset';
+      assert.strictEqual(await redis.zcard(zsetKey), 0);
+      assert.deepStrictEqual(await redis.zrange(zsetKey, 0, -1), []);
     });
 
     it('should handle boundary value operations', async () => {
       const key = 'boundary:' + Math.random();
 
       // Test with empty strings
-      await redis.set(key + '', '');
-      const empty = await redis.get(key + '');
+      await redis.set(key + 'empty', '');
+      const empty = await redis.get(key + 'empty');
       assert.strictEqual(empty, '');
 
       // Test with very long field names in hashes
       const longField = 'field_' + 'x'.repeat(1000);
-      await redis.hset(key + '', longField, 'value');
-      const longFieldValue = await redis.hget(key + '', longField);
+      await redis.hset(key + 'hash', longField, 'value');
+      const longFieldValue = await redis.hget(key + 'hash', longField);
       assert.strictEqual(longFieldValue, 'value');
 
       // Test with special characters
       const specialChars = '!@#$%^&*()_+{}|:"<>?[];\'\\,./~`';
-      await redis.set(key + '', specialChars);
-      const specialValue = await redis.get(key + '');
+      await redis.set(key + 'special', specialChars);
+      const specialValue = await redis.get(key + 'special');
       assert.strictEqual(specialValue, specialChars);
     });
 
@@ -231,17 +231,17 @@ describe('Error Handling and Edge Cases', () => {
       const key = 'numeric:' + Math.random();
 
       // Test with zero
-      await redis.set(key + '', '0');
-      const incremented = await redis.incr(key + '');
+      await redis.set(key + 'zero', '0');
+      const incremented = await redis.incr(key + 'zero');
       assert.strictEqual(incremented, 1);
 
       // Test with negative numbers
-      await redis.set(key + '', '-5');
-      const decremented = await redis.decr(key + '');
+      await redis.set(key + 'negative', '-5');
+      const decremented = await redis.decr(key + 'negative');
       assert.strictEqual(decremented, -6);
 
       // Test with float precision
-      const floatKey = key + '';
+      const floatKey = key + 'float';
       await redis.set(floatKey, '0.0');
       const floatIncr = await redis.incrbyfloat(floatKey, 0.1);
       assert.ok(Math.abs(parseFloat(floatIncr.toString()) - 0.1) < 0.00000001);
@@ -326,35 +326,35 @@ describe('Error Handling and Edge Cases', () => {
       const baseKey = 'cleanup:' + Math.random();
 
       // Create complex structures
-      await redis.hmset(baseKey + '', {
+      await redis.hmset(baseKey + 'hash', {
         field1: 'value1',
         field2: 'value2',
       });
-      await redis.sadd(baseKey + '', 'member1', 'member2');
-      await redis.zadd(baseKey + '', 1, 'item1', 2, 'item2');
-      await redis.rpush(baseKey + '', 'item1', 'item2');
+      await redis.sadd(baseKey + 'set', 'member1', 'member2');
+      await redis.zadd(baseKey + 'zset', 1, 'item1', 2, 'item2');
+      await redis.rpush(baseKey + 'list', 'item1', 'item2');
 
       // Verify they exist
-      assert.ok(await redis.hlen(baseKey + '')).toBeGreaterThan(0);
-      assert.ok(await redis.scard(baseKey + '')).toBeGreaterThan(0);
-      assert.ok(await redis.zcard(baseKey + '')).toBeGreaterThan(0);
-      assert.ok(await redis.llen(baseKey + '')).toBeGreaterThan(0);
+      assert.ok(await redis.hlen(baseKey + 'hash') > 0);
+      assert.ok(await redis.scard(baseKey + 'set') > 0);
+      assert.ok(await redis.zcard(baseKey + 'zset') > 0);
+      assert.ok(await redis.llen(baseKey + 'list') > 0);
 
       // Cleanup all at once
       const deleted = await redis.del(
-        baseKey + '',
-        baseKey + '',
-        baseKey + '',
-        baseKey + ''
+        baseKey + 'hash',
+        baseKey + 'set',
+        baseKey + 'zset',
+        baseKey + 'list'
       );
 
       assert.strictEqual(deleted, 4);
 
       // Verify cleanup
-      assert.ok(await redis.hlen(baseKey + '')).toBe(0);
-      assert.ok(await redis.scard(baseKey + '')).toBe(0);
-      assert.ok(await redis.zcard(baseKey + '')).toBe(0);
-      assert.ok(await redis.llen(baseKey + '')).toBe(0);
+      assert.strictEqual(await redis.hlen(baseKey + 'hash'), 0);
+      assert.strictEqual(await redis.scard(baseKey + 'set'), 0);
+      assert.strictEqual(await redis.zcard(baseKey + 'zset'), 0);
+      assert.strictEqual(await redis.llen(baseKey + 'list'), 0);
     });
   });
 

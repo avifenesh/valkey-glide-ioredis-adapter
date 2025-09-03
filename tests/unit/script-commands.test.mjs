@@ -61,6 +61,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       const userKey = 'rate_limit:user123';
 
       // Test rate limiting
+      const baseTime = Date.now();
       for (let i = 0; i < 7; i++) {
         const allowed = await redis.eval(
           rateLimitScript,
@@ -68,7 +69,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
           userKey,
           window,
           limit,
-          Date.now()
+          baseTime + i // Use incrementing timestamps
         );
         
         if (i < 5) {
@@ -174,7 +175,30 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         local new_count = redis.call('INCR', window_key)
         redis.call('EXPIRE', window_key, window_seconds * 2)
         
-        if new_count  0); // Reset time
+        if new_count <= limit then
+          return {1, limit - new_count, window_seconds * 1000 - (current_time - window_start)}
+        else
+          return {0, 0, window_seconds * 1000 - (current_time - window_start)}
+        end
+      `.trim();
+
+      const limit = 3;
+      const windowSeconds = 1;
+      const key = 'window:user123:' + Date.now() + ':' + Math.random();
+      const baseTime = Date.now();
+
+      // Make 3 requests (should succeed)
+      for (let i = 0; i < 3; i++) {
+        const result = await redis.eval(
+          fixedWindowScript,
+          1,
+          key,
+          windowSeconds.toString(),
+          limit.toString(),
+          (baseTime + i * 100).toString()
+        );
+        assert.strictEqual(result[0], 1); // Allowed
+        assert.ok(result[2] > 0); // Reset time
       }
 
       // 4th message should be denied
@@ -195,29 +219,31 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
 
   describe('Atomic Business Operations', () => {
     it('should implement atomic inventory management like Shopify', async () => {
-      const inventoryScript = 'local product_key = KEYS[1]\\n' +
-        'local order_id = ARGV[1]\\n' +
-        'local requested_qty = tonumber(ARGV[2])\\n' +
-        '\\n' +
-        'local inventory = redis.call("HMGET", product_key, "available", "reserved", "total")\\n' +
-        'local available = tonumber(inventory[1]) or 0\\n' +
-        'local reserved = tonumber(inventory[2]) or 0\\n' +
-        'local total = tonumber(inventory[3]) or 0\\n' +
-        '\\n' +
-        'if available >= requested_qty then\\n' +
-        '  available = available - requested_qty\\n' +
-        '  reserved = reserved + requested_qty\\n' +
-        '  \\n' +
-        '  redis.call("HMSET", product_key, "available", available, "reserved", reserved)\\n' +
-        '  \\n' +
-        '  local reservation_key = product_key .. ":" .. order_id\\n' +
-        '  redis.call("HMSET", reservation_key, "quantity", requested_qty, "timestamp", redis.call("TIME")[1], "status", "reserved")\\n' +
-        '  redis.call("EXPIRE", reservation_key, 3600)\\n' +
-        '  \\n' +
-        '  return {1, available, reserved, "reserved"}\\n' +
-        'else\\n' +
-        '  return {0, available, reserved, "insufficient_stock"}\\n' +
-        'end';
+      const inventoryScript = `
+        local product_key = KEYS[1]
+        local order_id = ARGV[1]
+        local requested_qty = tonumber(ARGV[2])
+        
+        local inventory = redis.call("HMGET", product_key, "available", "reserved", "total")
+        local available = tonumber(inventory[1]) or 0
+        local reserved = tonumber(inventory[2]) or 0
+        local total = tonumber(inventory[3]) or 0
+        
+        if available >= requested_qty then
+          available = available - requested_qty
+          reserved = reserved + requested_qty
+          
+          redis.call("HMSET", product_key, "available", available, "reserved", reserved)
+          
+          local reservation_key = product_key .. ":" .. order_id
+          redis.call("HMSET", reservation_key, "quantity", requested_qty, "timestamp", redis.call("TIME")[1], "status", "reserved")
+          redis.call("EXPIRE", reservation_key, 3600)
+          
+          return {1, available, reserved, "reserved"}
+        else
+          return {0, available, reserved, "insufficient_stock"}
+        end
+      `.trim();
 
       const productKey = 'inventory:' + Math.random();
 
@@ -277,23 +303,25 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
 
   describe('Distributed Locking Patterns', () => {
     it('should implement distributed lock with expiration like GitHub', async () => {
-      const distributedLockScript = 'local lock_key = KEYS[1]\\n' +
-        'local lock_value = ARGV[1]\\n' +
-        'local expiration_ms = tonumber(ARGV[2])\\n' +
-        'local current_time = tonumber(ARGV[3])\\n' +
-        '\\n' +
-        'local current_lock = redis.call("GET", lock_key)\\n' +
-        '\\n' +
-        'if not current_lock then\\n' +
-        '  redis.call("SET", lock_key, lock_value, "PX", expiration_ms)\\n' +
-        '  return {1, lock_value, expiration_ms}\\n' +
-        'elseif current_lock == lock_value then\\n' +
-        '  redis.call("SET", lock_key, lock_value, "PX", expiration_ms)\\n' +
-        '  return {1, lock_value, expiration_ms}\\n' +
-        'else\\n' +
-        '  local ttl = redis.call("PTTL", lock_key)\\n' +
-        '  return {0, current_lock, ttl}\\n' +
-        'end';
+      const distributedLockScript = `
+        local lock_key = KEYS[1]
+        local lock_value = ARGV[1]
+        local expiration_ms = tonumber(ARGV[2])
+        local current_time = tonumber(ARGV[3])
+        
+        local current_lock = redis.call("GET", lock_key)
+        
+        if not current_lock then
+          redis.call("SET", lock_key, lock_value, "PX", expiration_ms)
+          return {1, lock_value, expiration_ms}
+        elseif current_lock == lock_value then
+          redis.call("SET", lock_key, lock_value, "PX", expiration_ms)
+          return {1, lock_value, expiration_ms}
+        else
+          local ttl = redis.call("PTTL", lock_key)
+          return {0, current_lock, ttl}
+        end
+      `.trim();
 
       const lockKey = 'repo:' + Math.random();
       const process1Id = 'process-1-uuid';
@@ -345,33 +373,35 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
 
   describe('Counter and Analytics Patterns', () => {
     it('should implement atomic multi-counter updates for analytics', async () => {
-      const analyticsScript = 'local event_type = ARGV[1]\\n' +
-        'local user_id = ARGV[2]\\n' +
-        'local timestamp = tonumber(ARGV[3])\\n' +
-        'local day = math.floor(timestamp / 86400) * 86400\\n' +
-        'local hour = math.floor(timestamp / 3600) * 3600\\n' +
-        'local counters_updated = {}\\n' +
-        'local daily_key = "analytics:" .. event_type .. ":" .. day\\n' +
-        'local daily_count = redis.call("INCR", daily_key)\\n' +
-        'redis.call("EXPIRE", daily_key, 604800)\\n' +
-        'table.insert(counters_updated, {"daily", daily_count})\\n' +
-        'local hourly_key = "analytics:" .. event_type .. ":" .. hour\\n' +
-        'local hourly_count = redis.call("INCR", hourly_key)\\n' +
-        'redis.call("EXPIRE", hourly_key, 172800)\\n' +
-        'table.insert(counters_updated, {"hourly", hourly_count})\\n' +
-        'local user_key = "analytics:" .. user_id .. ":" .. event_type\\n' +
-        'local user_count = redis.call("INCR", user_key)\\n' +
-        'redis.call("EXPIRE", user_key, 2592000)\\n' +
-        'table.insert(counters_updated, {"user", user_count})\\n' +
-        'local global_key = "analytics:" .. event_type\\n' +
-        'local global_count = redis.call("INCR", global_key)\\n' +
-        'table.insert(counters_updated, {"global", global_count})\\n' +
-        'local unique_users_key = "analytics:" .. event_type .. ":" .. day\\n' +
-        'local was_unique = redis.call("SADD", unique_users_key, user_id)\\n' +
-        'redis.call("EXPIRE", unique_users_key, 604800)\\n' +
-        'local unique_count = redis.call("SCARD", unique_users_key)\\n' +
-        'table.insert(counters_updated, {"unique_users", unique_count})\\n' +
-        'return counters_updated';
+      const analyticsScript = `
+        local event_type = ARGV[1]
+        local user_id = ARGV[2]
+        local timestamp = tonumber(ARGV[3])
+        local day = math.floor(timestamp / 86400) * 86400
+        local hour = math.floor(timestamp / 3600) * 3600
+        local counters_updated = {}
+        local daily_key = "analytics:" .. event_type .. ":" .. day
+        local daily_count = redis.call("INCR", daily_key)
+        redis.call("EXPIRE", daily_key, 604800)
+        table.insert(counters_updated, {"daily", daily_count})
+        local hourly_key = "analytics:" .. event_type .. ":" .. hour
+        local hourly_count = redis.call("INCR", hourly_key)
+        redis.call("EXPIRE", hourly_key, 172800)
+        table.insert(counters_updated, {"hourly", hourly_count})
+        local user_key = "analytics:" .. user_id .. ":" .. event_type
+        local user_count = redis.call("INCR", user_key)
+        redis.call("EXPIRE", user_key, 2592000)
+        table.insert(counters_updated, {"user", user_count})
+        local global_key = "analytics:" .. event_type
+        local global_count = redis.call("INCR", global_key)
+        table.insert(counters_updated, {"global", global_count})
+        local unique_users_key = "analytics:unique:" .. event_type .. ":" .. day
+        local was_unique = redis.call("SADD", unique_users_key, user_id)
+        redis.call("EXPIRE", unique_users_key, 604800)
+        local unique_count = redis.call("SCARD", unique_users_key)
+        table.insert(counters_updated, {"unique_users", unique_count})
+        return counters_updated
+      `.trim();
 
       const eventType = 'page_view_' + Math.random();
       const userId = 'user_' + Math.random();
@@ -386,16 +416,16 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         timestamp.toString()
       );
 
-      assert.ok(Array.isArray(result1)));
+      assert.ok(Array.isArray(result1));
       assert.strictEqual(result1.length, 5); // 5 counters updated
 
       // Verify counter types and values - use unique events to avoid interference
       const counterMap = new Map(result1);
-      assert.ok(counterMap.get('daily')) >= 1);
-      assert.ok(counterMap.get('hourly')) >= 1);
-      assert.ok(counterMap.get('user')) >= 1);
-      assert.ok(counterMap.get('global')) >= 1);
-      assert.ok(counterMap.get('unique_users')) >= 1);
+      assert.ok(counterMap.get('daily') >= 1);
+      assert.ok(counterMap.get('hourly') >= 1);
+      assert.ok(counterMap.get('user') >= 1);
+      assert.ok(counterMap.get('global') >= 1);
+      assert.ok(counterMap.get('unique_users') >= 1);
 
       // Record another event for same user - unique users should not increase
       const result2 = await redis.eval(
@@ -407,12 +437,8 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       );
 
       const counterMap2 = new Map(result2);
-      assert.ok(counterMap2.get('daily')).toBeGreaterThan(
-        counterMap.get('daily')
-      );
-      assert.ok(counterMap2.get('unique_users')).toBe(
-        counterMap.get('unique_users')
-      ); // Same user, so no change
+      assert.ok(counterMap2.get('daily') > counterMap.get('daily'));
+      assert.strictEqual(counterMap2.get('unique_users'), counterMap.get('unique_users')); // Same user, so no change
 
       // Record event for different user - unique users should increase
       const result3 = await redis.eval(
@@ -434,10 +460,10 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
 
       // First execution with EVAL
       const result1 = await redis.eval(simpleScript, 0, 'World');
-      assert.strictEqual(result1, 'Hello from cached script');
+      assert.strictEqual(result1, 'Hello from cached script: World');
 
       // Calculate script SHA1 (simple approach - in production use crypto)
-      const crypto = require('crypto');
+      const crypto = await import('crypto');
       const scriptSha1 = crypto
         .createHash('sha1')
         .update(simpleScript)
@@ -455,12 +481,14 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
     });
 
     it('should handle complex return types from Lua scripts', async () => {
-      const complexScript = 'local result = {}\\n' +
-        'result[1] = "string_value"\\n' +
-        'result[2] = 42\\n' +
-        'result[3] = {"item1", "item2", "item3"}\\n' +
-        'result[4] = {"nested", 123, {"deep", "array"}}\\n' +
-        'return result';
+      const complexScript = `
+        local result = {}
+        result[1] = "string_value"
+        result[2] = 42
+        result[3] = {"item1", "item2", "item3"}
+        result[4] = {"nested", 123, {"deep", "array"}}
+        return result
+      `.trim();
 
       const result = await redis.eval(complexScript, 0);
 
@@ -507,10 +535,10 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         ...args
       );
 
-      assert.ok(Array.isArray(result)));
+      assert.ok(Array.isArray(result));
       assert.strictEqual(result.length, 5);
-      assert.strictEqual(result[0], 'key1');
-      assert.strictEqual(result[4], 'key5');
+      assert.strictEqual(result[0], 'key1:val1');
+      assert.strictEqual(result[4], 'key5:val5');
     });
 
     it('should handle empty script execution', async () => {
@@ -539,7 +567,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       } catch (error) {
         assert.ok(error !== undefined);
         // Valkey returns "Unknown command" while Redis returns "Unknown Redis command"
-        assert.ok(String(error)).includes(/Unknown (Redis )?command/);
+        assert.ok(String(error).includes('Unknown command'));
       }
     });
   });

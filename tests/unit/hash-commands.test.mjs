@@ -162,7 +162,7 @@ describe('Hash Commands - Real-World Patterns', () => {
         JSON.stringify({
           productId: 'PROD-001',
           name: 'Laptop',
-          price: 99,
+          price: 999.99,
           quantity: 1,
         })
       );

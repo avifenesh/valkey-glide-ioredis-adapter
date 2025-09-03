@@ -77,7 +77,7 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
 
       // Find mutual followers
       const mutualFollowers = await redis.sinter(followers1Key, followers2Key);
-      assert.ok(mutualFollowers.sort()).toEqual(['bob', 'charlie']);
+      assert.deepStrictEqual(mutualFollowers.sort(), ['bob', 'charlie']);
 
       // Store mutual followers for caching
       const mutualKey = `mutual:${user1}:${user2}`;
@@ -89,7 +89,7 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
       assert.strictEqual(stored, 2);
 
       const cachedMutual = await redis.smembers(mutualKey);
-      assert.ok(cachedMutual.sort()).toEqual(['bob', 'charlie']);
+      assert.deepStrictEqual(cachedMutual.sort(), ['bob', 'charlie']);
     });
 
     it('should suggest friends using SDIFF for "people you may know"', async () => {
@@ -116,7 +116,7 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
         friendFollowingKey,
         userFollowingKey
       );
-      assert.ok(suggestions.sort()).toEqual(['david', 'eve', 'frank']);
+      assert.deepStrictEqual(suggestions.sort(), ['david', 'eve', 'frank']);
 
       // Store suggestions for later processing
       const suggestionsKey = `suggestions:${userId}:${friendId}`;
@@ -221,12 +221,16 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
         assert.strictEqual(hasPhotography, expected);
       }
 
+      // Create reverse index: tags -> posts
+      await redis.sadd(`tag:photography:${sessionId}`, `post1_${sessionId}`, `post2_${sessionId}`, `post3_${sessionId}`);
+      await redis.sadd(`tag:nature:${sessionId}`, `post1_${sessionId}`, `post3_${sessionId}`);
+      
       // Find posts with both 'photography' and 'nature'
       const photoNaturePosts = await redis.sinter(
-        `post_tags${sessionId}`,
-        `post_tags${sessionId}`
+        `tag:photography:${sessionId}`,
+        `tag:nature:${sessionId}`
       );
-      assert.ok(photoNaturePosts.sort()).toEqual(['nature', 'photography']);
+      assert.deepStrictEqual(photoNaturePosts.sort(), [`post1_${sessionId}`, `post3_${sessionId}`]);
     });
 
     it('should implement hashtag recommendation system', async () => {
@@ -287,7 +291,7 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
 
       // Get all user roles
       const allRoles = await redis.smembers(userRolesKey);
-      assert.ok(allRoles.sort()).toEqual(['member', 'moderator']);
+      assert.deepStrictEqual(allRoles.sort(), ['member', 'moderator']);
     });
 
     it('should implement channel access control', async () => {
@@ -356,9 +360,9 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
 
     it('should implement company employee network', async () => {
       const companyId = 'company_' + Math.random();
-      const engineersKey = `employees:${companyId}`;
-      const marketingKey = `employees:${companyId}`;
-      const managementKey = `employees:${companyId}`;
+      const engineersKey = `employees:${companyId}:engineers`;
+      const marketingKey = `employees:${companyId}:marketing`;
+      const managementKey = `employees:${companyId}:management`;
 
       // Department employees
       await redis.sadd(engineersKey, 'alice', 'bob', 'charlie');
@@ -379,7 +383,7 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
 
       // Non-management engineers
       const nonMgmtEngineers = await redis.sdiff(engineersKey, managementKey);
-      assert.ok(nonMgmtEngineers.sort()).toEqual(['bob', 'charlie']);
+      assert.deepStrictEqual(nonMgmtEngineers.sort(), ['bob', 'charlie']);
     });
   });
 
@@ -387,8 +391,8 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
     it('should track unique visitors and sessions', async () => {
       const date = new Date().toISOString().split('T')[0];
       const uniqueVisitorsKey = `visitors:${date}`;
-      const mobileVisitorsKey = `visitors:${date}`;
-      const desktopVisitorsKey = `visitors:${date}`;
+      const mobileVisitorsKey = `visitors:mobile:${date}`;
+      const desktopVisitorsKey = `visitors:desktop:${date}`;
 
       // Track unique visitors by device
       await redis.sadd(
@@ -421,14 +425,14 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
         mobileVisitorsKey,
         desktopVisitorsKey
       );
-      assert.ok(mobileOnly.sort()).toEqual(['user1', 'user3']);
+      assert.deepStrictEqual(mobileOnly.sort(), ['user1', 'user3']);
     });
 
     it('should implement A/B testing cohorts', async () => {
       const experimentId = 'experiment_' + Math.random();
-      const controlGroupKey = `experiment:${experimentId}`;
-      const variantAKey = `experiment:${experimentId}`;
-      const variantBKey = `experiment:${experimentId}`;
+      const controlGroupKey = `experiment:${experimentId}:control`;
+      const variantAKey = `experiment:${experimentId}:variantA`;
+      const variantBKey = `experiment:${experimentId}:variantB`;
 
       // Assign users to test groups
       await redis.sadd(controlGroupKey, 'user1', 'user2', 'user3');
@@ -436,8 +440,8 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
       await redis.sadd(variantBKey, 'user7', 'user8', 'user9');
 
       // Track conversions
-      const controlConvertsKey = `experiment:${experimentId}`;
-      const variantAConvertsKey = `experiment:${experimentId}`;
+      const controlConvertsKey = `experiment:${experimentId}:control:converts`;
+      const variantAConvertsKey = `experiment:${experimentId}:variantA:converts`;
 
       await redis.sadd(controlConvertsKey, 'user1'); // 1/3 = 33%
       await redis.sadd(variantAConvertsKey, 'user4', 'user5'); // 2/3 = 67%
@@ -485,15 +489,15 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
 
       // Beta users actively using the feature
       const activeBetaUsers = await redis.sinter(betaUsersKey, activeUsersKey);
-      assert.ok(activeBetaUsers.sort()).toEqual(['beta1', 'beta3', 'beta5']);
+      assert.deepStrictEqual(activeBetaUsers.sort(), ['beta1', 'beta3', 'beta5']);
 
       // Non-beta users using the feature (general rollout)
       const generalUsers = await redis.sdiff(activeUsersKey, betaUsersKey);
-      assert.ok(generalUsers.sort()).toEqual(['user1', 'user2']);
+      assert.deepStrictEqual(generalUsers.sort(), ['user1', 'user2']);
 
       // Beta users who haven't provided feedback yet
       const betaNoFeedback = await redis.sdiff(betaUsersKey, feedbackUsersKey);
-      assert.ok(betaNoFeedback.sort()).toEqual(['beta3', 'beta4', 'beta5']);
+      assert.deepStrictEqual(betaNoFeedback.sort(), ['beta3', 'beta4', 'beta5']);
     });
   });
 
@@ -573,7 +577,7 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
 
       // Check if enough moderators reviewed (consensus)
       const reviewCount = await redis.scard(reviewedByKey);
-      const consensusReached = reviewCount  = 2;
+      const consensusReached = reviewCount >= 2;
       assert.strictEqual(consensusReached, true);
     });
   });
@@ -606,14 +610,15 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
       await redis.set(stringKey, 'not-a-set');
 
       // Set operations should fail
-      await assert.ok(redis.sadd(stringKey, 'member')).rejects.toThrow();
-      await assert.ok(redis.smembers(stringKey)).rejects.toThrow();
+      await assert.rejects(redis.sadd(stringKey, 'member'));
+      await assert.rejects(redis.smembers(stringKey));
     });
 
     it('should handle large sets efficiently', async () => {
       const largeSetKey = 'large:' + Math.random();
 
       // Add many members
+      const length = 1000;
       const members = Array.from({ length }, (_, i) => `member${i}`);
       const added = await redis.sadd(largeSetKey, ...members);
       assert.strictEqual(added, 1000);
@@ -644,16 +649,16 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
       assert.strictEqual(allMembers.length, 4);
 
       // Check membership
-      assert.ok(await redis.sismember(mixedSetKey, '123')).toBe(1);
-      assert.ok(await redis.sismember(mixedSetKey, 'string')).toBe(1);
-      assert.ok(await redis.sismember(mixedSetKey, 'user')).toBe(1);
+      assert.strictEqual(await redis.sismember(mixedSetKey, '123'), 1);
+      assert.strictEqual(await redis.sismember(mixedSetKey, 'string'), 1);
+      assert.strictEqual(await redis.sismember(mixedSetKey, 'user'), 1);
 
       // Remove specific types
       const removed = await redis.srem(mixedSetKey, 'user', 'tag');
       assert.strictEqual(removed, 2);
 
       const remaining = await redis.smembers(mixedSetKey);
-      assert.ok(remaining.sort()).toEqual(['123', 'string']);
+      assert.deepStrictEqual(remaining.sort(), ['123', 'string']);
     });
   });
 });

@@ -231,7 +231,7 @@ describe('Distributed Locking Patterns', () => {
   describe('Job Processing with Locks', () => {
     it('should ensure single job processor', async () => {
       const jobId = 'job_' + Math.random();
-      const processingLockKey = `job:${jobId}`;
+      const processingLockKey = `job:lock:${jobId}`;
 
       const jobData = {
         id: jobId,
@@ -541,8 +541,8 @@ describe('Distributed Locking Patterns', () => {
       assert.deepStrictEqual(acquisitionResults, [true, true, true, false]);
 
       // Check current permit count
-      const permitCount = await redis.get(`${semaphoreKey}`);
-      assert.strictEqual(parseInt(permitCount), 3);
+      const permitCount = await redis.get(`${semaphoreKey}:permits`);
+      assert.strictEqual(parseInt(permitCount || '0'), 3);
 
       // Release one permit
       const released = await releasePermit('client1');

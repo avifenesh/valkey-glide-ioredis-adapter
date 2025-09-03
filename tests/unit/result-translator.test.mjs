@@ -14,9 +14,9 @@ describe('ResultTranslator', () => {
   describe('flattenSortedSetData', () => {
     it('should flatten valid SortedSetDataType to ioredis format', () => {
       const glideResult = [
-        { element: 'member1', score: 0 },
-        { element: 'member2', score: 5 },
-        { element: 'member3', score: 14159 },
+        { element: 'member1', score: 1 },
+        { element: 'member2', score: 2.5 },
+        { element: 'member3', score: 3.14159 },
       ];
 
       const result = ResultTranslator.flattenSortedSetData(glideResult);
@@ -44,8 +44,8 @@ describe('ResultTranslator', () => {
 
     it('should handle SortedSetDataType with Buffer elements', () => {
       const glideResult = [
-        { element: Buffer.from('binary_member'), score: 0 },
-        { element: 'string_member', score: 0 },
+        { element: Buffer.from('binary_member'), score: 1 },
+        { element: 'string_member', score: 2 },
       ];
 
       const result = ResultTranslator.flattenSortedSetData(glideResult);
@@ -56,7 +56,7 @@ describe('ResultTranslator', () => {
     it('should handle SortedSetDataType with negative scores', () => {
       const glideResult = [
         { element: 'negative', score: -1.5 },
-        { element: 'positive', score: 5 },
+        { element: 'positive', score: 1.5 },
         { element: 'zero', score: 0 },
       ];
 
@@ -76,7 +76,7 @@ describe('ResultTranslator', () => {
       const glideResult = [
         { element: 'large', score: Number.MAX_SAFE_INTEGER },
         { element: 'small', score: Number.MIN_SAFE_INTEGER },
-        { element: 'infinity', score: 0 },
+        { element: 'infinity', score: Infinity },
         { element: 'negative_infinity', score: -Infinity },
       ];
 
@@ -262,8 +262,8 @@ describe('ResultTranslator', () => {
   describe('formatRangeResult', () => {
     it('should format SortedSetDataType when withScores is true', () => {
       const glideResult = [
-        { element: 'member1', score: 0 },
-        { element: 'member2', score: 0 },
+        { element: 'member1', score: 1 },
+        { element: 'member2', score: 2 },
       ];
 
       const result = ResultTranslator.formatRangeResult(glideResult, true);
@@ -312,8 +312,8 @@ describe('ResultTranslator', () => {
 
     it('should handle SortedSetDataType with Buffer elements when withScores is true', () => {
       const glideResult = [
-        { element: Buffer.from('buffer_member'), score: 5 },
-        { element: 'string_member', score: 5 },
+        { element: Buffer.from('buffer_member'), score: 1.5 },
+        { element: 'string_member', score: 2.5 },
       ];
 
       const result = ResultTranslator.formatRangeResult(glideResult, true);

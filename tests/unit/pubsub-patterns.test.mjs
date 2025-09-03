@@ -447,8 +447,8 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Subscribe to GitHub webhook events by repository
       await subscriber.psubscribe(
-        'github:*/push',
-        'github:*/pull_request'
+        'github/*/push',
+        'github/*/pull_request'
       );
 
       subscriber.on(
@@ -518,7 +518,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       assert.ok(webhookEvents.length >= 3);
 
       const pushEvent = webhookEvents.find(e =>
-        e.channel.includes('myorg/myproject/push')
+        e.channel.includes('github/myproject/push')
       );
       assert.ok(pushEvent !== undefined);
 
@@ -555,10 +555,10 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Bitcoin price update
       await publisher.publish(
-        'market-USD',
+        'market:BTC-USD',
         JSON.stringify({
           symbol: 'BTC-USD',
-          price: 5,
+          price: 45230.5,
           change_24h: -2.34,
           volume_24h: 234567890,
           timestamp: Date.now(),
@@ -568,7 +568,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Ethereum price update
       await publisher.publish(
-        'market-USD',
+        'market:ETH-USD',
         JSON.stringify({
           symbol: 'ETH-USD',
           price: 75,
@@ -581,7 +581,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Forex update
       await publisher.publish(
-        'market-USD',
+        'market:EUR-USD',
         JSON.stringify({
           symbol: 'EUR-USD',
           bid: 1.0842,
@@ -631,7 +631,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
           symbol: 'BTC-USD',
           condition: 'above',
           threshold: 45000,
-          current_price: 5,
+          current_price: 45230.5,
           user_id: 'trader123',
           timestamp: Date.now(),
         })
@@ -773,7 +773,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       assert.strictEqual(patternMessages.length, 0);
 
       // Now publish to matching channel
-      await publisher.publish('nomatch', 'matching message');
+      await publisher.publish('nomatch:test', 'matching message');
       await new Promise(resolve => setTimeout(resolve, 100));
 
       assert.strictEqual(patternMessages.length, 1);
@@ -783,7 +783,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
     it('should handle unsubscribe operations', async () => {
       const messages = [];
 
-      await subscriber.subscribe('test', 'test');
+      await subscriber.subscribe('test', 'channel2');
 
       subscriber.on('message', (_channel, message) => {
         messages.push(`${_channel}:${message}`);
@@ -793,26 +793,26 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Send initial messages
       await publisher.publish('test', 'msg1');
-      await publisher.publish('test', 'msg2');
+      await publisher.publish('channel2', 'msg2');
 
       await new Promise(resolve => setTimeout(resolve, 100));
       assert.strictEqual(messages.length, 2);
 
       // Unsubscribe from one channel
-      await subscriber.unsubscribe('test');
+      await subscriber.unsubscribe('channel2');
 
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Send more messages
-      await publisher.publish('test', 'msg3'); // Should not receive
-      await publisher.publish('test', 'msg4'); // Should receive
+      await publisher.publish('test', 'msg3'); // Should receive
+      await publisher.publish('channel2', 'msg4'); // Should not receive
 
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Should only have received 3 messages (not the 4th from unsubscribed channel)
       assert.strictEqual(messages.length, 3);
-      assert.ok(messages.includes('test'));
-      assert.ok(!messages || toContain('test');
+      assert.ok(messages.some(m => m.includes('test:msg1')));
+      assert.ok(messages.some(m => m.includes('test:msg3')));
     });
 
     it('should handle large message payloads', async () => {

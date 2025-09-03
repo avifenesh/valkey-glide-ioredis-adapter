@@ -237,7 +237,7 @@ describe('List Commands - Real-World Patterns', () => {
 
       if (retryJob) {
         const jobData = JSON.parse(retryJob);
-        assert.strictEqual(jobData.attempts, 1);
+        assert.strictEqual(jobData.attempts, 2);
 
         // Move back to main queue for retry
         await redis.lpush(mainQueueKey, JSON.stringify(jobData));
@@ -342,8 +342,8 @@ describe('List Commands - Real-World Patterns', () => {
       await redis.set(stringKey, 'not-a-list');
 
       // List operations should fail on string keys
-      await assert.ok(redis.lpush(stringKey, 'value')).rejects.toThrow();
-      await assert.ok(redis.lrange(stringKey, 0, -1)).rejects.toThrow();
+      await assert.rejects(redis.lpush(stringKey, 'value'));
+      await assert.rejects(redis.lrange(stringKey, 0, -1));
     });
 
     it('should handle empty list cleanup', async () => {
