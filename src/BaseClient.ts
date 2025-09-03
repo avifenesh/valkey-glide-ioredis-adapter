@@ -7,7 +7,7 @@
  */
 
 import { EventEmitter } from 'events';
-import { GlideClient, GlideClusterClient, GlideFt } from '@valkey/valkey-glide';
+import { GlideClient, GlideClusterClient, GlideFt, BitwiseOperation } from '@valkey/valkey-glide';
 import { RedisOptions, RedisKey, RedisValue, Multi, Pipeline } from './types';
 import { ParameterTranslator } from './utils/ParameterTranslator';
 import { TimeUnit, SetOptions } from '@valkey/valkey-glide';
@@ -109,10 +109,9 @@ export abstract class BaseClient extends EventEmitter {
     // Initialize Direct GLIDE Pub/Sub (High-Performance Architecture)
     this.directPubSub = new DirectGlidePubSub(this);
 
-    // GLIDE by default is NOT lazy - it connects immediately
-    // Only trigger connection if NOT lazy (ioredis compatibility)
+    // Handle connection based on lazyConnect option
     if (!this.options.lazyConnect) {
-      // Use nextTick to avoid blocking constructor while maintaining immediate connection expectation
+      // Initialize GLIDE client immediately for non-lazy connections
       process.nextTick(() => {
         this.connect().catch(error => {
           this.emit('error', error);
@@ -243,11 +242,20 @@ export abstract class BaseClient extends EventEmitter {
     });
   }
 
-  protected async ensureConnected(): Promise<GlideClientType> {
-    if (!this.glideClient || this.connectionStatus !== 'connected') {
+  // Direct client access - GLIDE handles all connection logic internally
+  protected getClient(): GlideClientType {
+    if (!this.glideClient) {
+      throw new Error('Client not initialized - call connect() first');
+    }
+    return this.glideClient;
+  }
+
+  // Async client access with lazy connect and auto-connect support
+  protected async ensureClient(): Promise<GlideClientType> {
+    if (!this.glideClient) {
       await this.connect();
     }
-    return this.glideClient!;
+    return this.getClient();
   }
 
   // ioredis compatibility properties
@@ -299,7 +307,7 @@ export abstract class BaseClient extends EventEmitter {
     const { lua, numberOfKeys = 0 } = options;
 
     const commandHandler = async (...args: any[]): Promise<any> => {
-      const client = await this.ensureConnected();
+      const client = this.getClient();
       const numkeys = Number(numberOfKeys) || 0;
 
       // BullMQ calls with single array: client[commandName]([...args])
@@ -440,7 +448,7 @@ export abstract class BaseClient extends EventEmitter {
 
   // === String Commands ===
   async get(key: RedisKey): Promise<string | null> {
-    const client = await this.ensureConnected();
+    const client = await this.ensureClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.get(normalizedKey);
     return ParameterTranslator.convertGlideString(result);
@@ -455,7 +463,7 @@ export abstract class BaseClient extends EventEmitter {
     if (key === '' || key === null || key === undefined) {
       throw new Error("ERR wrong number of arguments for 'set' command");
     }
-    const client = await this.ensureConnected();
+    const client = await this.ensureClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
 
@@ -577,7 +585,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async mget(...keysOrArray: any[]): Promise<(string | null)[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const keys = Array.isArray(keysOrArray[0]) ? keysOrArray[0] : keysOrArray;
     const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
     const results = await client.mget(normalizedKeys);
@@ -585,7 +593,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async mset(...argsOrHash: any[]): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
 
     // Parse key-value pairs
     const keyValuePairs: Record<string, string> = {};
@@ -614,51 +622,51 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async incr(key: RedisKey): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = await this.ensureClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     return await client.incr(normalizedKey);
   }
 
   async decr(key: RedisKey): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     return await client.decr(normalizedKey);
   }
 
   async incrby(key: RedisKey, increment: number): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     return await client.incrBy(normalizedKey, increment);
   }
 
   async decrby(key: RedisKey, decrement: number): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     return await client.decrBy(normalizedKey, decrement);
   }
 
   async incrbyfloat(key: RedisKey, increment: number): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.incrByFloat(normalizedKey, increment);
     return parseFloat(result.toString());
   }
 
   async append(key: RedisKey, value: RedisValue): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
     return await client.append(normalizedKey, normalizedValue);
   }
 
   async strlen(key: RedisKey): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     return await client.strlen(normalizedKey);
   }
 
   async getrange(key: RedisKey, start: number, end: number): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.getrange(normalizedKey, start, end);
     return ParameterTranslator.convertGlideString(result) || '';
@@ -669,7 +677,7 @@ export abstract class BaseClient extends EventEmitter {
     offset: number,
     value: RedisValue
   ): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
     return await client.setrange(normalizedKey, offset, normalizedValue);
@@ -680,7 +688,7 @@ export abstract class BaseClient extends EventEmitter {
     seconds: number,
     value: RedisValue
   ): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = await this.ensureClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
     await client.set(normalizedKey, normalizedValue, {
@@ -690,7 +698,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async setnx(key: RedisKey, value: RedisValue): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
     const result = await client.set(normalizedKey, normalizedValue, {
@@ -704,7 +712,7 @@ export abstract class BaseClient extends EventEmitter {
     milliseconds: number,
     value: RedisValue
   ): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
     await client.set(normalizedKey, normalizedValue, {
@@ -713,30 +721,72 @@ export abstract class BaseClient extends EventEmitter {
     return 'OK';
   }
 
+  // === Bit Operations ===
+  async setbit(key: RedisKey, offset: number, value: number): Promise<number> {
+    const client = this.getClient();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const result = await client.setbit(normalizedKey, offset, value);
+    return Number(result);
+  }
+
+  async getbit(key: RedisKey, offset: number): Promise<number> {
+    const client = this.getClient();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const result = await client.getbit(normalizedKey, offset);
+    return Number(result);
+  }
+
+  async bitcount(key: RedisKey, start?: number, end?: number): Promise<number> {
+    const client = this.getClient();
+    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    if (start !== undefined && end !== undefined) {
+      const result = await client.bitcount(normalizedKey, { start, end });
+      return Number(result);
+    } else {
+      const result = await client.bitcount(normalizedKey);
+      return Number(result);
+    }
+  }
+
+  async bitop(
+    operation: 'AND' | 'OR' | 'XOR' | 'NOT',
+    destkey: RedisKey,
+    ...keys: RedisKey[]
+  ): Promise<number> {
+    const client = this.getClient();
+    const normalizedDestKey = ParameterTranslator.normalizeKey(destkey);
+    const normalizedKeys = keys.map(k => ParameterTranslator.normalizeKey(k));
+    
+    // Map string operation to BitwiseOperation enum
+    const bitwiseOp = operation as keyof typeof BitwiseOperation;
+    const result = await client.bitop(BitwiseOperation[bitwiseOp], normalizedDestKey, normalizedKeys);
+    return Number(result);
+  }
+
   // === Key Commands ===
   async del(...keys: RedisKey[]): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKeys = keys.map(k => ParameterTranslator.normalizeKey(k));
     const result = await client.del(normalizedKeys);
     return Number(result);
   }
 
   async exists(...keys: RedisKey[]): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKeys = keys.map(k => ParameterTranslator.normalizeKey(k));
     const result = await client.exists(normalizedKeys);
     return Number(result);
   }
 
   async persist(key: RedisKey): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.persist(normalizedKey);
     return result ? 1 : 0;
   }
 
   async type(key: RedisKey): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     return await client.type(normalizedKey);
   }
@@ -754,7 +804,7 @@ export abstract class BaseClient extends EventEmitter {
     numKeys: number,
     ...keysAndArgs: any[]
   ): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const { Script } = require('@valkey/valkey-glide');
 
     // Parse keys and arguments from the ioredis format
@@ -779,7 +829,7 @@ export abstract class BaseClient extends EventEmitter {
     numKeys: number,
     ...keysAndArgs: any[]
   ): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
 
     // Parse keys and arguments from the ioredis format
     const keys = keysAndArgs
@@ -812,35 +862,35 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async expire(key: RedisKey, seconds: number): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = await this.ensureClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.expire(normalizedKey, seconds);
     return result ? 1 : 0;
   }
 
   async pexpire(key: RedisKey, milliseconds: number): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.pexpire(normalizedKey, milliseconds);
     return result ? 1 : 0;
   }
 
   async ttl(key: RedisKey): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.ttl(normalizedKey);
     return Number(result);
   }
 
   async pttl(key: RedisKey): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.pttl(normalizedKey);
     return Number(result);
   }
 
   async scan(cursor: string, ...args: string[]): Promise<[string, string[]]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const scanArgs = [cursor, ...args];
     const result = await client.customCommand(['SCAN', ...scanArgs]);
 
@@ -862,7 +912,7 @@ export abstract class BaseClient extends EventEmitter {
     cursor: string,
     ...args: string[]
   ): Promise<[string, string[]]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const scanArgs = [normalizedKey, cursor, ...args];
     const result = await client.customCommand(['HSCAN', ...scanArgs]);
@@ -885,7 +935,7 @@ export abstract class BaseClient extends EventEmitter {
     cursor: string,
     ...args: string[]
   ): Promise<[string, string[]]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const scanArgs = [normalizedKey, cursor, ...args];
     const result = await client.customCommand(['SSCAN', ...scanArgs]);
@@ -908,7 +958,7 @@ export abstract class BaseClient extends EventEmitter {
     cursor: string,
     ...args: string[]
   ): Promise<[string, string[]]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const scanArgs = [normalizedKey, cursor, ...args];
     const result = await client.customCommand(['ZSCAN', ...scanArgs]);
@@ -930,14 +980,14 @@ export abstract class BaseClient extends EventEmitter {
 
   // === Hash Commands ===
   async hget(key: RedisKey, field: string): Promise<string | null> {
-    const client = await this.ensureConnected();
+    const client = await this.ensureClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.hget(normalizedKey, field);
     return ParameterTranslator.convertGlideString(result);
   }
 
   async hset(key: RedisKey, ...args: any[]): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = await this.ensureClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     // Parse field-value pairs into Record format for GLIDE
@@ -969,7 +1019,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async hgetall(key: RedisKey): Promise<Record<string, string>> {
-    const client = await this.ensureConnected();
+    const client = await this.ensureClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.hgetall(normalizedKey);
 
@@ -997,7 +1047,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async hmset(key: RedisKey, ...args: any[]): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = await this.ensureClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     // Parse field-value pairs into Record format for GLIDE
@@ -1033,7 +1083,7 @@ export abstract class BaseClient extends EventEmitter {
     key: RedisKey,
     ...fieldsOrArray: any[]
   ): Promise<(string | null)[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const fields = Array.isArray(fieldsOrArray[0])
       ? fieldsOrArray[0]
@@ -1043,34 +1093,34 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async hdel(key: RedisKey, ...fields: string[]): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     return await client.hdel(normalizedKey, fields);
   }
 
   async hexists(key: RedisKey, field: string): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.hexists(normalizedKey, field);
     return result ? 1 : 0;
   }
 
   async hkeys(key: RedisKey): Promise<string[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const results = await client.hkeys(normalizedKey);
     return results.map(r => ParameterTranslator.convertGlideString(r) || '');
   }
 
   async hvals(key: RedisKey): Promise<string[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const results = await client.hvals(normalizedKey);
     return results.map(r => ParameterTranslator.convertGlideString(r) || '');
   }
 
   async hlen(key: RedisKey): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     return await client.hlen(normalizedKey);
   }
@@ -1080,7 +1130,7 @@ export abstract class BaseClient extends EventEmitter {
     field: string,
     increment: number
   ): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     return await client.hincrBy(normalizedKey, field, increment);
   }
@@ -1090,7 +1140,7 @@ export abstract class BaseClient extends EventEmitter {
     field: string,
     increment: number
   ): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.hincrByFloat(normalizedKey, field, increment);
     return parseFloat(result.toString());
@@ -1101,7 +1151,7 @@ export abstract class BaseClient extends EventEmitter {
     field: string,
     value: RedisValue
   ): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = await this.ensureClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
     const result = await client.hsetnx(normalizedKey, field, normalizedValue);
@@ -1110,7 +1160,7 @@ export abstract class BaseClient extends EventEmitter {
 
   // === ZSet Commands ===
   async zadd(key: RedisKey, ...args: any[]): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = await this.ensureClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     // Parse score-member pairs
@@ -1125,20 +1175,20 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async zrem(key: RedisKey, ...members: RedisValue[]): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedMembers = members.map(ParameterTranslator.normalizeValue);
     return await client.zrem(normalizedKey, normalizedMembers);
   }
 
   async zcard(key: RedisKey): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     return await client.zcard(normalizedKey);
   }
 
   async zscore(key: RedisKey, member: RedisValue): Promise<string | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedMember = ParameterTranslator.normalizeValue(member);
     const result = await client.zscore(normalizedKey, normalizedMember);
@@ -1153,14 +1203,14 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async zrank(key: RedisKey, member: RedisValue): Promise<number | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedMember = ParameterTranslator.normalizeValue(member);
     return await client.zrank(normalizedKey, normalizedMember);
   }
 
   async zrevrank(key: RedisKey, member: RedisValue): Promise<number | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedMember = ParameterTranslator.normalizeValue(member);
     return await client.zrevrank(normalizedKey, normalizedMember);
@@ -1172,7 +1222,7 @@ export abstract class BaseClient extends EventEmitter {
     stop: number,
     withScores?: boolean
   ): Promise<string[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const rangeQuery = {
       type: 'byIndex' as const,
@@ -1206,7 +1256,7 @@ export abstract class BaseClient extends EventEmitter {
     stop: number,
     withScores?: boolean
   ): Promise<string[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const rangeQuery = {
       type: 'byIndex' as const,
@@ -1236,7 +1286,7 @@ export abstract class BaseClient extends EventEmitter {
     max: string | number,
     ...args: string[]
   ): Promise<string[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     try {
@@ -1345,7 +1395,7 @@ export abstract class BaseClient extends EventEmitter {
     min: string | number,
     ...args: string[]
   ): Promise<string[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     try {
@@ -1454,7 +1504,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async zpopmin(key: RedisKey, count?: number): Promise<string[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     try {
@@ -1487,7 +1537,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async zpopmax(key: RedisKey, count?: number): Promise<string[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     try {
@@ -1521,7 +1571,7 @@ export abstract class BaseClient extends EventEmitter {
 
   // BullMQ-critical blocking commands
   async bzpopmin(...args: any[]): Promise<[string, string, string] | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     let keys: RedisKey[];
     let timeout: number;
 
@@ -1550,7 +1600,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async bzpopmax(...args: any[]): Promise<[string, string, string] | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     let keys: RedisKey[];
     let timeout: number;
 
@@ -1583,7 +1633,7 @@ export abstract class BaseClient extends EventEmitter {
     min: string | number,
     max: string | number
   ): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     // Parse boundaries with proper infinity handling
@@ -1635,7 +1685,7 @@ export abstract class BaseClient extends EventEmitter {
     increment: number,
     member: RedisValue
   ): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedMember = ParameterTranslator.normalizeValue(member);
     const result = await client.zincrby(
@@ -1648,27 +1698,27 @@ export abstract class BaseClient extends EventEmitter {
 
   // === Set Commands ===
   async sadd(key: RedisKey, ...members: RedisValue[]): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = await this.ensureClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedMembers = members.map(ParameterTranslator.normalizeValue);
     return await client.sadd(normalizedKey, normalizedMembers);
   }
 
   async srem(key: RedisKey, ...members: RedisValue[]): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedMembers = members.map(ParameterTranslator.normalizeValue);
     return await client.srem(normalizedKey, normalizedMembers);
   }
 
   async scard(key: RedisKey): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     return await client.scard(normalizedKey);
   }
 
   async sismember(key: RedisKey, member: RedisValue): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedMember = ParameterTranslator.normalizeValue(member);
     const result = await client.sismember(normalizedKey, normalizedMember);
@@ -1676,7 +1726,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async smembers(key: RedisKey): Promise<string[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.smembers(normalizedKey);
     // GLIDE returns Set<GlideString>, convert to string array for ioredis compatibility
@@ -1686,7 +1736,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async sinter(...keys: RedisKey[]): Promise<string[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
     const result = await client.sinter(normalizedKeys);
     // GLIDE returns Set<GlideString>, convert to string array for ioredis compatibility
@@ -1699,14 +1749,14 @@ export abstract class BaseClient extends EventEmitter {
     destination: RedisKey,
     ...keys: RedisKey[]
   ): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedDestination = ParameterTranslator.normalizeKey(destination);
     const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
     return await client.sinterstore(normalizedDestination, normalizedKeys);
   }
 
   async sdiff(...keys: RedisKey[]): Promise<string[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
     const result = await client.sdiff(normalizedKeys);
     // GLIDE returns Set<GlideString>, convert to string array for ioredis compatibility
@@ -1719,14 +1769,14 @@ export abstract class BaseClient extends EventEmitter {
     destination: RedisKey,
     ...keys: RedisKey[]
   ): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedDestination = ParameterTranslator.normalizeKey(destination);
     const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
     return await client.sdiffstore(normalizedDestination, normalizedKeys);
   }
 
   async sunion(...keys: RedisKey[]): Promise<string[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
     const result = await client.sunion(normalizedKeys);
     // GLIDE returns Set<GlideString>, convert to string array for ioredis compatibility
@@ -1739,14 +1789,14 @@ export abstract class BaseClient extends EventEmitter {
     destination: RedisKey,
     ...keys: RedisKey[]
   ): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedDestination = ParameterTranslator.normalizeKey(destination);
     const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
     return await client.sunionstore(normalizedDestination, normalizedKeys);
   }
 
   async spop(key: RedisKey, count?: number): Promise<string | string[] | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     if (count === undefined) {
@@ -1768,7 +1818,7 @@ export abstract class BaseClient extends EventEmitter {
     key: RedisKey,
     count?: number
   ): Promise<string | string[] | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     if (count === undefined) {
@@ -1790,7 +1840,7 @@ export abstract class BaseClient extends EventEmitter {
   async lpush(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
   async lpush(key: RedisKey, elements: RedisValue[]): Promise<number>;
   async lpush(key: RedisKey, ...args: any[]): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     // Handle both spread and array forms
@@ -1808,7 +1858,7 @@ export abstract class BaseClient extends EventEmitter {
   async rpush(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
   async rpush(key: RedisKey, elements: RedisValue[]): Promise<number>;
   async rpush(key: RedisKey, ...args: any[]): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     // Handle both spread and array forms
@@ -1824,7 +1874,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async lpop(key: RedisKey, count?: number): Promise<string | string[] | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     if (count !== undefined) {
@@ -1839,7 +1889,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async rpop(key: RedisKey, count?: number): Promise<string | string[] | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     if (count !== undefined) {
@@ -1854,34 +1904,34 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async llen(key: RedisKey): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     return await client.llen(normalizedKey);
   }
 
   async lrange(key: RedisKey, start: number, stop: number): Promise<string[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const results = await client.lrange(normalizedKey, start, stop);
     return results.map(r => ParameterTranslator.convertGlideString(r) || '');
   }
 
   async ltrim(key: RedisKey, start: number, stop: number): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     await client.ltrim(normalizedKey, start, stop);
     return 'OK';
   }
 
   async lindex(key: RedisKey, index: number): Promise<string | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.lindex(normalizedKey, index);
     return ParameterTranslator.convertGlideString(result);
   }
 
   async lset(key: RedisKey, index: number, value: RedisValue): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
     await client.lset(normalizedKey, index, normalizedValue);
@@ -1889,7 +1939,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async lrem(key: RedisKey, count: number, value: RedisValue): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
     return await client.lrem(normalizedKey, count, normalizedValue);
@@ -1901,7 +1951,7 @@ export abstract class BaseClient extends EventEmitter {
     pivot: RedisValue,
     element: RedisValue
   ): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const normalizedPivot = ParameterTranslator.normalizeValue(pivot);
     const normalizedElement = ParameterTranslator.normalizeValue(element);
@@ -1918,7 +1968,7 @@ export abstract class BaseClient extends EventEmitter {
     source: RedisKey,
     destination: RedisKey
   ): Promise<string | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedSource = ParameterTranslator.normalizeKey(source);
     const normalizedDest = ParameterTranslator.normalizeKey(destination);
     const result = await client.customCommand([
@@ -1931,7 +1981,7 @@ export abstract class BaseClient extends EventEmitter {
 
   // Blocking operations - critical for queue systems
   async blpop(...args: any[]): Promise<[string, string] | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
 
     let keys: RedisKey[];
     let timeout: number;
@@ -1966,7 +2016,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async brpop(...args: any[]): Promise<[string, string] | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
 
     let keys: RedisKey[];
     let timeout: number;
@@ -2005,7 +2055,7 @@ export abstract class BaseClient extends EventEmitter {
     destination: RedisKey,
     timeout: number
   ): Promise<string | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedSource = ParameterTranslator.normalizeKey(source);
     const normalizedDestination = ParameterTranslator.normalizeKey(destination);
 
@@ -2021,7 +2071,7 @@ export abstract class BaseClient extends EventEmitter {
 
   // === Transaction/Script Commands ===
   async script(subcommand: string, ...args: any[]): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     return await client.customCommand([
       'SCRIPT',
       subcommand,
@@ -2031,7 +2081,7 @@ export abstract class BaseClient extends EventEmitter {
 
   // WATCH method - both GlideClient and GlideClusterClient inherit from BaseClient with same signature
   async watch(...keys: RedisKey[]): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
     return await client.watch(normalizedKeys);
   }
@@ -2364,7 +2414,7 @@ export abstract class BaseClient extends EventEmitter {
             return []; // ioredis returns empty array for empty pipeline
           }
 
-          const client = await this.ensureConnected();
+          const client = this.getClient();
           const result = await (client as any).exec(batch, false); // Don't raise on error
 
           // Convert results to ioredis format: Array<[Error | null, any]>
@@ -2393,14 +2443,14 @@ export abstract class BaseClient extends EventEmitter {
 
   // Connection info
   async ping(message?: string): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = await this.ensureClient();
     const options = message ? { message } : undefined;
     const result = await client.ping(options);
     return ParameterTranslator.convertGlideString(result) || 'PONG';
   }
 
   async info(section?: string): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     let result: any;
     if (section) {
       // Use customCommand for specific sections
@@ -2413,7 +2463,7 @@ export abstract class BaseClient extends EventEmitter {
 
   // CLIENT command support (critical for BullMQ)
   async client(subcommand: string, ...args: any[]): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const commandArgs = [
       'CLIENT',
       subcommand.toUpperCase(),
@@ -2433,7 +2483,7 @@ export abstract class BaseClient extends EventEmitter {
 
   // Database management commands (critical for BullMQ cleanup)
   async flushall(mode?: 'SYNC' | 'ASYNC'): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
 
     // GLIDE has direct flushall method - check for both GlideClient and GlideClusterClient
     if (
@@ -2454,7 +2504,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async flushdb(mode?: 'SYNC' | 'ASYNC'): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
 
     // GLIDE has direct flushdb method - check for both GlideClient and GlideClusterClient
     if ('flushdb' in client && typeof (client as any).flushdb === 'function') {
@@ -2479,7 +2529,7 @@ export abstract class BaseClient extends EventEmitter {
     value: any,
     options?: 'NX' | 'XX'
   ): Promise<string | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const jsonValue = JSON.stringify(value);
     const args = ['JSON.SET', normalizedKey, path, jsonValue];
@@ -2501,7 +2551,7 @@ export abstract class BaseClient extends EventEmitter {
       space?: string;
     }
   ): Promise<string | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.GET', normalizedKey];
 
@@ -2553,7 +2603,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonDel(key: RedisKey, path?: string): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.DEL', normalizedKey];
     if (path) args.push(path);
@@ -2562,7 +2612,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonClear(key: RedisKey, path?: string): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.CLEAR', normalizedKey];
     if (path) args.push(path);
@@ -2571,7 +2621,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonType(key: RedisKey, path?: string): Promise<string | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.TYPE', normalizedKey];
 
@@ -2618,7 +2668,7 @@ export abstract class BaseClient extends EventEmitter {
     path: string,
     value: number
   ): Promise<string | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const result = await client.customCommand([
       'JSON.NUMINCRBY',
@@ -2644,7 +2694,7 @@ export abstract class BaseClient extends EventEmitter {
     path: string,
     value: number
   ): Promise<string | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const result = await client.customCommand([
       'JSON.NUMMULTBY',
@@ -2660,7 +2710,7 @@ export abstract class BaseClient extends EventEmitter {
     path: string,
     value: string
   ): Promise<number | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const jsonValue = JSON.stringify(value);
     const result = await client.customCommand([
@@ -2673,7 +2723,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonStrLen(key: RedisKey, path?: string): Promise<number | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.STRLEN', normalizedKey];
     if (path) args.push(path);
@@ -2686,7 +2736,7 @@ export abstract class BaseClient extends EventEmitter {
     path: string,
     ...values: any[]
   ): Promise<number | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
 
     // Simplified approach - always JSON.stringify everything
@@ -2713,7 +2763,7 @@ export abstract class BaseClient extends EventEmitter {
     index: number,
     ...values: any[]
   ): Promise<number | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const jsonValues = values.map(v =>
       typeof v === 'string' ? JSON.stringify(v) : JSON.stringify(v)
@@ -2729,7 +2779,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonArrLen(key: RedisKey, path?: string): Promise<number | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.ARRLEN', normalizedKey];
 
@@ -2766,7 +2816,7 @@ export abstract class BaseClient extends EventEmitter {
     path?: string,
     index?: number
   ): Promise<string | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.ARRPOP', normalizedKey];
     if (path) args.push(path);
@@ -2781,7 +2831,7 @@ export abstract class BaseClient extends EventEmitter {
     start: number,
     stop: number
   ): Promise<number | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const result = await client.customCommand([
       'JSON.ARRTRIM',
@@ -2794,7 +2844,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonObjKeys(key: RedisKey, path?: string): Promise<string[] | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.OBJKEYS', normalizedKey];
 
@@ -2851,7 +2901,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonObjLen(key: RedisKey, path?: string): Promise<number | null> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.OBJLEN', normalizedKey];
     if (path) args.push(path);
@@ -2860,7 +2910,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonToggle(key: RedisKey, path: string): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const result = await client.customCommand([
       'JSON.TOGGLE',
@@ -2881,7 +2931,7 @@ export abstract class BaseClient extends EventEmitter {
     key: RedisKey,
     path?: string
   ): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.DEBUG', subcommand, normalizedKey];
     if (path) args.push(path);
@@ -2889,7 +2939,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonForget(key: RedisKey, path?: string): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     // JSON.FORGET is alias for JSON.DEL
     const normalizedKey = String(key);
     const args = ['JSON.DEL', normalizedKey];
@@ -2899,7 +2949,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonResp(key: RedisKey, path?: string): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.RESP', normalizedKey];
     if (path) args.push(path);
@@ -3378,7 +3428,7 @@ export abstract class BaseClient extends EventEmitter {
 
   // System and administrative commands
   async config(action: string, parameter?: string): Promise<string[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const args = parameter ? [action, parameter] : [action];
     const result = await client.customCommand(['CONFIG', ...args]);
 
@@ -3393,13 +3443,13 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async dbsize(): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const result = await client.customCommand(['DBSIZE']);
     return Number(result) || 0;
   }
 
   async memory(subcommand: string, ...args: (string | number)[]): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const commandArgs = ['MEMORY', subcommand, ...args.map(arg => String(arg))];
     return await client.customCommand(commandArgs);
   }
@@ -3408,7 +3458,7 @@ export abstract class BaseClient extends EventEmitter {
     subcommand: string,
     ...args: (string | number)[]
   ): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const commandArgs = [
       'SLOWLOG',
       subcommand,
@@ -3419,19 +3469,19 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async debug(subcommand: string, ...args: (string | number)[]): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const commandArgs = ['DEBUG', subcommand, ...args.map(arg => String(arg))];
     return await client.customCommand(commandArgs);
   }
 
   async echo(message: string): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const result = await client.customCommand(['ECHO', message]);
     return String(result);
   }
 
   async time(): Promise<[string, string]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const result = await client.customCommand(['TIME']);
     if (Array.isArray(result) && result.length >= 2) {
       return [String(result[0]), String(result[1])];
@@ -3445,7 +3495,7 @@ export abstract class BaseClient extends EventEmitter {
     id: string,
     ...fieldsAndValues: (string | number)[]
   ): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const args = [
       'XADD',
@@ -3458,14 +3508,14 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async xlen(key: RedisKey): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.customCommand(['XLEN', normalizedKey]);
     return Number(result) || 0;
   }
 
   async xread(...args: any[]): Promise<any[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
 
     // Parse ioredis-style XREAD arguments: ['STREAMS', 'stream1', 'stream2', 'id1', 'id2']
     // Convert to GLIDE format: {stream1: 'id1', stream2: 'id2'}
@@ -3515,7 +3565,7 @@ export abstract class BaseClient extends EventEmitter {
     end: string = '+',
     count?: number
   ): Promise<any[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     // Convert ioredis boundaries to GLIDE boundary format
@@ -3551,7 +3601,7 @@ export abstract class BaseClient extends EventEmitter {
     end: string = '-',
     count?: number
   ): Promise<any[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
 
     // Convert ioredis boundaries to GLIDE boundary format (note: start/end are reversed for XREVRANGE)
@@ -3592,14 +3642,14 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async xdel(key: RedisKey, ...ids: string[]): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.customCommand(['XDEL', normalizedKey, ...ids]);
     return Number(result) || 0;
   }
 
   async xtrim(key: RedisKey, ...args: any[]): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.customCommand([
       'XTRIM',
@@ -3615,7 +3665,7 @@ export abstract class BaseClient extends EventEmitter {
     group: string,
     ...args: (string | number)[]
   ): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const commandArgs = [
       'XGROUP',
@@ -3628,7 +3678,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async xreadgroup(...args: any[]): Promise<any[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const result = await client.customCommand([
       'XREADGROUP',
       'GROUP',
@@ -3638,7 +3688,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async xack(key: RedisKey, group: string, ...ids: string[]): Promise<number> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const result = await client.customCommand([
       'XACK',
@@ -3654,7 +3704,7 @@ export abstract class BaseClient extends EventEmitter {
     group: string,
     range?: { start: string; end: string; count: number; consumer?: string }
   ): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const args = ['XPENDING', normalizedKey, group];
 
@@ -3675,7 +3725,7 @@ export abstract class BaseClient extends EventEmitter {
     minIdleTime: number,
     ...ids: string[]
   ): Promise<any[]> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const args = [
       'XCLAIM',
@@ -3694,7 +3744,7 @@ export abstract class BaseClient extends EventEmitter {
     key: RedisKey,
     group?: string
   ): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     const normalizedKey = ParameterTranslator.normalizeKey(key);
     const args = ['XINFO', subcommand, normalizedKey];
 
@@ -3710,7 +3760,7 @@ export abstract class BaseClient extends EventEmitter {
     command: string,
     ...args: (string | number | Buffer)[]
   ): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
 
     // Convert args to GLIDE format
     const commandArgs = args.map(arg => {
@@ -3729,7 +3779,7 @@ export abstract class BaseClient extends EventEmitter {
 
   // ioredis compatibility - sendCommand
   async sendCommand(command: any): Promise<any> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
 
     // Ensure connection is alive
     await client.ping();

@@ -15,6 +15,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run test:watch` - Run tests in watch mode
 - `npm run test:coverage` - Run tests with coverage report
 - `npm run test:ci` - Run tests for CI with coverage and no watch
+- `./scripts/test-dual-mode.sh` - Run dual-mode tests (standalone + cluster)
+- `ENABLE_CLUSTER_TESTS=true ./scripts/test-dual-mode.sh` - Run both standalone and cluster tests
 
 ### Code Quality
 - `npm run lint` - Run ESLint on src/ and tests/
@@ -35,6 +37,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Node.js Native Test Commands
 - `VALKEY_HOST=localhost VALKEY_PORT=6381 timeout 30 node --test tests/unit/smoke.test.mjs` - Run specific native test
 - `./scripts/test-isolated.sh` - Run tests in isolated environment with proper cleanup
+- `node --test tests/unit/dual-mode-*.test.mjs` - Run dual-mode tests using Node.js test runner
 
 ### Build & Release
 - `npm run clean` - Remove dist/ directory
@@ -82,6 +85,10 @@ ioredis-compatible Results
 **Types** (`src/types/`):
 - Complete TypeScript type definitions matching ioredis interfaces
 - Connection options, command parameters, result types
+
+**Testing Utilities** (`tests/utils/`):
+- `test-modes.mjs` - Dual-mode testing framework for standalone/cluster test execution
+- Configuration helpers for both deployment types
 
 ### Current Implementation Status
 
@@ -154,7 +161,8 @@ ioredis-compatible Results
 ### Testing Requirements
 - Unit tests for each command module (`tests/unit/`)
 - Integration tests for real-world patterns (`tests/integration/`)
-- Coverage threshold: 80% (branches, functions, lines, statements)
+- Dual-mode tests for standalone/cluster compatibility (`tests/unit/dual-mode-*.test.mjs`)
+- Coverage threshold: 80% (branches, functions, lines, statements)  
 - Special module testing with valkey-bundle Docker setup
 
 ### Key Implementation Notes
@@ -166,12 +174,12 @@ ioredis-compatible Results
 
 ## Configuration Files
 
-- `jest.config.js` - Jest test configuration with 20s timeout, maxWorkers: 1 for stability
 - `tsconfig.json` - TypeScript config targeting ES2020/CommonJS
 - `eslint.config.js` - ESLint with TypeScript and Prettier integration
 - Test setup in `tests/setup/` with global setup and teardown
 - `scripts/` - Shell scripts for test environment management and releases
 - `docker-compose.valkey-bundle.yml` - Docker configuration for module testing
+- `tests/utils/test-modes.mjs` - Dual-mode testing configuration utilities
 
 ## Testing Environment Requirements
 
@@ -185,9 +193,11 @@ ioredis-compatible Results
 - JSON module must be loaded on the server for full functionality
 
 ### Test Execution Patterns
-- **Sequential execution**: Jest configured with maxWorkers: 1 for connection stability
-- **Timeout handling**: 20s timeout for integration tests with Docker setup
+- **Sequential execution**: Tests configured for connection stability
+- **Timeout handling**: 60s timeout for integration tests with Docker setup
 - **Environment detection**: Tests automatically detect available Valkey modules
+- **Dual-mode testing**: Same tests run against both standalone and cluster modes
+- **Cluster testing**: Enable with `ENABLE_CLUSTER_TESTS=true` environment variable
 
 ## Compatibility Matrix
 
@@ -222,16 +232,60 @@ The adapter maintains **complete compatibility** with:
 - Always check GLIDE implementation AND ioredis implementation first
 - Then fix with knowledge, not trial and error
 
+## Dual-Mode Testing Framework
+
+### Overview
+The codebase implements a sophisticated dual-mode testing system that runs identical tests against both standalone and cluster deployments to ensure feature parity.
+
+### Usage Patterns
+```javascript
+// Import dual-mode utilities
+import { getTestConfig, testBothModes } from './utils/test-modes.mjs';
+
+// Method 1: Manual mode configuration
+const config = getTestConfig('standalone'); // or 'cluster'
+const client = config.createClient();
+
+// Method 2: Automatic dual-mode testing
+testBothModes('String Commands', (getClient, mode) => {
+  let client;
+  beforeEach(async () => {
+    client = getClient();
+    await client.connect();
+  });
+  
+  it('should work in both modes', async () => {
+    // Same test logic works for both modes
+    await client.set(`test:${mode}:key`, 'value');
+    const result = await client.get(`test:${mode}:key`);
+    assert.strictEqual(result, 'value');
+  });
+});
+```
+
+### Environment Variables
+- `ENABLE_CLUSTER_TESTS=true` - Enable cluster mode testing
+- `VALKEY_CLUSTER_NODES=localhost:17000,localhost:17001,localhost:17002` - Cluster node configuration
+- Tests run in standalone mode by default, cluster mode only when explicitly enabled
+
+### Dual-Mode Test Files
+- Create tests with `dual-mode-*.test.mjs` naming pattern
+- Use `testBothModes()` helper for automatic mode switching
+- Tests automatically skip cluster mode if infrastructure unavailable
+
 ## Recent Changes & Status
 
-### Current Development Focus (as of commit abae1d8)
-- **Search functionality temporarily removed** due to GLIDE not supporting valkey-bundle syntax
+### Current Development Focus (as of commit 2c5e39c)
+- **Internal naming updated to Valkey consistently** across the codebase
+- **Dual-mode testing framework implemented** - Tests can run against both standalone and cluster modes
 - **Node.js built-in test runner migration completed** - 100% test pass rate achieved
 - **All core Valkey data types fully functional** - String, Hash, List, Set, ZSet operations production-ready
 - **JSON module remains fully functional** with 29 commands implemented
+- **Search functionality temporarily removed** due to GLIDE not supporting valkey-bundle syntax
 
-### Test Framework Migration
+### Test Framework Migration & Enhancement  
 - Successfully migrated from Jest to Node.js built-in test runner
 - All tests now use native Node.js testing capabilities
 - Isolated test execution with proper cleanup via `./scripts/test-isolated.sh`
-- Environment variable support: `VALKEY_HOST`, `VALKEY_PORT`, `VALKEY_BUNDLE_HOST`, `VALKEY_BUNDLE_PORT`
+- **New dual-mode testing framework** enables running same tests against standalone and cluster
+- Environment variable support: `VALKEY_HOST`, `VALKEY_PORT`, `VALKEY_BUNDLE_HOST`, `VALKEY_BUNDLE_PORT`, `ENABLE_CLUSTER_TESTS`

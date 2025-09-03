@@ -105,13 +105,13 @@ export class StandaloneClient extends BaseClient {
 
   // UNWATCH method specific to GlideClient (no parameters)
   async unwatch(): Promise<string> {
-    const client = (await this.ensureConnected()) as GlideClient;
+    const client = this.getClient() as GlideClient;
     return await client.unwatch();
   }
 
   // KEYS method using SCAN for standalone client
   async keys(pattern: string = '*'): Promise<string[]> {
-    const client = (await this.ensureConnected()) as GlideClient;
+    const client = this.getClient() as GlideClient;
     const allKeys: string[] = [];
     let cursor = '0';
 
@@ -154,7 +154,7 @@ export class StandaloneClient extends BaseClient {
       return await this.ioredisCompatiblePubSub.publish(channel, message);
     } else {
       // Pure GLIDE mode: Use native GLIDE publish
-      const client = (await this.ensureConnected()) as GlideClient;
+      const client = (await this.ensureClient()) as GlideClient;
 
       // Handle binary data encoding for UTF-8 safety
       let publishMessage: string;
@@ -198,7 +198,7 @@ export class StandaloneClient extends BaseClient {
 
   // Standalone scan implementation using native GLIDE scan method
   async scan(cursor: string, ...args: string[]): Promise<[string, string[]]> {
-    const client = (await this.ensureConnected()) as GlideClient;
+    const client = (await this.ensureClient()) as GlideClient;
 
     // Parse ioredis-style scan arguments into GLIDE options
     const scanOptions: any = {};
