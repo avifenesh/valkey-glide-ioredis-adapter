@@ -183,12 +183,14 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       `.trim();
 
       const limit = 3;
-      const windowSeconds = 2; // Increased to 2 seconds for more stable timing
+      const windowSeconds = 5; // Large window for CI stability
       const key = 'window:user123:' + Date.now() + ':' + Math.random();
-      const baseTime = Date.now();
+      
+      // Use fixed timestamp aligned to window boundary for deterministic behavior
+      const baseTime = Math.floor(Date.now() / (windowSeconds * 1000)) * (windowSeconds * 1000) + 1000;
 
-      // Make 3 requests (should all succeed) with consistent timing
-      const requests = [];
+      // Make 3 requests (should all succeed) - all in same window
+      const results = [];
       for (let i = 0; i < 3; i++) {
         const result = await redis.eval(
           fixedWindowScript,
@@ -196,11 +198,14 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
           key,
           windowSeconds.toString(),
           limit.toString(),
-          (baseTime + i * 50).toString() // Smaller intervals to ensure same window
+          (baseTime + i * 10).toString() // Very small intervals, definitely same window
         );
-        requests.push(result);
-        assert.strictEqual(result[0], 1); // Allowed
-        assert.ok(result[2] > 0); // Reset time
+        results.push(result);
+        
+        // Verify each request is allowed
+        assert.strictEqual(result[0], 1, `Request ${i + 1} should be allowed`);
+        assert.ok(result[2] > 0, `Request ${i + 1} should have positive reset time`);
+        assert.strictEqual(result[1], limit - (i + 1), `Request ${i + 1} should have correct remaining count`);
       }
 
       // 4th request in the same window should be denied
@@ -210,12 +215,19 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         key,
         windowSeconds.toString(),
         limit.toString(),
-        (baseTime + 200).toString() // Still within the same window
+        (baseTime + 100).toString() // Still clearly in same window
       );
 
-      assert.strictEqual(result4[0], 0); // Denied
-      assert.strictEqual(result4[1], 0); // No remaining
-      assert.ok(result4[2] > 0); // Time until reset
+      // Verify rate limit is enforced
+      assert.strictEqual(result4[0], 0, 'Fourth request should be denied (rate limited)');
+      assert.strictEqual(result4[1], 0, 'Fourth request should show 0 remaining');
+      assert.ok(result4[2] > 0, 'Fourth request should have positive time until reset');
+      
+      // Additional verification: the counter should be at 4 now
+      const windowStart = Math.floor(baseTime / (windowSeconds * 1000)) * (windowSeconds * 1000);
+      const windowKey = key + ':' + windowStart;
+      const currentCount = await redis.get(windowKey);
+      assert.strictEqual(parseInt(currentCount), 4, 'Window counter should be 4 after 4 requests');
     });
   });
 
