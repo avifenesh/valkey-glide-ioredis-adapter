@@ -181,8 +181,7 @@ export class ClusterClient extends BaseClient {
             scanOptions.type = this.options.type;
           }
 
-          const glideClient =
-            (await this.client.ensureConnected()) as GlideClusterClient;
+          const glideClient = this.client.getClient() as GlideClusterClient;
           const result = await glideClient.scan(
             this.clusterCursor,
             scanOptions
@@ -222,7 +221,7 @@ export class ClusterClient extends BaseClient {
 
   // Cluster scan implementation using native GLIDE ClusterScanCursor
   async scan(cursor: string, ...args: string[]): Promise<[string, string[]]> {
-    const client = (await this.ensureConnected()) as GlideClusterClient;
+    const client = (await this.ensureClient()) as GlideClusterClient;
     const { ClusterScanCursor } = require('@valkey/valkey-glide');
 
     // Parse cursor - if it's '0', create a new ClusterScanCursor
@@ -268,7 +267,7 @@ export class ClusterClient extends BaseClient {
 
   // KEYS method using SCAN for cluster client
   async keys(pattern: string = '*'): Promise<string[]> {
-    const client = (await this.ensureConnected()) as GlideClusterClient;
+    const client = this.getClient() as GlideClusterClient;
     const { ClusterScanCursor } = require('@valkey/valkey-glide');
 
     const allKeys: string[] = [];
@@ -301,7 +300,7 @@ export class ClusterClient extends BaseClient {
     message: string | Buffer,
     sharded?: boolean
   ): Promise<number> {
-    const client = (await this.ensureConnected()) as GlideClusterClient;
+    const client = this.getClient() as GlideClusterClient;
 
     // Handle binary data encoding for UTF-8 safety
     let publishMessage: string;
@@ -472,7 +471,7 @@ export class ClusterClient extends BaseClient {
 
       // Execute the transaction
       exec: async () => {
-        const client = await self.ensureConnected();
+        const client = self.getClient();
         const results = [];
 
         // Execute each command in sequence
@@ -503,13 +502,13 @@ export class ClusterClient extends BaseClient {
   }
 
   async watch(...keys: string[]): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     await (client as any).customCommand(['WATCH', ...keys]);
     return 'OK';
   }
 
   async unwatch(): Promise<string> {
-    const client = await this.ensureConnected();
+    const client = this.getClient();
     await (client as any).customCommand(['UNWATCH']);
     return 'OK';
   }

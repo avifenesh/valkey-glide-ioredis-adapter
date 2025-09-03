@@ -55,8 +55,8 @@ const scores = await redis.zrange('leaderboard', 0, -1, 'WITHSCORES');
 // 2. Advanced Lua scripts (basic defineCommand works perfectly)
 redis.defineCommand('complexScript', { lua: '...', numberOfKeys: 1 });
 
-// 3. Cluster sendCommand (use direct commands instead)
-// await cluster.sendCommand(['GET', 'key']);  // Minor TypeScript issue
+// 3. Cluster sendCommand (prefer direct commands for better TypeScript support)
+// await cluster.sendCommand(['GET', 'key']);  // Use direct methods instead
 await cluster.get('key');  // This works perfectly
 ```
 
