@@ -1,5 +1,6 @@
 # Dependabot configuration for valkey-glide-ioredis-adapter
 # This file configures automated dependency updates for the repository
+# All dependency updates require PR approval - no auto-merge enabled
 
 version: 2
 updates:
