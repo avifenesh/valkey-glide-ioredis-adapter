@@ -1,11 +1,18 @@
 #!/bin/bash
 
 # Isolated Test Runner - Runs each test in a separate process to avoid hanging issues
-set -e
+# Note: Removed 'set -e' to prevent early exit from non-critical command failures
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
+
+# Handle command line arguments (ignore npm test arguments for now)
+# Arguments like --testPathIgnorePatterns are handled by npm/package.json, not this script
+if [[ $# -gt 0 ]]; then
+    echo "Note: Arguments passed to script: $*"
+    echo "This script runs all available .test.mjs files - arguments are ignored"
+fi
 
 # Colors
 RED='\033[0;31m'
@@ -48,10 +55,24 @@ else
         --health-retries 5 \
         valkey/valkey-bundle:latest >/dev/null
 
-    # Wait for health
-    while [ "$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo 'starting')" != "healthy" ]; do
+    # Wait for health with timeout
+    echo -e "${YELLOW}Waiting for container to be healthy...${NC}"
+    HEALTH_CHECK_COUNT=0
+    while [ $HEALTH_CHECK_COUNT -lt 60 ]; do
+        HEALTH_STATUS=$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo 'starting')
+        if [ "$HEALTH_STATUS" = "healthy" ]; then
+            break
+        fi
+        echo -e "${YELLOW}Health check $((HEALTH_CHECK_COUNT + 1))/60: $HEALTH_STATUS${NC}"
         sleep 0.5
+        ((HEALTH_CHECK_COUNT++))
     done
+    
+    if [ $HEALTH_CHECK_COUNT -ge 60 ]; then
+        echo -e "${RED}Container failed to become healthy after 30 seconds${NC}"
+        docker logs "$CONTAINER_NAME" || true
+        exit 1
+    fi
 fi
 
 echo -e "${GREEN}✓ Valkey infrastructure ready${NC}"
