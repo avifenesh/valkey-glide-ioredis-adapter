@@ -144,7 +144,7 @@
     "chai": "^6.0.1",
     "concurrently": "9.2.1",
     "connect-redis": "^9.0.0",
-    "dotenv": "17.2.1",
+    "dotenv": "17.2.2",
     "eslint": "9.34.0",
     "eslint-config-prettier": "^10.1.1",
     "eslint-plugin-prettier": "5.5.4",
