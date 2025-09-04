@@ -14,9 +14,8 @@ describe('List Commands - Real-World Patterns', () => {
   let redis;
 
   beforeEach(async () => {
-    const config = testUtils.getStandaloneConfig();
+    const config = { ...testUtils.getStandaloneConfig(), lazyConnect: false };
     redis = new Redis(config);
-    await redis.connect();
   });
 
   afterEach(async () => {

@@ -19,7 +19,6 @@ describe('Transaction Commands', () => {
 
     const config = await testUtils.getStandaloneConfig();
     redis = new Redis(config);
-    await redis.connect();
   });
 
   after(async () => {

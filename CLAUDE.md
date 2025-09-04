@@ -10,8 +10,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run dev` - Run both build:watch and test:watch concurrently
 
 ### Testing
-- `npm test` - Run all tests using isolated test runner script
+- `npm test` - Run all tests using test runner script (./scripts/test-runner.sh)
+- `npm run test:cov` - Run tests with code coverage (c8)
 - `npm run test:single` - Run single test with Node.js built-in test runner
+- `npm run test:types` - Type-check test TypeScript files
 - `./scripts/test-dual-mode.sh` - Run dual-mode tests (standalone + cluster)
 - `ENABLE_CLUSTER_TESTS=true ./scripts/test-dual-mode.sh` - Run both standalone and cluster tests
 
@@ -25,14 +27,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm test tests/unit/` - Run unit tests only
 - `npm test tests/integration/` - Run integration tests only
 - `npm test tests/cluster/` - Run cluster-specific tests
-- `npm test -- tests/unit/json-commands.test.ts` - Run specific test file
+- `npm test tests/unit/json-commands.test.mjs` - Run specific test file
 - `npm test -- --testNamePattern="pattern"` - Run tests matching pattern
 - `npm run test:json` - Run JSON module tests specifically
 - `npm run test:modules` - Run both JSON and Search module tests
 
 ### Node.js Native Test Commands
 - `VALKEY_HOST=localhost VALKEY_PORT=6383 timeout 30 node --test tests/unit/smoke.test.mjs` - Run specific native test
-- `./scripts/test-isolated.sh` - Run tests in isolated environment with proper cleanup
 - `node --test tests/unit/dual-mode-*.test.mjs` - Run dual-mode tests using Node.js test runner
 - `VALKEY_HOST=localhost VALKEY_PORT=6383 timeout 30 node --test tests/unit/string-commands.test.mjs` - Run string command tests
 - `VALKEY_HOST=localhost VALKEY_PORT=6383 timeout 30 node --test tests/unit/hash-commands.test.mjs` - Run hash command tests
@@ -174,10 +175,12 @@ ioredis-compatible Results
 ## Configuration Files
 
 - `tsconfig.json` - TypeScript config targeting ES2020/CommonJS
-- `eslint.config.js` - ESLint with TypeScript and Prettier integration
+- `eslint.config.js` - ESLint with TypeScript and Prettier integration  
+- `.c8rc.json` - Code coverage configuration for c8
 - Test setup in `tests/setup/` with global setup and teardown
+- `tests/global-setup.mjs` - Global test setup for Node.js test runner
 - `scripts/` - Shell scripts for test environment management and releases
-  - `test-isolated.sh` - Isolated test runner with proper cleanup
+  - `test-runner.sh` - Unified test runner with optional coverage
   - `test-dual-mode.sh` - Dual-mode testing (standalone + cluster)
   - `start-valkey-bundle.sh` / `stop-valkey-bundle.sh` - Valkey module container management
   - `release.sh` - Semantic release management
@@ -200,11 +203,13 @@ ioredis-compatible Results
 - Use `npm run valkey:test` to start container in test mode with proper environment configuration
 
 ### Test Execution Patterns
-- **Sequential execution**: Tests configured for connection stability
+- **Sequential execution**: Tests run with `--test-concurrency=1` for connection stability
+- **Coverage**: Run `npm run test:cov` to generate coverage reports (text, lcov, html)
 - **Timeout handling**: 60s timeout for integration tests with Docker setup
 - **Environment detection**: Tests automatically detect available Valkey modules
 - **Dual-mode testing**: Same tests run against both standalone and cluster modes
 - **Cluster testing**: Enable with `ENABLE_CLUSTER_TESTS=true` environment variable
+- **Node.js requirement**: Tests require Node.js 18+ for built-in test runner
 
 ## Compatibility Matrix
 
@@ -296,3 +301,31 @@ testBothModes('String Commands', (getClient, mode) => {
 - Isolated test execution with proper cleanup via `./scripts/test-isolated.sh`
 - **New dual-mode testing framework** enables running same tests against standalone and cluster
 - Environment variable support: `VALKEY_HOST`, `VALKEY_PORT`, `VALKEY_BUNDLE_HOST`, `VALKEY_BUNDLE_PORT`, `ENABLE_CLUSTER_TESTS`
+
+## Key File Locations
+
+### Core Source Structure  
+- `src/BaseClient.ts` - Core client implementation with all common database operations (1000+ lines)
+- `src/StandaloneClient.ts` / `src/ClusterClient.ts` - Mode-specific implementations
+- `src/Redis.ts` / `src/Cluster.ts` - ioredis-compatible wrapper classes  
+- `src/index.ts` - Main export file for the adapter
+- `src/commands/` - Command modules organized by data type (strings, hashes, lists, etc.)
+- `src/utils/ParameterTranslator.ts` - Converts ioredis parameters to GLIDE format
+- `src/utils/ResultTranslator.ts` - Converts GLIDE results to ioredis format
+- `src/utils/OptionsMapper.ts` - Maps connection options between ioredis and GLIDE
+- `src/utils/IoredisPubSubClient.ts` - Binary-compatible pub/sub using RESP protocol
+- `src/types/index.ts` - Complete TypeScript interfaces matching ioredis
+
+### Testing Infrastructure  
+- `tests/utils/test-modes.mjs` - Dual-mode testing utilities for running same tests against standalone/cluster
+- `tests/setup/` - Global test setup and teardown for Node.js test runner
+- `tests/unit/` - Comprehensive unit tests for all command modules and features
+- `tests/integration/` - Real-world integration tests (Bull/BullMQ, Socket.IO, Express sessions)
+- `tests/global-setup.mjs` - Global setup for Node.js built-in test runner
+
+### Scripts & Infrastructure
+- `scripts/test-runner.sh` - Main test execution script with coverage support
+- `scripts/test-dual-mode.sh` - Runs tests in both standalone and cluster modes
+- `scripts/start-valkey-bundle.sh` / `scripts/stop-valkey-bundle.sh` - Docker module testing
+- `docker-compose.valkey-bundle.yml` - Container config for JSON/Search module testing
+- `docker-compose.test.yml` - Additional test environment configuration

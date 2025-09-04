@@ -35,10 +35,19 @@ if [ "$NODE_VERSION" -lt 18 ]; then
   exit 1
 fi
 
-# Collect test files (only .test.mjs to avoid TS runtime)
-TEST_FILES=$(find tests -type f -name "*.test.mjs" | sort)
+# Collect test files - use arguments if provided, otherwise find all .test.mjs files
+if [ $# -gt 0 ]; then
+  # Use provided arguments as test files
+  TEST_FILES="$@"
+  echo -e "${YELLOW}Running specified test files: $TEST_FILES${NC}"
+else
+  # Find all .test.mjs files (only .test.mjs to avoid TS runtime)
+  TEST_FILES=$(find tests -type f -name "*.test.mjs" | sort)
+  echo -e "${YELLOW}Running all test files${NC}"
+fi
+
 if [ -z "$TEST_FILES" ]; then
-  echo -e "${YELLOW}No *.test.mjs files found under tests/. Skipping.${NC}"
+  echo -e "${YELLOW}No *.test.mjs files found. Skipping.${NC}"
   TEST_EXIT=0
 else
   set +e

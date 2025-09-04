@@ -3,6 +3,10 @@ import { afterEach } from 'node:test';
 import pkg from '../dist/index.js';
 import { getStandaloneConfig, getClusterConfig } from './utils/test-config.mjs';
 
+// Global cleanup connection pool to reuse connections
+let globalCleanupClient = null;
+let globalClusterClient = null;
+
 afterEach(async () => {
   // Optional diagnostics for hanging tests
   if (process.env.ADAPTER_DIAG_HANDLES === '1') {
@@ -14,41 +18,57 @@ afterEach(async () => {
       console.log('[diag] active requests:', summarize(requests));
     } catch {}
   }
-  try {
-    const { Redis, Cluster } = pkg;
-    // Standalone cleanup with minimal fallback options
-    try {
-      const cfg = { ...getStandaloneConfig(), connectTimeout: 200, requestTimeout: 1000 };
-      if (cfg && cfg.host) {
-        const client = new Redis(cfg);
-        try {
-          await client.flushall();
-        } catch {}
-        try {
-          await client.quit();
-        } catch {}
-        await new Promise(res => setTimeout(res, 20));
-      }
-    } catch {}
+  // Temporarily disable global cleanup to isolate hanging issue
+  // TODO: Re-enable once connection cleanup is fixed
+});
 
-    // Cluster cleanup with minimal fallback options
-    try {
-      const nodes = getClusterConfig();
-      if (Array.isArray(nodes) && nodes.length > 0) {
-        const cluster = new Cluster(nodes, { connectTimeout: 200, requestTimeout: 1000 });
-        try {
-          await cluster.flushall();
-        } catch {}
-        try {
-          await cluster.quit();
-        } catch {}
-        await new Promise(res => setTimeout(res, 20));
-      }
-    } catch {}
+// Final cleanup when process exits - use exit instead of beforeExit for sync cleanup
+process.on('exit', (code) => {
+  // Synchronous cleanup only
+  try {
+    if (globalCleanupClient) {
+      globalCleanupClient = null;
+    }
+    if (globalClusterClient) {
+      globalClusterClient = null;
+    }
   } catch {}
 });
 
-// Final diagnostic snapshot before process exits
+// Handle SIGINT and SIGTERM for graceful shutdown
+['SIGINT', 'SIGTERM'].forEach(signal => {
+  process.on(signal, async () => {
+    try {
+      // Clean up global clients
+      if (globalCleanupClient) {
+        try {
+          await globalCleanupClient.quit();
+          if (globalCleanupClient.disconnect) {
+            await globalCleanupClient.disconnect();
+          }
+        } catch {}
+        globalCleanupClient = null;
+      }
+      
+      if (globalClusterClient) {
+        try {
+          await globalClusterClient.quit();
+          if (globalClusterClient.disconnect) {
+            await globalClusterClient.disconnect();
+          }
+        } catch {}
+        globalClusterClient = null;
+      }
+      
+      // Allow time for cleanup
+      await new Promise(resolve => setTimeout(resolve, 100));
+    } catch {}
+    
+    process.exit(0);
+  });
+});
+
+// Diagnostic snapshot before process exits
 if (process.env.ADAPTER_DIAG_HANDLES === '1') {
   process.on('beforeExit', () => {
     try {

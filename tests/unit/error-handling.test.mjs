@@ -16,9 +16,8 @@ describe('Error Handling and Edge Cases', () => {
   let redis;
 
   beforeEach(async () => {
-    const config = await testUtils.getStandaloneConfig();
+    const config = { ...testUtils.getStandaloneConfig(), lazyConnect: false };
     redis = new Redis(config);
-    await redis.connect();
   });
 
   afterEach(async () => {
@@ -38,7 +37,7 @@ describe('Error Handling and Edge Cases', () => {
       await redis.quit();
 
       // Should be able to reconnect
-      const config = await testUtils.getStandaloneConfig();
+      const config = { ...testUtils.getStandaloneConfig(), lazyConnect: false };
       redis = new Redis(config);
 
       const reconnectedValue = await redis.get('test');

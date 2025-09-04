@@ -29,6 +29,7 @@ export async function evalScript(
   numKeys: number,
   ...keysAndArgs: any[]
 ): Promise<any> {
+  await (client as any).ensureConnection();
   const { Script } = require('@valkey/valkey-glide');
 
   const keys = keysAndArgs
@@ -55,6 +56,7 @@ export async function evalsha(
   numKeys: number,
   ...keysAndArgs: any[]
 ): Promise<any> {
+  await (client as any).ensureConnection();
   const cache = getCache(client);
 
   const keys = keysAndArgs
@@ -79,6 +81,7 @@ export async function scriptLoad(
   client: BaseClient,
   script: string
 ): Promise<string> {
+  await (client as any).ensureConnection();
   const { Script } = require('@valkey/valkey-glide');
   const id = sha1(script);
   const glideScript = new Script(script);
@@ -90,6 +93,7 @@ export async function scriptExists(
   client: BaseClient,
   ...sha1s: string[]
 ): Promise<number[]> {
+  await (client as any).ensureConnection();
   if ((client as any).glideClient.scriptExists) {
     const res = await (client as any).glideClient.scriptExists(sha1s);
     return res.map((b: boolean) => (b ? 1 : 0));
@@ -106,6 +110,7 @@ export async function scriptFlush(
   client: BaseClient,
   mode?: 'SYNC' | 'ASYNC'
 ): Promise<string> {
+  await (client as any).ensureConnection();
   if ((client as any).glideClient.scriptFlush) {
     const { FlushMode } = require('@valkey/valkey-glide');
     const m = mode === 'ASYNC' ? FlushMode.ASYNC : FlushMode.SYNC;
@@ -121,6 +126,7 @@ export async function scriptFlush(
 }
 
 export async function scriptKill(client: BaseClient): Promise<string> {
+  await (client as any).ensureConnection();
   if ((client as any).glideClient.scriptKill) {
     const res = await (client as any).glideClient.scriptKill();
     return res || 'OK';
@@ -137,6 +143,7 @@ export async function script(
   subcommand: string,
   ...args: any[]
 ): Promise<any> {
+  await (client as any).ensureConnection();
   return await (client as any).glideClient.customCommand([
     'SCRIPT',
     subcommand,

@@ -15,9 +15,9 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
   let redis;
 
   beforeEach(async () => {
-    const config = testUtils.getStandaloneConfig();
+    const config = { ...testUtils.getStandaloneConfig(), lazyConnect: false };
     redis = new Redis(config);
-    await redis.connect();
+    // No need for explicit connect() - client will connect automatically with lazyConnect: false
   });
 
   afterEach(async () => {

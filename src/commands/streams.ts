@@ -7,6 +7,7 @@ export async function xadd(
   id: string,
   ...fieldsAndValues: (string | number)[]
 ): Promise<string> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const args = [
     'XADD',
@@ -19,6 +20,7 @@ export async function xadd(
 }
 
 export async function xlen(client: BaseClient, key: RedisKey): Promise<number> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const result = await (client as any).glideClient.customCommand([
     'XLEN',
@@ -31,6 +33,7 @@ export async function xread(
   client: BaseClient,
   ...args: any[]
 ): Promise<any[]> {
+  await (client as any).ensureConnection();
   let streamsIndex = args.findIndex(
     arg => String(arg).toUpperCase() === 'STREAMS'
   );
@@ -47,9 +50,7 @@ export async function xread(
   const streamNames = streamArgs
     .slice(0, streamCount)
     .map((k: any) => (client as any).normalizeKey(String(k)));
-  const streamIds = streamArgs
-    .slice(streamCount)
-    .map((id: any) => String(id));
+  const streamIds = streamArgs.slice(streamCount).map((id: any) => String(id));
 
   const keysAndIds: Record<string, string> = {};
   const len = Math.min(streamNames.length, streamIds.length);
@@ -78,6 +79,7 @@ export async function xrange(
   end: string = '+',
   count?: number
 ): Promise<any[]> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const startBoundary =
     start === '-'
@@ -105,6 +107,7 @@ export async function xrevrange(
   end: string = '-',
   count?: number
 ): Promise<any[]> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const startBoundary =
     start === '+'
@@ -137,6 +140,7 @@ export async function xdel(
   key: RedisKey,
   ...ids: string[]
 ): Promise<number> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const result = await (client as any).glideClient.customCommand([
     'XDEL',
@@ -151,6 +155,7 @@ export async function xtrim(
   key: RedisKey,
   ...args: any[]
 ): Promise<number> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const result = await (client as any).glideClient.customCommand([
     'XTRIM',
@@ -167,6 +172,7 @@ export async function xgroup(
   group: string,
   ...args: (string | number)[]
 ): Promise<any> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const commandArgs = [
     'XGROUP',
@@ -184,15 +190,12 @@ export async function xreadgroup(
   consumer: string,
   ...args: any[]
 ): Promise<any[]> {
+  await (client as any).ensureConnection();
   let streamsIndex = args.findIndex(
     arg => String(arg).toUpperCase() === 'STREAMS'
   );
   const options: any = {};
-  for (
-    let i = 0;
-    i < (streamsIndex === -1 ? args.length : streamsIndex);
-    i++
-  ) {
+  for (let i = 0; i < (streamsIndex === -1 ? args.length : streamsIndex); i++) {
     const token = String(args[i]).toUpperCase();
     if (token === 'COUNT' && i + 1 < args.length) {
       options.count = Number(args[i + 1]);
@@ -219,9 +222,7 @@ export async function xreadgroup(
   const streamNames = streamArgs
     .slice(0, streamCount)
     .map((k: any) => (client as any).normalizeKey(String(k)));
-  const streamIds = streamArgs
-    .slice(streamCount)
-    .map((id: any) => String(id));
+  const streamIds = streamArgs.slice(streamCount).map((id: any) => String(id));
   const keysAndIds: Record<string, string> = {};
   const len = Math.min(streamNames.length, streamIds.length);
   for (let i = 0; i < len; i++) {
@@ -250,6 +251,7 @@ export async function xack(
   group: string,
   ...ids: string[]
 ): Promise<number> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   return await (client as any).glideClient.xack(normalizedKey, group, ids);
 }
@@ -261,8 +263,14 @@ export async function xclaim(
   consumer: string,
   minIdleTime: number,
   ids: string[] | string,
-  options?: { idle?: number; idleUnixTime?: number; retryCount?: number; isForce?: boolean }
+  options?: {
+    idle?: number;
+    idleUnixTime?: number;
+    retryCount?: number;
+    isForce?: boolean;
+  }
 ): Promise<any> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const idList = Array.isArray(ids) ? ids : [ids];
   return await (client as any).glideClient.xclaim(
@@ -282,8 +290,14 @@ export async function xclaimJustId(
   consumer: string,
   minIdleTime: number,
   ids: string[] | string,
-  options?: { idle?: number; idleUnixTime?: number; retryCount?: number; isForce?: boolean }
+  options?: {
+    idle?: number;
+    idleUnixTime?: number;
+    retryCount?: number;
+    isForce?: boolean;
+  }
 ): Promise<string[]> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const idList = Array.isArray(ids) ? ids : [ids];
   return await (client as any).glideClient.xclaimJustId(
@@ -305,6 +319,7 @@ export async function xautoclaim(
   start: string,
   count?: number
 ): Promise<any> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const options: any = {};
   if (count !== undefined) options.count = count;
@@ -327,6 +342,7 @@ export async function xautoclaimJustId(
   start: string,
   count?: number
 ): Promise<[string, string[], string[]?]> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const options: any = {};
   if (count !== undefined) options.count = count;
@@ -346,6 +362,7 @@ export async function xpending(
   group: string,
   ...args: any[]
 ): Promise<any> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   if (args.length === 0) {
     return await (client as any).glideClient.xpending(normalizedKey, group);
@@ -377,6 +394,7 @@ export async function xinfoConsumers(
   key: RedisKey,
   group: string
 ): Promise<Record<string, any>[]> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   return await (client as any).glideClient.xinfoConsumers(normalizedKey, group);
 }
@@ -385,6 +403,7 @@ export async function xinfoGroups(
   client: BaseClient,
   key: RedisKey
 ): Promise<Record<string, any>[]> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   return await (client as any).glideClient.xinfoGroups(normalizedKey);
 }
@@ -394,6 +413,7 @@ export async function xinfoStream(
   key: RedisKey,
   full?: boolean | number
 ): Promise<any> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const options: any = {};
   if (full !== undefined) options.fullOptions = full;

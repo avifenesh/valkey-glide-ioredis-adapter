@@ -23,12 +23,14 @@ export class StandaloneClient extends BaseClient {
 
   // UNWATCH method specific to GlideClient (no parameters)
   async unwatch(): Promise<string> {
+    await this.ensureConnection();
     await (this.glideClient as GlideClient).unwatch();
     return 'OK';
   }
 
   // KEYS method using SCAN for standalone client
   async keys(pattern: string = '*'): Promise<string[]> {
+    await this.ensureConnection();
     const allKeys: string[] = [];
     let cursor = '0';
 
@@ -60,6 +62,8 @@ export class StandaloneClient extends BaseClient {
 
   // PUBLISH method for standalone client - supports hybrid pub/sub modes
   async publish(channel: string, message: string | Buffer): Promise<number> {
+    await this.ensureConnection();
+
     // Debug logging for Socket.IO
 
     if (this.options.enableEventBasedPubSub) {
@@ -94,6 +98,7 @@ export class StandaloneClient extends BaseClient {
 
   // Abstract methods implementation for pub/sub support
   protected async getBaseSubscriberConfig(): Promise<GlideClientConfiguration> {
+    await this.ensureConnection();
     return {
       addresses: [
         {
@@ -121,6 +126,7 @@ export class StandaloneClient extends BaseClient {
 
   // Standalone scan implementation using native GLIDE scan method
   async scan(cursor: string, ...args: string[]): Promise<[string, string[]]> {
+    await this.ensureConnection();
     // Performance optimization: Use synchronous access in hot path
 
     // Parse ioredis-style scan arguments into GLIDE options
@@ -158,7 +164,10 @@ export class StandaloneClient extends BaseClient {
   }
 
   // Key scanning with stream interface (critical for BullMQ cleanup)
-  scanStream(options: { match?: string; type?: string; count?: number } = {}) {
+  async scanStream(
+    options: { match?: string; type?: string; count?: number } = {}
+  ) {
+    await this.ensureConnection();
     const { Readable } = require('stream');
 
     class ScanStream extends Readable {
@@ -209,16 +218,18 @@ export class StandaloneClient extends BaseClient {
       }
     }
 
-    return new ScanStream(this, options);
+    return await new ScanStream(this, options);
   }
 
   protected async createSubscriberClientFromConfig(
     config: GlideClientConfiguration
   ): Promise<GlideClientType> {
+    await this.ensureConnection();
     return await GlideClient.createClient(config);
   }
 
   protected async createSubscriberClient(): Promise<GlideClientType> {
+    await this.ensureConnection();
     const config = await this.getBaseSubscriberConfig();
     return await this.createSubscriberClientFromConfig(config);
   }
