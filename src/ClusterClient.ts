@@ -12,6 +12,7 @@ import {
 import { BaseClient, GlideClientType } from './BaseClient';
 import { ParameterTranslator } from './utils/ParameterTranslator';
 import { RedisOptions, ReadFrom } from './types';
+import { toGlideClusterConfig } from './utils/OptionsMapper';
 
 export interface ClusterNode {
   host: string;
@@ -42,98 +43,10 @@ export class ClusterClient extends BaseClient {
   }
 
   protected async createClient(): Promise<GlideClientType> {
-    const config: GlideClusterClientConfiguration = {
-      addresses: this.clusterNodes.map(node => ({
-        host: node.host,
-        port: node.port,
-      })),
-
-      // Direct parameter mappings
-      ...(this.clusterOptions.clientName && {
-        clientName: this.clusterOptions.clientName,
-      }),
-      ...(this.clusterOptions.tls || this.clusterOptions.useTLS
-        ? { useTLS: true }
-        : {}),
-      ...(this.clusterOptions.lazyConnect !== undefined
-        ? { lazyConnect: this.clusterOptions.lazyConnect }
-        : {}),
-
-      // Authentication mapping
-      ...(this.clusterOptions.username && this.clusterOptions.password
-        ? {
-            credentials: {
-              username: this.clusterOptions.username,
-              password: this.clusterOptions.password,
-            },
-          }
-        : {}),
-
-      // Timeout mapping - prefer requestTimeout, fallback to commandTimeout
-      ...(this.clusterOptions.requestTimeout
-        ? { requestTimeout: this.clusterOptions.requestTimeout }
-        : this.clusterOptions.commandTimeout
-          ? { requestTimeout: this.clusterOptions.commandTimeout }
-          : {}),
-
-      // Read strategy mapping - support both legacy and new options
-      readFrom:
-        this.clusterOptions.readFrom ||
-        (this.clusterOptions.enableReadFromReplicas
-          ? 'preferReplica'
-          : 'primary'),
-
-      // GLIDE-specific cluster extensions
-      ...(this.clusterOptions.clientAz && {
-        clientAz: this.clusterOptions.clientAz,
-      }),
-    };
-
-    // Advanced parameter translation
-    const advancedConfig: any = {};
-
-    // connectTimeout → advancedConfiguration.connectionTimeout
-    if (this.clusterOptions.connectTimeout !== undefined) {
-      advancedConfig.connectionTimeout = this.clusterOptions.connectTimeout;
-    }
-
-    if (Object.keys(advancedConfig).length > 0) {
-      config.advancedConfiguration = advancedConfig;
-    }
-
-    // Connection backoff strategy from ioredis retry options
-    const connectionBackoff: any = {};
-
-    // maxRetriesPerRequest → connectionBackoff.numberOfRetries
-    if (this.clusterOptions.maxRetriesPerRequest !== undefined) {
-      const retries =
-        this.clusterOptions.maxRetriesPerRequest === null
-          ? 50
-          : this.clusterOptions.maxRetriesPerRequest;
-      connectionBackoff.numberOfRetries = retries;
-      // Let GLIDE use its own defaults for factor, exponentBase, jitterPercent
-    }
-
-    // retryDelayOnFailover → connectionBackoff.jitterPercent (especially important for clusters)
-    if (this.clusterOptions.retryDelayOnFailover !== undefined) {
-      // Convert delay (ms) to jitter percentage (5-100%)
-      const jitter = Math.min(
-        100,
-        Math.max(5, Math.round(this.clusterOptions.retryDelayOnFailover / 5))
-      );
-      connectionBackoff.jitterPercent = jitter;
-    }
-
-    if (Object.keys(connectionBackoff).length > 0) {
-      config.connectionBackoff = connectionBackoff;
-    }
-
-    // enableOfflineQueue → inflightRequestsLimit (only if explicitly disabled)
-    if (this.clusterOptions.enableOfflineQueue === false) {
-      config.inflightRequestsLimit = 0; // No queuing, immediate failure
-    }
-    // If true or undefined, let GLIDE use its default (1000)
-
+    const config: GlideClusterClientConfiguration = toGlideClusterConfig(
+      this.clusterNodes,
+      this.clusterOptions
+    );
     return await GlideClusterClient.createClient(config);
   }
 
@@ -150,9 +63,12 @@ export class ClusterClient extends BaseClient {
       public clusterCursor: ClusterScanCursor;
       public finished: boolean = false;
       public client: ClusterClient;
-      public options: any;
+      public options: { match?: string; count?: number; type?: string };
 
-      constructor(client: ClusterClient, options: any) {
+      constructor(
+        client: ClusterClient,
+        options: { match?: string; count?: number; type?: string }
+      ) {
         super({ objectMode: true });
         this.client = client;
         this.options = options;
@@ -181,11 +97,13 @@ export class ClusterClient extends BaseClient {
             scanOptions.type = this.options.type;
           }
 
-          const glideClient = this.client.getClient() as GlideClusterClient;
-          const result = await glideClient.scan(
-            this.clusterCursor,
-            scanOptions
-          );
+          // Honor adapter option to allow scanning across non-covered slots
+          if ((this.client as any).options?.scanAllowNonCoveredSlots) {
+            (scanOptions as any).allowNonCoveredSlots = true;
+          }
+
+          const glideClient = this.client.glideClient as GlideClusterClient;
+          const result = await glideClient.scan(this.clusterCursor, scanOptions);
 
           if (!Array.isArray(result) || result.length !== 2) {
             throw new Error('Invalid cluster SCAN response format');
@@ -198,7 +116,10 @@ export class ClusterClient extends BaseClient {
           this.finished = this.clusterCursor.isFinished();
 
           if (keys.length > 0) {
-            this.push(keys);
+            const converted = keys.map((k: any) =>
+              ParameterTranslator.convertGlideString(k) || ''
+            );
+            this.push(converted);
           }
 
           if (this.finished) {
@@ -221,60 +142,65 @@ export class ClusterClient extends BaseClient {
 
   // Cluster scan implementation using native GLIDE ClusterScanCursor
   async scan(cursor: string, ...args: string[]): Promise<[string, string[]]> {
-    const client = (await this.ensureClient()) as GlideClusterClient;
     const { ClusterScanCursor } = require('@valkey/valkey-glide');
 
-    // Parse cursor - if it's '0', create a new ClusterScanCursor
-    let clusterCursor: any;
-    if (cursor === '0') {
-      clusterCursor = new ClusterScanCursor();
-    } else {
-      // For non-zero cursors, we need to maintain state (this is complex)
-      // For now, create a new cursor - this limits compatibility but works
-      clusterCursor = new ClusterScanCursor();
-    }
+    // Construct or resume cluster cursor from the token provided by caller
+    const clusterCursor =
+      !cursor || cursor === '0'
+        ? new ClusterScanCursor()
+        : new ClusterScanCursor(cursor);
 
-    // Parse ioredis-style scan arguments into GLIDE options
+    // Parse ioredis-style SCAN arguments into GLIDE options
     const scanOptions: any = {};
     for (let i = 0; i < args.length; i += 2) {
-      const key = args[i]?.toUpperCase();
-      const value = args[i + 1];
-
-      if (key === 'MATCH' && value) {
-        scanOptions.match = value;
-      } else if (key === 'COUNT' && value) {
-        scanOptions.count = parseInt(value, 10);
-      } else if (key === 'TYPE' && value) {
-        scanOptions.type = value;
-      }
+      const opt = args[i]?.toUpperCase();
+      const val = args[i + 1];
+      if (opt === 'MATCH' && val != null) scanOptions.match = String(val);
+      else if (opt === 'COUNT' && val != null)
+        scanOptions.count = parseInt(String(val), 10);
+      else if (opt === 'TYPE' && val != null) scanOptions.type = String(val);
     }
 
-    // Use GLIDE native cluster scan method
-    const result = await client.scan(clusterCursor, scanOptions);
-
-    if (Array.isArray(result) && result.length === 2) {
-      const [nextCursor, keys] = result;
-      // Convert cursor state to string (simplified - loses some functionality)
-      const cursorStr = nextCursor.isFinished() ? '0' : '1';
-      const keyArray = Array.isArray(keys)
-        ? keys.map(k => ParameterTranslator.convertGlideString(k) || '')
-        : [];
-      return [cursorStr, keyArray];
+    // Honor adapter option to allow scanning across non-covered slots
+    if ((this as any).options?.scanAllowNonCoveredSlots) {
+      (scanOptions as any).allowNonCoveredSlots = true;
     }
 
-    return ['0', []];
+    const [nextCursor, keys] = await (this.glideClient as GlideClusterClient).scan(
+      clusterCursor,
+      scanOptions
+    );
+
+    const cursorToken = nextCursor.isFinished()
+      ? '0'
+      : nextCursor.getCursor();
+    const keyArray = Array.isArray(keys)
+      ? keys.map(k => ParameterTranslator.convertGlideString(k) || '')
+      : [];
+    return [cursorToken, keyArray];
   }
+
+  // Cluster: aggregate DB size across nodes using GLIDE's native implementation
+  async dbsize(): Promise<number> {
+    const result = await (this.glideClient as GlideClusterClient).dbsize();
+    return Number(result) || 0;
+  }
+
+  // For scripting in cluster, GLIDE handles routing and single-slot enforcement.
+  // We defer to BaseClient's scripting methods which leverage GLIDE internals.
 
   // KEYS method using SCAN for cluster client
   async keys(pattern: string = '*'): Promise<string[]> {
-    const client = this.getClient() as GlideClusterClient;
     const { ClusterScanCursor } = require('@valkey/valkey-glide');
 
     const allKeys: string[] = [];
     let cursor = new ClusterScanCursor();
 
     while (!cursor.isFinished()) {
-      const result = await client.scan(cursor, { match: pattern, count: 1000 });
+      const result = await (this.glideClient as GlideClusterClient).scan(
+        cursor,
+        { match: pattern, count: 1000 }
+      );
       cursor = result[0];
       const keys = result[1];
 
@@ -300,8 +226,6 @@ export class ClusterClient extends BaseClient {
     message: string | Buffer,
     sharded?: boolean
   ): Promise<number> {
-    const client = this.getClient() as GlideClusterClient;
-
     // Handle binary data encoding for UTF-8 safety
     let publishMessage: string;
     if (message instanceof Buffer || message instanceof Uint8Array) {
@@ -315,15 +239,17 @@ export class ClusterClient extends BaseClient {
 
     if (this.options.enableEventBasedPubSub) {
       // Event-based mode: Use customCommand (now safe for binary data)
-      const result = await client.customCommand([
-        'PUBLISH',
-        channel,
-        publishMessage,
-      ]);
+      const result = await (
+        this.glideClient as GlideClusterClient
+      ).customCommand(['PUBLISH', channel, publishMessage]);
       return Number(result) || 0;
     } else {
       // GLIDE mode: Use native publish (now safe for binary data)
-      return await client.publish(publishMessage, channel, sharded);
+      return await (this.glideClient as GlideClusterClient).publish(
+        publishMessage,
+        channel,
+        sharded
+      );
     }
   }
 
@@ -425,91 +351,8 @@ export class ClusterClient extends BaseClient {
     return this.subscribedShardedChannels.size;
   }
 
-  // Transaction Commands for Bull/BullMQ compatibility
-  multi(): any {
-    // Returns a transaction object that collects commands
-    const commands: Array<{ command: string; args: any[] }> = [];
-    const self = this;
-
-    // Create a proxy object that captures commands
-    const multiObj = {
-      commands,
-
-      // Add common server commands to the multi object
-      set: (key: string, value: any, ...args: any[]) => {
-        commands.push({ command: 'SET', args: [key, value, ...args] });
-        return multiObj;
-      },
-      get: (key: string) => {
-        commands.push({ command: 'GET', args: [key] });
-        return multiObj;
-      },
-      del: (...keys: string[]) => {
-        commands.push({ command: 'DEL', args: keys });
-        return multiObj;
-      },
-      hset: (key: string, ...args: any[]) => {
-        commands.push({ command: 'HSET', args: [key, ...args] });
-        return multiObj;
-      },
-      hget: (key: string, field: string) => {
-        commands.push({ command: 'HGET', args: [key, field] });
-        return multiObj;
-      },
-      lpush: (key: string, ...values: any[]) => {
-        commands.push({ command: 'LPUSH', args: [key, ...values] });
-        return multiObj;
-      },
-      rpush: (key: string, ...values: any[]) => {
-        commands.push({ command: 'RPUSH', args: [key, ...values] });
-        return multiObj;
-      },
-      zadd: (key: string, ...args: any[]) => {
-        commands.push({ command: 'ZADD', args: [key, ...args] });
-        return multiObj;
-      },
-
-      // Execute the transaction
-      exec: async () => {
-        const client = self.getClient();
-        const results = [];
-
-        // Execute each command in sequence
-        for (const { command, args } of commands) {
-          try {
-            const result = await (client as any).customCommand([
-              command,
-              ...args,
-            ]);
-            results.push([null, result]);
-          } catch (error) {
-            results.push([error, null]);
-          }
-        }
-
-        return results;
-      },
-    };
-
-    return multiObj;
-  }
-
-  async exec(): Promise<any[]> {
-    // This is called on the multi object, not the client directly
-    throw new Error(
-      'EXEC should be called on the multi object returned by multi()'
-    );
-  }
-
-  async watch(...keys: string[]): Promise<string> {
-    const client = this.getClient();
-    await (client as any).customCommand(['WATCH', ...keys]);
-    return 'OK';
-  }
-
   async unwatch(): Promise<string> {
-    const client = this.getClient();
-    await (client as any).customCommand(['UNWATCH']);
+    await (this.glideClient as GlideClusterClient).unwatch();
     return 'OK';
   }
 }

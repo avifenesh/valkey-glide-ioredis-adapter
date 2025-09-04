@@ -10,7 +10,8 @@
  */
 
 import { execSync } from 'child_process';
-import { testEnvironment } from '../utils/testEnvironment';
+// @ts-ignore
+import * as testEnvironment from '../utils/testEnvironment';
 
 // Colors for console output
 const colors = {
