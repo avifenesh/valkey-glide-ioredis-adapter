@@ -7,11 +7,23 @@
  */
 
 import { EventEmitter } from 'events';
-import { GlideClient, GlideClusterClient, GlideFt, BitwiseOperation } from '@valkey/valkey-glide';
+import { GlideClient, GlideClusterClient } from '@valkey/valkey-glide';
 import { RedisOptions, RedisKey, RedisValue, Multi, Pipeline } from './types';
 import { ParameterTranslator } from './utils/ParameterTranslator';
-import { TimeUnit, SetOptions } from '@valkey/valkey-glide';
+import { TimeUnit } from '@valkey/valkey-glide';
+import * as stringCommands from './commands/strings';
 import { IoredisPubSubClient } from './utils/IoredisPubSubClient';
+import * as keyCommands from './commands/keys';
+import * as streamCommands from './commands/streams';
+import * as serverCommands from './commands/server';
+import * as scriptingCommands from './commands/scripting';
+import * as geoCommands from './commands/geo';
+import * as bitmapCommands from './commands/bitmaps';
+import * as hllCommands from './commands/hll';
+import * as hashCommands from './commands/hashes';
+import { ListCommands } from './commands/lists';
+import { SetCommands } from './commands/sets';
+import { ZSetCommands } from './commands/zsets';
 
 export type GlideClientType = GlideClient | GlideClusterClient;
 
@@ -58,14 +70,18 @@ export interface DirectGlidePubSubInterface {
 }
 
 export abstract class BaseClient extends EventEmitter {
-  protected glideClient: GlideClientType | null = null;
-  protected subscriberClient: GlideClientType | null = null;
-  protected ioredisCompatiblePubSub: IoredisPubSubClient | null = null;
+  protected glideClient!: GlideClientType; // Always initialized in constructor
+  protected subscriberClient?: GlideClientType; // Only created when needed for subscriptions
+  protected ioredisCompatiblePubSub?: IoredisPubSubClient; // Only created when needed
   protected connectionStatus: string = 'disconnected';
   protected options: RedisOptions;
-
   // ioredis compatibility properties
   public blocked: boolean = false;
+
+  // Command family instances
+  protected listCommands!: ListCommands;
+  protected setCommands!: SetCommands;
+  protected zsetCommands!: ZSetCommands;
 
   // ioredis compatibility: duplicate() method for separate pub/sub clients
   duplicate(): BaseClient {
@@ -73,9 +89,9 @@ export abstract class BaseClient extends EventEmitter {
     const duplicateClient = Object.create(Object.getPrototypeOf(this));
     duplicateClient.options = { ...this.options };
     duplicateClient.connectionStatus = 'disconnected';
-    duplicateClient.glideClient = null;
-    duplicateClient.subscriberClient = null;
-    duplicateClient.ioredisCompatiblePubSub = null;
+    duplicateClient.glideClient = undefined;
+    duplicateClient.subscriberClient = undefined;
+    duplicateClient.ioredisCompatiblePubSub = undefined;
     duplicateClient.blocked = false;
     duplicateClient._status = undefined;
 
@@ -99,7 +115,6 @@ export abstract class BaseClient extends EventEmitter {
     this.options = {
       host: 'localhost',
       port: 6379,
-      lazyConnect: false, // Default to immediate connection like ioredis
       ...options,
     };
 
@@ -109,52 +124,78 @@ export abstract class BaseClient extends EventEmitter {
     // Initialize Direct GLIDE Pub/Sub (High-Performance Architecture)
     this.directPubSub = new DirectGlidePubSub(this);
 
-    // Handle connection based on lazyConnect option
-    if (!this.options.lazyConnect) {
-      // Initialize GLIDE client immediately for non-lazy connections
-      process.nextTick(() => {
-        this.connect().catch(error => {
-          this.emit('error', error);
-        });
-      });
-    }
-  }
+    // Command family instances will be initialized after glideClient is created
 
-  // Abstract method for subclasses to implement their specific GLIDE client creation
-  protected abstract createClient(): Promise<GlideClientType>;
-  protected abstract createSubscriberClient(): Promise<GlideClientType>;
+    // Expose only explicitly implemented API; no dynamic stubs
 
-  // Connection Management
-  async connect(): Promise<void> {
-    if (this.connectionStatus === 'connected') return;
-
+    // Always create client immediately - GLIDE handles lazy connection internally
+    // Initialize in next tick to allow event listeners to be attached
+    // The constructor cannot be async, so we must not use 'await' here.
+    // Instead, initialize the client asynchronously and emit events accordingly.
     this.connectionStatus = 'connecting';
     this.emit('connecting');
 
-    try {
-      this.glideClient = await this.createClient();
-      this.connectionStatus = 'connected';
-      this.emit('connect');
-      this.emit('ready');
-    } catch (error) {
-      this.connectionStatus = 'disconnected';
-      this.emit('error', error);
-      throw error;
-    }
+    this.createClient(options)
+      .then((glideClient: GlideClientType) => {
+        this.glideClient = glideClient;
+
+        // Initialize command family instances now that glideClient is available
+        this.listCommands = new ListCommands(
+          this.glideClient,
+          this.normalizeKey.bind(this)
+        );
+        this.setCommands = new SetCommands(
+          this.glideClient,
+          this.normalizeKey.bind(this)
+        );
+        this.zsetCommands = new ZSetCommands(
+          this.glideClient,
+          this.normalizeKey.bind(this)
+        );
+
+        this.connectionStatus = 'connected';
+        this.emit('connect');
+        this.emit('ready');
+      })
+      .catch((error: Error) => {
+        this.connectionStatus = 'disconnected';
+        this.emit('error', error);
+      });
+  }
+
+  // Instance-aware key normalization with ioredis keyPrefix support
+  protected normalizeKey(key: RedisKey): string {
+    const base = ParameterTranslator.normalizeKey(key);
+    return this.options.keyPrefix ? `${this.options.keyPrefix}${base}` : base;
+  }
+
+  // Intentionally no dynamic command attachment; only implemented API is exposed
+
+  // Abstract method for subclasses to implement their specific GLIDE client creation
+  protected abstract createClient(
+    options: RedisOptions
+  ): Promise<GlideClientType>;
+  protected abstract createSubscriberClient(
+    options: RedisOptions
+  ): Promise<GlideClientType>;
+
+  // Connection method for ioredis compatibility
+  async connect(): Promise<void> {
+    if (this.connectionStatus === 'connected') return;
+    if (this.connectionStatus !== 'connecting')
+      this.connectionStatus = 'connecting';
+    await this.waitUntilReady();
   }
 
   /**
    * Internal cleanup helper - closes all connections and clears resources
    */
-  private cleanupConnections(): void {
+  private async cleanupConnections(): Promise<void> {
     // Close main GLIDE client
-    if (this.glideClient) {
-      try {
-        this.glideClient.close();
-      } catch (error) {
-        // Ignore errors when closing - connection might already be closed
-      }
-      this.glideClient = null;
+    try {
+      this.glideClient.close();
+    } catch (error) {
+      // Ignore errors when closing - connection might already be closed
     }
 
     // Close subscriber client
@@ -164,13 +205,15 @@ export abstract class BaseClient extends EventEmitter {
       } catch (error) {
         // Ignore errors when closing - connection might already be closed
       }
-      this.subscriberClient = null;
+      // Do not recreate a subscriber client during cleanup
+      this.subscriberClient = undefined as unknown as GlideClientType;
     }
 
     // Clean up ioredis-compatible pub/sub client
     if (this.ioredisCompatiblePubSub) {
       this.ioredisCompatiblePubSub.disconnect();
-      this.ioredisCompatiblePubSub = null;
+      this.ioredisCompatiblePubSub =
+        undefined as unknown as IoredisPubSubClient;
     }
   }
 
@@ -185,7 +228,7 @@ export abstract class BaseClient extends EventEmitter {
     this.emit('close');
 
     // Clean up all connections
-    this.cleanupConnections();
+    await this.cleanupConnections();
 
     // Set final status and emit end event
     this.connectionStatus = 'end';
@@ -200,7 +243,7 @@ export abstract class BaseClient extends EventEmitter {
     this.emit('close');
 
     // Clean up all connections
-    this.cleanupConnections();
+    await this.cleanupConnections();
 
     // Set final status and emit end event
     this.connectionStatus = 'end';
@@ -240,22 +283,6 @@ export abstract class BaseClient extends EventEmitter {
       this.once('ready', onReady);
       this.once('error', onError);
     });
-  }
-
-  // Direct client access - GLIDE handles all connection logic internally
-  protected getClient(): GlideClientType {
-    if (!this.glideClient) {
-      throw new Error('Client not initialized - call connect() first');
-    }
-    return this.glideClient;
-  }
-
-  // Async client access with lazy connect and auto-connect support
-  protected async ensureClient(): Promise<GlideClientType> {
-    if (!this.glideClient) {
-      await this.connect();
-    }
-    return this.getClient();
   }
 
   // ioredis compatibility properties
@@ -307,7 +334,6 @@ export abstract class BaseClient extends EventEmitter {
     const { lua, numberOfKeys = 0 } = options;
 
     const commandHandler = async (...args: any[]): Promise<any> => {
-      const client = this.getClient();
       const numkeys = Number(numberOfKeys) || 0;
 
       // BullMQ calls with single array: client[commandName]([...args])
@@ -346,10 +372,10 @@ export abstract class BaseClient extends EventEmitter {
 
       try {
         // Use GLIDE's invokeScript - it does support separate keys and args
-        if ('invokeScript' in client) {
+        if ('invokeScript' in this.glideClient) {
           const Script = require('@valkey/valkey-glide').Script;
           const script = new Script(lua);
-          const result = await (client as any).invokeScript(script, {
+          const result = await (this.glideClient as any).invokeScript(script, {
             keys: normalizedKeys,
             args: normalizedArgs,
           });
@@ -363,7 +389,9 @@ export abstract class BaseClient extends EventEmitter {
             ...normalizedKeys,
             ...normalizedArgs,
           ];
-          const result = await (client as any).customCommand(commandArgs);
+          const result = await (this.glideClient as any).customCommand(
+            commandArgs
+          );
           return result === null && lua.includes('return {}') ? [] : result;
         }
       } catch (error) {
@@ -376,7 +404,9 @@ export abstract class BaseClient extends EventEmitter {
             ...normalizedKeys,
             ...normalizedArgs,
           ];
-          const result = await (client as any).customCommand(commandArgs);
+          const result = await (this.glideClient as any).customCommand(
+            commandArgs
+          );
           return result === null && lua.includes('return {}') ? [] : result;
         } catch (fallbackError) {
           // Script execution failed - throw the fallback error
@@ -448,10 +478,7 @@ export abstract class BaseClient extends EventEmitter {
 
   // === String Commands ===
   async get(key: RedisKey): Promise<string | null> {
-    const client = await this.ensureClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.get(normalizedKey);
-    return ParameterTranslator.convertGlideString(result);
+    return await stringCommands.get(this, key);
   }
 
   async set(
@@ -459,216 +486,87 @@ export abstract class BaseClient extends EventEmitter {
     value: RedisValue,
     ...args: any[]
   ): Promise<string | null> {
-    // Validate key is not empty (ioredis compatibility)
-    if (key === '' || key === null || key === undefined) {
-      throw new Error("ERR wrong number of arguments for 'set' command");
-    }
-    const client = await this.ensureClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const normalizedValue = ParameterTranslator.normalizeValue(value);
-
-    // Handle additional arguments (EX, PX, EXAT, PXAT, NX, XX, KEEPTTL, GET, etc.)
-    const options: SetOptions = {};
-
-    for (let i = 0; i < args.length; i++) {
-      const arg = args[i];
-
-      // Handle object-based arguments (like from connect-redis)
-      if (typeof arg === 'object' && arg !== null) {
-        // Handle connect-redis style expiration object
-        if (arg.expiration && typeof arg.expiration === 'object') {
-          const exp = arg.expiration;
-          if (exp.type === 'EX') {
-            options.expiry = {
-              type: TimeUnit.Seconds,
-              count: Number(exp.value),
-            };
-          } else if (exp.type === 'PX') {
-            options.expiry = {
-              type: TimeUnit.Milliseconds,
-              count: Number(exp.value),
-            };
-          } else if (exp.type === 'EXAT') {
-            options.expiry = {
-              type: TimeUnit.UnixSeconds,
-              count: Number(exp.value),
-            };
-          } else if (exp.type === 'PXAT') {
-            options.expiry = {
-              type: TimeUnit.UnixMilliseconds,
-              count: Number(exp.value),
-            };
-          }
-        }
-
-        // Handle direct object properties (like {EX: 60, NX: true})
-        if (arg.EX !== undefined) {
-          options.expiry = { type: TimeUnit.Seconds, count: Number(arg.EX) };
-        } else if (arg.PX !== undefined) {
-          options.expiry = {
-            type: TimeUnit.Milliseconds,
-            count: Number(arg.PX),
-          };
-        } else if (arg.EXAT !== undefined) {
-          options.expiry = {
-            type: TimeUnit.UnixSeconds,
-            count: Number(arg.EXAT),
-          };
-        } else if (arg.PXAT !== undefined) {
-          options.expiry = {
-            type: TimeUnit.UnixMilliseconds,
-            count: Number(arg.PXAT),
-          };
-        } else if (arg.KEEPTTL === true) {
-          options.expiry = 'keepExisting';
-        }
-
-        if (arg.NX === true) options.conditionalSet = 'onlyIfDoesNotExist';
-        if (arg.XX === true) options.conditionalSet = 'onlyIfExists';
-        if (arg.GET === true) options.returnOldValue = true;
-
-        continue; // Skip the i+=2 logic for object args
-      }
-
-      // Handle string-based arguments (traditional SET syntax)
-      if (typeof arg === 'string') {
-        const option = arg.toString().toUpperCase();
-
-        // Options that take a value
-        if (
-          (option === 'EX' ||
-            option === 'PX' ||
-            option === 'EXAT' ||
-            option === 'PXAT') &&
-          i + 1 < args.length
-        ) {
-          const optionValue = args[i + 1];
-
-          if (option === 'EX') {
-            options.expiry = {
-              type: TimeUnit.Seconds,
-              count: Number(optionValue),
-            };
-          } else if (option === 'PX') {
-            options.expiry = {
-              type: TimeUnit.Milliseconds,
-              count: Number(optionValue),
-            };
-          } else if (option === 'EXAT') {
-            options.expiry = {
-              type: TimeUnit.UnixSeconds,
-              count: Number(optionValue),
-            };
-          } else if (option === 'PXAT') {
-            options.expiry = {
-              type: TimeUnit.UnixMilliseconds,
-              count: Number(optionValue),
-            };
-          }
-          i++; // Skip next arg since we consumed it
-        }
-        // Options that are flags
-        else if (option === 'NX') {
-          options.conditionalSet = 'onlyIfDoesNotExist';
-        } else if (option === 'XX') {
-          options.conditionalSet = 'onlyIfExists';
-        } else if (option === 'KEEPTTL') {
-          options.expiry = 'keepExisting';
-        } else if (option === 'GET') {
-          options.returnOldValue = true;
-        }
-      }
-    }
-
-    const result = await client.set(normalizedKey, normalizedValue, options);
-    return result === 'OK' ? 'OK' : null;
+    return await stringCommands.set(this, key, value, ...args);
   }
 
   async mget(...keysOrArray: any[]): Promise<(string | null)[]> {
-    const client = this.getClient();
-    const keys = Array.isArray(keysOrArray[0]) ? keysOrArray[0] : keysOrArray;
-    const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
-    const results = await client.mget(normalizedKeys);
-    return results.map(ParameterTranslator.convertGlideString);
+    return await stringCommands.mget(this, ...keysOrArray);
   }
 
   async mset(...argsOrHash: any[]): Promise<string> {
-    const client = this.getClient();
-
-    // Parse key-value pairs
+    return await stringCommands.mset(this, ...argsOrHash);
+  }
+  async msetnx(...argsOrHash: any[]): Promise<number> {
     const keyValuePairs: Record<string, string> = {};
     if (
       argsOrHash.length === 1 &&
       typeof argsOrHash[0] === 'object' &&
       !Array.isArray(argsOrHash[0])
     ) {
-      // Object format: mset({ key1: value1, key2: value2 })
       const obj = argsOrHash[0];
       for (const [key, value] of Object.entries(obj)) {
-        keyValuePairs[ParameterTranslator.normalizeKey(key)] =
+        keyValuePairs[this.normalizeKey(key)] =
           ParameterTranslator.normalizeValue(value as any);
       }
     } else {
-      // Array format: mset(key1, value1, key2, value2, ...)
       for (let i = 0; i < argsOrHash.length; i += 2) {
-        const key = ParameterTranslator.normalizeKey(argsOrHash[i]);
+        const key = this.normalizeKey(argsOrHash[i]);
         const value = ParameterTranslator.normalizeValue(argsOrHash[i + 1]);
         keyValuePairs[key] = value;
       }
     }
 
-    await client.mset(keyValuePairs);
-    return 'OK';
+    if ('msetnx' in this.glideClient) {
+      const ok = await (this.glideClient as any).msetnx(keyValuePairs);
+      return ok ? 1 : 0;
+    }
+    const result = await (this.glideClient as any).customCommand([
+      'MSETNX',
+      ...Object.entries(keyValuePairs).flatMap(([k, v]) => [k, v]),
+    ]);
+    return Number(result) || 0;
   }
 
   async incr(key: RedisKey): Promise<number> {
-    const client = await this.ensureClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.incr(normalizedKey);
+    const normalizedKey = this.normalizeKey(key);
+    return await this.glideClient.incr(normalizedKey);
   }
 
   async decr(key: RedisKey): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.decr(normalizedKey);
+    const normalizedKey = this.normalizeKey(key);
+    return await this.glideClient.decr(normalizedKey);
   }
 
   async incrby(key: RedisKey, increment: number): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.incrBy(normalizedKey, increment);
+    const normalizedKey = this.normalizeKey(key);
+    return await this.glideClient.incrBy(normalizedKey, increment);
   }
 
   async decrby(key: RedisKey, decrement: number): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.decrBy(normalizedKey, decrement);
+    const normalizedKey = this.normalizeKey(key);
+    return await this.glideClient.decrBy(normalizedKey, decrement);
   }
 
   async incrbyfloat(key: RedisKey, increment: number): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.incrByFloat(normalizedKey, increment);
+    const normalizedKey = this.normalizeKey(key);
+    const result = await this.glideClient.incrByFloat(normalizedKey, increment);
     return parseFloat(result.toString());
   }
 
   async append(key: RedisKey, value: RedisValue): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedKey = this.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
-    return await client.append(normalizedKey, normalizedValue);
+    return await this.glideClient.append(normalizedKey, normalizedValue);
   }
 
   async strlen(key: RedisKey): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.strlen(normalizedKey);
+    const normalizedKey = this.normalizeKey(key);
+    return await this.glideClient.strlen(normalizedKey);
   }
 
   async getrange(key: RedisKey, start: number, end: number): Promise<string> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.getrange(normalizedKey, start, end);
+    const normalizedKey = this.normalizeKey(key);
+    const result = await this.glideClient.getrange(normalizedKey, start, end);
     return ParameterTranslator.convertGlideString(result) || '';
   }
 
@@ -677,10 +575,13 @@ export abstract class BaseClient extends EventEmitter {
     offset: number,
     value: RedisValue
   ): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedKey = this.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
-    return await client.setrange(normalizedKey, offset, normalizedValue);
+    return await this.glideClient.setrange(
+      normalizedKey,
+      offset,
+      normalizedValue
+    );
   }
 
   async setex(
@@ -688,20 +589,18 @@ export abstract class BaseClient extends EventEmitter {
     seconds: number,
     value: RedisValue
   ): Promise<string> {
-    const client = await this.ensureClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedKey = this.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
-    await client.set(normalizedKey, normalizedValue, {
+    await this.glideClient.set(normalizedKey, normalizedValue, {
       expiry: { type: TimeUnit.Seconds, count: seconds },
     });
     return 'OK';
   }
 
   async setnx(key: RedisKey, value: RedisValue): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedKey = this.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
-    const result = await client.set(normalizedKey, normalizedValue, {
+    const result = await this.glideClient.set(normalizedKey, normalizedValue, {
       conditionalSet: 'onlyIfDoesNotExist',
     });
     return result === 'OK' ? 1 : 0;
@@ -712,10 +611,9 @@ export abstract class BaseClient extends EventEmitter {
     milliseconds: number,
     value: RedisValue
   ): Promise<string> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedKey = this.normalizeKey(key);
     const normalizedValue = ParameterTranslator.normalizeValue(value);
-    await client.set(normalizedKey, normalizedValue, {
+    await this.glideClient.set(normalizedKey, normalizedValue, {
       expiry: { type: TimeUnit.Milliseconds, count: milliseconds },
     });
     return 'OK';
@@ -723,29 +621,23 @@ export abstract class BaseClient extends EventEmitter {
 
   // === Bit Operations ===
   async setbit(key: RedisKey, offset: number, value: number): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.setbit(normalizedKey, offset, value);
-    return Number(result);
+    return await bitmapCommands.setbit(this, key, offset, value);
   }
 
   async getbit(key: RedisKey, offset: number): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.getbit(normalizedKey, offset);
-    return Number(result);
+    return await bitmapCommands.getbit(this, key, offset);
   }
 
   async bitcount(key: RedisKey, start?: number, end?: number): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    if (start !== undefined && end !== undefined) {
-      const result = await client.bitcount(normalizedKey, { start, end });
-      return Number(result);
-    } else {
-      const result = await client.bitcount(normalizedKey);
-      return Number(result);
-    }
+    return await bitmapCommands.bitcount(this, key, start, end);
+  }
+  async bitpos(
+    key: RedisKey,
+    bit: number,
+    start?: number,
+    end?: number
+  ): Promise<number> {
+    return await bitmapCommands.bitpos(this, key, bit, start, end);
   }
 
   async bitop(
@@ -753,75 +645,40 @@ export abstract class BaseClient extends EventEmitter {
     destkey: RedisKey,
     ...keys: RedisKey[]
   ): Promise<number> {
-    const client = this.getClient();
-    const normalizedDestKey = ParameterTranslator.normalizeKey(destkey);
-    const normalizedKeys = keys.map(k => ParameterTranslator.normalizeKey(k));
-    
-    // Map string operation to BitwiseOperation enum
-    const bitwiseOp = operation as keyof typeof BitwiseOperation;
-    const result = await client.bitop(BitwiseOperation[bitwiseOp], normalizedDestKey, normalizedKeys);
-    return Number(result);
+    return await bitmapCommands.bitop(this, operation, destkey, ...keys);
   }
 
   // === Key Commands ===
   async del(...keys: RedisKey[]): Promise<number> {
-    const client = this.getClient();
-    const normalizedKeys = keys.map(k => ParameterTranslator.normalizeKey(k));
-    const result = await client.del(normalizedKeys);
-    return Number(result);
+    return await keyCommands.del(this, ...keys);
   }
 
   async exists(...keys: RedisKey[]): Promise<number> {
-    const client = this.getClient();
-    const normalizedKeys = keys.map(k => ParameterTranslator.normalizeKey(k));
-    const result = await client.exists(normalizedKeys);
-    return Number(result);
+    return await keyCommands.exists(this, ...keys);
   }
 
   async persist(key: RedisKey): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.persist(normalizedKey);
-    return result ? 1 : 0;
+    return await keyCommands.persist(this, key);
   }
 
   async type(key: RedisKey): Promise<string> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.type(normalizedKey);
+    return await keyCommands.type(this, key);
   }
 
   // === Script Commands ===
-  private scriptCache = new Map<string, { script: any; source: string }>();
-
-  private generateScriptSHA1(script: string): string {
-    const crypto = require('crypto');
-    return crypto.createHash('sha1').update(script).digest('hex');
-  }
+  // Script cache is managed in src/commands/scripting.ts
 
   async eval(
     script: string,
     numKeys: number,
     ...keysAndArgs: any[]
   ): Promise<any> {
-    const client = this.getClient();
-    const { Script } = require('@valkey/valkey-glide');
-
-    // Parse keys and arguments from the ioredis format
-    const keys = keysAndArgs
-      .slice(0, numKeys)
-      .map(k => ParameterTranslator.normalizeKey(k as RedisKey));
-    const args = keysAndArgs
-      .slice(numKeys)
-      .map(v => ParameterTranslator.normalizeValue(v as RedisValue));
-
-    const glideScript = new Script(script);
-
-    // Cache the script for potential evalsha usage
-    const sha1 = this.generateScriptSHA1(script);
-    this.scriptCache.set(sha1, { script: glideScript, source: script });
-
-    return await client.invokeScript(glideScript, { keys, args });
+    return await scriptingCommands.evalScript(
+      this,
+      script,
+      numKeys,
+      ...keysAndArgs
+    );
   }
 
   async evalsha(
@@ -829,70 +686,40 @@ export abstract class BaseClient extends EventEmitter {
     numKeys: number,
     ...keysAndArgs: any[]
   ): Promise<any> {
-    const client = this.getClient();
-
-    // Parse keys and arguments from the ioredis format
-    const keys = keysAndArgs
-      .slice(0, numKeys)
-      .map(k => ParameterTranslator.normalizeKey(k as RedisKey));
-    const args = keysAndArgs
-      .slice(numKeys)
-      .map(v => ParameterTranslator.normalizeValue(v as RedisValue));
-
-    // Check if we have the script cached
-    if (this.scriptCache.has(sha1)) {
-      const cached = this.scriptCache.get(sha1)!;
-      return await client.invokeScript(cached.script, { keys, args });
-    } else {
-      // Script not found in cache - this should fail as expected
-      throw new Error(`NOSCRIPT No matching script. Please use EVAL.`);
-    }
+    return await scriptingCommands.evalsha(this, sha1, numKeys, ...keysAndArgs);
   }
 
   async scriptLoad(script: string): Promise<string> {
-    const { Script } = require('@valkey/valkey-glide');
-
-    const sha1 = this.generateScriptSHA1(script);
-    const glideScript = new Script(script);
-
-    // Cache the script
-    this.scriptCache.set(sha1, { script: glideScript, source: script });
-
-    return sha1;
+    return await scriptingCommands.scriptLoad(this, script);
   }
 
   async expire(key: RedisKey, seconds: number): Promise<number> {
-    const client = await this.ensureClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.expire(normalizedKey, seconds);
+    const normalizedKey = this.normalizeKey(key);
+    const result = await this.glideClient.expire(normalizedKey, seconds);
     return result ? 1 : 0;
   }
 
   async pexpire(key: RedisKey, milliseconds: number): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.pexpire(normalizedKey, milliseconds);
+    const normalizedKey = this.normalizeKey(key);
+    const result = await this.glideClient.pexpire(normalizedKey, milliseconds);
     return result ? 1 : 0;
   }
 
   async ttl(key: RedisKey): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.ttl(normalizedKey);
+    const normalizedKey = this.normalizeKey(key);
+    const result = await this.glideClient.ttl(normalizedKey);
     return Number(result);
   }
 
   async pttl(key: RedisKey): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.pttl(normalizedKey);
+    const normalizedKey = this.normalizeKey(key);
+    const result = await this.glideClient.pttl(normalizedKey);
     return Number(result);
   }
 
   async scan(cursor: string, ...args: string[]): Promise<[string, string[]]> {
-    const client = this.getClient();
     const scanArgs = [cursor, ...args];
-    const result = await client.customCommand(['SCAN', ...scanArgs]);
+    const result = await this.glideClient.customCommand(['SCAN', ...scanArgs]);
 
     if (Array.isArray(result) && result.length === 2) {
       const [nextCursor, keys] = result;
@@ -912,10 +739,9 @@ export abstract class BaseClient extends EventEmitter {
     cursor: string,
     ...args: string[]
   ): Promise<[string, string[]]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedKey = this.normalizeKey(key);
     const scanArgs = [normalizedKey, cursor, ...args];
-    const result = await client.customCommand(['HSCAN', ...scanArgs]);
+    const result = await this.glideClient.customCommand(['HSCAN', ...scanArgs]);
 
     if (Array.isArray(result) && result.length === 2) {
       const [nextCursor, fields] = result;
@@ -935,10 +761,9 @@ export abstract class BaseClient extends EventEmitter {
     cursor: string,
     ...args: string[]
   ): Promise<[string, string[]]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedKey = this.normalizeKey(key);
     const scanArgs = [normalizedKey, cursor, ...args];
-    const result = await client.customCommand(['SSCAN', ...scanArgs]);
+    const result = await this.glideClient.customCommand(['SSCAN', ...scanArgs]);
 
     if (Array.isArray(result) && result.length === 2) {
       const [nextCursor, members] = result;
@@ -958,10 +783,9 @@ export abstract class BaseClient extends EventEmitter {
     cursor: string,
     ...args: string[]
   ): Promise<[string, string[]]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedKey = this.normalizeKey(key);
     const scanArgs = [normalizedKey, cursor, ...args];
-    const result = await client.customCommand(['ZSCAN', ...scanArgs]);
+    const result = await this.glideClient.customCommand(['ZSCAN', ...scanArgs]);
 
     if (Array.isArray(result) && result.length === 2) {
       const [nextCursor, membersAndScores] = result;
@@ -980,149 +804,57 @@ export abstract class BaseClient extends EventEmitter {
 
   // === Hash Commands ===
   async hget(key: RedisKey, field: string): Promise<string | null> {
-    const client = await this.ensureClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.hget(normalizedKey, field);
-    return ParameterTranslator.convertGlideString(result);
+    return await hashCommands.hget(this, key, field);
   }
 
   async hset(key: RedisKey, ...args: any[]): Promise<number> {
-    const client = await this.ensureClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-
-    // Parse field-value pairs into Record format for GLIDE
-    const fieldValuePairs: Record<string, string> = {};
-    if (
-      args.length === 1 &&
-      typeof args[0] === 'object' &&
-      !Array.isArray(args[0])
-    ) {
-      // Object format: hset(key, { field1: value1, field2: value2 })
-      const obj = args[0];
-      for (const [field, value] of Object.entries(obj)) {
-        fieldValuePairs[field] = ParameterTranslator.normalizeValue(
-          value as RedisValue
-        );
-      }
-    } else {
-      // Variadic format: hset(key, field1, value1, field2, value2, ...)
-      for (let i = 0; i < args.length; i += 2) {
-        if (i + 1 < args.length) {
-          const field = args[i].toString();
-          const value = ParameterTranslator.normalizeValue(args[i + 1]);
-          fieldValuePairs[field] = value;
-        }
-      }
-    }
-
-    return await client.hset(normalizedKey, fieldValuePairs);
+    return await hashCommands.hset(this, key, ...args);
   }
 
   async hgetall(key: RedisKey): Promise<Record<string, string>> {
-    const client = await this.ensureClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.hgetall(normalizedKey);
-
-    // GLIDE returns HashDataType: [{field: "f1", value: "v1"}, {field: "f2", value: "v2"}]
-    if (Array.isArray(result)) {
-      const converted: Record<string, string> = {};
-      for (const item of result) {
-        if (
-          item &&
-          typeof item === 'object' &&
-          'field' in item &&
-          'value' in item
-        ) {
-          const field =
-            ParameterTranslator.convertGlideString(item.field) || '';
-          const value =
-            ParameterTranslator.convertGlideString(item.value) || '';
-          converted[field] = value;
-        }
-      }
-      return converted;
-    }
-
-    return {};
+    return await hashCommands.hgetall(this, key);
   }
 
   async hmset(key: RedisKey, ...args: any[]): Promise<string> {
-    const client = await this.ensureClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-
-    // Parse field-value pairs into Record format for GLIDE
-    const fieldValuePairs: Record<string, string> = {};
-    if (
-      args.length === 1 &&
-      typeof args[0] === 'object' &&
-      !Array.isArray(args[0])
-    ) {
-      // Object format: hmset(key, { field1: value1, field2: value2 })
-      const obj = args[0];
-      for (const [field, value] of Object.entries(obj)) {
-        fieldValuePairs[field] = ParameterTranslator.normalizeValue(
-          value as RedisValue
-        );
-      }
-    } else {
-      // Variadic format: hmset(key, field1, value1, field2, value2, ...)
-      for (let i = 0; i < args.length; i += 2) {
-        if (i + 1 < args.length) {
-          const field = args[i].toString();
-          const value = ParameterTranslator.normalizeValue(args[i + 1]);
-          fieldValuePairs[field] = value;
-        }
-      }
-    }
-
-    await client.hset(normalizedKey, fieldValuePairs);
-    return 'OK';
+    return await hashCommands.hmset(this, key, ...args);
   }
 
   async hmget(
     key: RedisKey,
     ...fieldsOrArray: any[]
   ): Promise<(string | null)[]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const fields = Array.isArray(fieldsOrArray[0])
-      ? fieldsOrArray[0]
-      : fieldsOrArray;
-    const results = await client.hmget(normalizedKey, fields);
-    return results.map(ParameterTranslator.convertGlideString);
+    return await hashCommands.hmget(this, key, ...fieldsOrArray);
   }
 
   async hdel(key: RedisKey, ...fields: string[]): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.hdel(normalizedKey, fields);
+    return await hashCommands.hdel(this, key, ...fields);
   }
 
   async hexists(key: RedisKey, field: string): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.hexists(normalizedKey, field);
-    return result ? 1 : 0;
+    return await hashCommands.hexists(this, key, field);
   }
 
   async hkeys(key: RedisKey): Promise<string[]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const results = await client.hkeys(normalizedKey);
-    return results.map(r => ParameterTranslator.convertGlideString(r) || '');
+    return await hashCommands.hkeys(this, key);
   }
 
   async hvals(key: RedisKey): Promise<string[]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const results = await client.hvals(normalizedKey);
-    return results.map(r => ParameterTranslator.convertGlideString(r) || '');
+    return await hashCommands.hvals(this, key);
+  }
+  async hstrlen(key: RedisKey, field: string): Promise<number> {
+    return await hashCommands.hstrlen(this, key, field);
+  }
+
+  async hrandfield(
+    key: RedisKey,
+    count?: number,
+    withValues?: 'WITHVALUES'
+  ): Promise<string | string[] | Array<string | number> | null> {
+    return await hashCommands.hrandfield(this, key, count, withValues as any);
   }
 
   async hlen(key: RedisKey): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.hlen(normalizedKey);
+    return await hashCommands.hlen(this, key);
   }
 
   async hincrby(
@@ -1130,9 +862,7 @@ export abstract class BaseClient extends EventEmitter {
     field: string,
     increment: number
   ): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.hincrBy(normalizedKey, field, increment);
+    return await hashCommands.hincrby(this, key, field, increment);
   }
 
   async hincrbyfloat(
@@ -1140,10 +870,7 @@ export abstract class BaseClient extends EventEmitter {
     field: string,
     increment: number
   ): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.hincrByFloat(normalizedKey, field, increment);
-    return parseFloat(result.toString());
+    return await hashCommands.hincrbyfloat(this, key, field, increment);
   }
 
   async hsetnx(
@@ -1151,69 +878,39 @@ export abstract class BaseClient extends EventEmitter {
     field: string,
     value: RedisValue
   ): Promise<number> {
-    const client = await this.ensureClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const normalizedValue = ParameterTranslator.normalizeValue(value);
-    const result = await client.hsetnx(normalizedKey, field, normalizedValue);
-    return result ? 1 : 0;
+    return await hashCommands.hsetnx(this, key, field, value);
   }
 
   // === ZSet Commands ===
   async zadd(key: RedisKey, ...args: any[]): Promise<number> {
-    const client = await this.ensureClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-
-    // Parse score-member pairs
-    const scoreMemberPairs: Record<string, number> = {};
-    for (let i = 0; i < args.length; i += 2) {
-      const score = Number(args[i]);
-      const member = ParameterTranslator.normalizeValue(args[i + 1]);
-      scoreMemberPairs[member] = score;
-    }
-
-    return await client.zadd(normalizedKey, scoreMemberPairs);
+    return await this.zsetCommands.zadd(key, ...args);
   }
 
   async zrem(key: RedisKey, ...members: RedisValue[]): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const normalizedMembers = members.map(ParameterTranslator.normalizeValue);
-    return await client.zrem(normalizedKey, normalizedMembers);
+    return await this.zsetCommands.zrem(key, ...members);
   }
 
   async zcard(key: RedisKey): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.zcard(normalizedKey);
+    return await this.zsetCommands.zcard(key);
   }
 
   async zscore(key: RedisKey, member: RedisValue): Promise<string | null> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const normalizedMember = ParameterTranslator.normalizeValue(member);
-    const result = await client.zscore(normalizedKey, normalizedMember);
+    return await this.zsetCommands.zscore(key, member);
+  }
 
-    if (result === null) return null;
-
-    const scoreStr = result.toString();
-    // Normalize infinity values to match ioredis format
-    if (scoreStr === '-Infinity') return '-inf';
-    if (scoreStr === 'Infinity') return 'inf';
-    return scoreStr;
+  async zmscore(
+    key: RedisKey,
+    members: RedisValue[]
+  ): Promise<(string | null)[]> {
+    return await this.zsetCommands.zmscore(key, members);
   }
 
   async zrank(key: RedisKey, member: RedisValue): Promise<number | null> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const normalizedMember = ParameterTranslator.normalizeValue(member);
-    return await client.zrank(normalizedKey, normalizedMember);
+    return await this.zsetCommands.zrank(key, member);
   }
 
   async zrevrank(key: RedisKey, member: RedisValue): Promise<number | null> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const normalizedMember = ParameterTranslator.normalizeValue(member);
-    return await client.zrevrank(normalizedKey, normalizedMember);
+    return await this.zsetCommands.zrevrank(key, member);
   }
 
   async zrange(
@@ -1222,32 +919,7 @@ export abstract class BaseClient extends EventEmitter {
     stop: number,
     withScores?: boolean
   ): Promise<string[]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const rangeQuery = {
-      type: 'byIndex' as const,
-      start,
-      end: stop,
-    };
-
-    let result: any;
-    if (withScores) {
-      result = await client.zrangeWithScores(normalizedKey, rangeQuery);
-      // GLIDE returns array of objects with {element, score} - convert to ioredis flat format
-      const flattened: string[] = [];
-      for (const item of result) {
-        flattened.push(
-          ParameterTranslator.convertGlideString(item.element) || ''
-        );
-        flattened.push(item.score.toString());
-      }
-      return flattened;
-    } else {
-      result = await client.zrange(normalizedKey, rangeQuery);
-      return result.map(
-        (item: any) => ParameterTranslator.convertGlideString(item) || ''
-      );
-    }
+    return await this.zsetCommands.zrange(key, start, stop, withScores);
   }
 
   async zrevrange(
@@ -1256,28 +928,7 @@ export abstract class BaseClient extends EventEmitter {
     stop: number,
     withScores?: boolean
   ): Promise<string[]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const rangeQuery = {
-      type: 'byIndex' as const,
-      start,
-      end: stop,
-    };
-
-    let result: any;
-    if (withScores) {
-      result = await client.zrangeWithScores(normalizedKey, rangeQuery, {
-        reverse: true,
-      });
-    } else {
-      result = await client.zrange(normalizedKey, rangeQuery, {
-        reverse: true,
-      });
-    }
-
-    return result.map(
-      (item: any) => ParameterTranslator.convertGlideString(item) || ''
-    );
+    return await this.zsetCommands.zrevrange(key, start, stop, withScores);
   }
 
   async zrangebyscore(
@@ -1286,8 +937,7 @@ export abstract class BaseClient extends EventEmitter {
     max: string | number,
     ...args: string[]
   ): Promise<string[]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedKey = this.normalizeKey(key);
 
     try {
       // Parse min/max boundaries for native GLIDE zrange
@@ -1358,8 +1008,8 @@ export abstract class BaseClient extends EventEmitter {
 
       // Use native GLIDE zrange method
       const result = withScores
-        ? await client.zrangeWithScores(normalizedKey, rangeQuery)
-        : await client.zrange(normalizedKey, rangeQuery);
+        ? await this.glideClient.zrangeWithScores(normalizedKey, rangeQuery)
+        : await this.glideClient.zrange(normalizedKey, rangeQuery);
 
       if (!Array.isArray(result)) {
         return [];
@@ -1395,8 +1045,7 @@ export abstract class BaseClient extends EventEmitter {
     min: string | number,
     ...args: string[]
   ): Promise<string[]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    const normalizedKey = this.normalizeKey(key);
 
     try {
       // Parse min/max boundaries for native GLIDE zrange
@@ -1468,8 +1117,8 @@ export abstract class BaseClient extends EventEmitter {
       // Use native GLIDE zrange method without reverse option (then reverse manually)
       // Note: GLIDE's reverse option doesn't work correctly with byScore queries
       const result = withScores
-        ? await client.zrangeWithScores(normalizedKey, rangeQuery)
-        : await client.zrange(normalizedKey, rangeQuery);
+        ? await this.glideClient.zrangeWithScores(normalizedKey, rangeQuery)
+        : await this.glideClient.zrange(normalizedKey, rangeQuery);
 
       if (!Array.isArray(result)) {
         return [];
@@ -1503,75 +1152,82 @@ export abstract class BaseClient extends EventEmitter {
     }
   }
 
+  async zrangebylex(
+    key: RedisKey,
+    min: string,
+    max: string,
+    ...args: string[]
+  ): Promise<string[]> {
+    return await this.zsetCommands.zrangebylex(key, min, max, ...args);
+  }
+
+  async zrevrangebylex(
+    key: RedisKey,
+    max: string,
+    min: string,
+    ...args: string[]
+  ): Promise<string[]> {
+    return await this.zsetCommands.zrevrangebylex(key, max, min, ...args);
+  }
+
   async zpopmin(key: RedisKey, count?: number): Promise<string[]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-
-    try {
-      const options = count !== undefined ? { count } : undefined;
-      const result = await client.zpopmin(normalizedKey, options);
-
-      if (Array.isArray(result)) {
-        // GLIDE returns [{element: string, score: number}, ...]
-        const converted: string[] = [];
-        for (const item of result) {
-          if (
-            item &&
-            typeof item === 'object' &&
-            'element' in item &&
-            'score' in item
-          ) {
-            converted.push(
-              ParameterTranslator.convertGlideString(item.element) || '',
-              item.score.toString()
-            );
-          }
-        }
-        return converted;
-      }
-
-      return [];
-    } catch (error) {
-      throw error;
-    }
+    return await this.zsetCommands.zpopmin(key, count);
   }
 
   async zpopmax(key: RedisKey, count?: number): Promise<string[]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    return await this.zsetCommands.zpopmax(key, count);
+  }
 
-    try {
-      const options = count !== undefined ? { count } : undefined;
-      const result = await client.zpopmax(normalizedKey, options);
+  async zrandmember(
+    key: RedisKey,
+    count?: number,
+    withScores?: 'WITHSCORES'
+  ): Promise<string | string[]> {
+    return await this.zsetCommands.zrandmember(
+      key,
+      count,
+      withScores === 'WITHSCORES'
+    );
+  }
 
-      if (Array.isArray(result)) {
-        // GLIDE returns [{element: string, score: number}, ...]
-        const converted: string[] = [];
-        for (const item of result) {
-          if (
-            item &&
-            typeof item === 'object' &&
-            'element' in item &&
-            'score' in item
-          ) {
-            converted.push(
-              ParameterTranslator.convertGlideString(item.element) || '',
-              item.score.toString()
-            );
-          }
-        }
-        return converted;
-      }
+  async zunionstore(
+    destination: RedisKey,
+    numKeys: number,
+    ...args: any[]
+  ): Promise<number> {
+    return await this.zsetCommands.zunionstore(destination, numKeys, ...args);
+  }
 
-      return [];
-    } catch (error) {
-      throw error;
-    }
+  async zinterstore(
+    destination: RedisKey,
+    numKeys: number,
+    ...args: any[]
+  ): Promise<number> {
+    return await this.zsetCommands.zinterstore(destination, numKeys, ...args);
+  }
+
+  async zdiffstore(
+    destination: RedisKey,
+    numKeys: number,
+    ...args: any[]
+  ): Promise<number> {
+    return await this.zsetCommands.zdiffstore(destination, numKeys, ...args);
+  }
+
+  async zunion(...args: any[]): Promise<string[] | string[]> {
+    return await this.zsetCommands.zunion(...args);
+  }
+
+  async zinter(...args: any[]): Promise<string[] | string[]> {
+    return await this.zsetCommands.zinter(...args);
+  }
+
+  async zdiff(...args: any[]): Promise<string[] | string[]> {
+    return await this.zsetCommands.zdiff(...args);
   }
 
   // BullMQ-critical blocking commands
   async bzpopmin(...args: any[]): Promise<[string, string, string] | null> {
-    const client = this.getClient();
     let keys: RedisKey[];
     let timeout: number;
 
@@ -1583,10 +1239,10 @@ export abstract class BaseClient extends EventEmitter {
       throw new Error('Invalid bzpopmin arguments: timeout must be provided');
     }
 
-    const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
+    const normalizedKeys = keys.map(k => this.normalizeKey(k));
 
     // Use native GLIDE method instead of customCommand
-    const result = await client.bzpopmin(normalizedKeys, timeout);
+    const result = await this.glideClient.bzpopmin(normalizedKeys, timeout);
 
     if (Array.isArray(result) && result.length === 3) {
       return [
@@ -1600,11 +1256,9 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async bzpopmax(...args: any[]): Promise<[string, string, string] | null> {
-    const client = this.getClient();
     let keys: RedisKey[];
     let timeout: number;
 
-    // Handle parameter order: keys first, timeout last
     if (typeof args[args.length - 1] === 'number') {
       timeout = args[args.length - 1];
       keys = args.slice(0, -1);
@@ -1612,16 +1266,17 @@ export abstract class BaseClient extends EventEmitter {
       throw new Error('Invalid bzpopmax arguments: timeout must be provided');
     }
 
-    const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
-
-    // Use native GLIDE method instead of customCommand
-    const result = await client.bzpopmax(normalizedKeys, timeout);
+    const normalizedKeys = keys.map(k => this.normalizeKey(k));
+    const result = await (this.glideClient as any).bzpopmax(
+      normalizedKeys,
+      timeout
+    );
 
     if (Array.isArray(result) && result.length === 3) {
       return [
         ParameterTranslator.convertGlideString(result[0]) || '',
         ParameterTranslator.convertGlideString(result[1]) || '',
-        result[2].toString(), // Convert score number to string for ioredis compatibility
+        result[2].toString(),
       ];
     }
 
@@ -1633,51 +1288,7 @@ export abstract class BaseClient extends EventEmitter {
     min: string | number,
     max: string | number
   ): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-
-    // Parse boundaries with proper infinity handling
-    let minBoundary: any;
-    if (typeof min === 'string') {
-      if (min === '-inf' || min === '+inf') {
-        minBoundary = { value: min as any, isInclusive: true };
-      } else if (min.startsWith('(')) {
-        const val = min.slice(1);
-        if (val === '-inf' || val === '+inf') {
-          minBoundary = { value: val as any, isInclusive: false };
-        } else {
-          minBoundary = { value: parseFloat(val), isInclusive: false };
-        }
-      } else {
-        minBoundary = { value: parseFloat(min), isInclusive: true };
-      }
-    } else {
-      minBoundary = { value: min, isInclusive: true };
-    }
-
-    let maxBoundary: any;
-    if (typeof max === 'string') {
-      if (max === '-inf' || max === '+inf') {
-        maxBoundary = { value: max as any, isInclusive: true };
-      } else if (max.startsWith('(')) {
-        const val = max.slice(1);
-        if (val === '-inf' || val === '+inf') {
-          maxBoundary = { value: val as any, isInclusive: false };
-        } else {
-          maxBoundary = { value: parseFloat(val), isInclusive: false };
-        }
-      } else {
-        maxBoundary = { value: parseFloat(max), isInclusive: true };
-      }
-    } else {
-      maxBoundary = { value: max, isInclusive: true };
-    }
-
-    return await client.zremRangeByScore(
-      normalizedKey,
-      minBoundary,
-      maxBoundary
-    );
+    return await this.zsetCommands.zremrangebyscore(key, min, max);
   }
 
   async zincrby(
@@ -1685,264 +1296,172 @@ export abstract class BaseClient extends EventEmitter {
     increment: number,
     member: RedisValue
   ): Promise<string> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const normalizedMember = ParameterTranslator.normalizeValue(member);
-    const result = await client.zincrby(
-      normalizedKey,
-      increment,
-      normalizedMember
-    );
-    return result.toString();
+    return await this.zsetCommands.zincrby(key, increment, member);
+  }
+
+  async zcount(
+    key: RedisKey,
+    min: number | string,
+    max: number | string
+  ): Promise<number> {
+    return await this.zsetCommands.zcount(key, min, max);
+  }
+
+  async zremrangebyrank(
+    key: RedisKey,
+    start: number,
+    stop: number
+  ): Promise<number> {
+    return await this.zsetCommands.zremrangebyrank(key, start, stop);
   }
 
   // === Set Commands ===
   async sadd(key: RedisKey, ...members: RedisValue[]): Promise<number> {
-    const client = await this.ensureClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const normalizedMembers = members.map(ParameterTranslator.normalizeValue);
-    return await client.sadd(normalizedKey, normalizedMembers);
+    return await this.setCommands.sadd(key, ...members);
   }
 
   async srem(key: RedisKey, ...members: RedisValue[]): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const normalizedMembers = members.map(ParameterTranslator.normalizeValue);
-    return await client.srem(normalizedKey, normalizedMembers);
+    return await this.setCommands.srem(key, ...members);
   }
 
   async scard(key: RedisKey): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.scard(normalizedKey);
+    return await this.setCommands.scard(key);
   }
 
   async sismember(key: RedisKey, member: RedisValue): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const normalizedMember = ParameterTranslator.normalizeValue(member);
-    const result = await client.sismember(normalizedKey, normalizedMember);
-    return result ? 1 : 0;
+    return await this.setCommands.sismember(key, member);
+  }
+
+  async smismember(key: RedisKey, members: RedisValue[]): Promise<number[]> {
+    return await this.setCommands.smismember(key, members);
   }
 
   async smembers(key: RedisKey): Promise<string[]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.smembers(normalizedKey);
-    // GLIDE returns Set<GlideString>, convert to string array for ioredis compatibility
-    return Array.from(result).map(
-      item => ParameterTranslator.convertGlideString(item) || ''
-    );
+    return await this.setCommands.smembers(key);
   }
 
   async sinter(...keys: RedisKey[]): Promise<string[]> {
-    const client = this.getClient();
-    const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
-    const result = await client.sinter(normalizedKeys);
-    // GLIDE returns Set<GlideString>, convert to string array for ioredis compatibility
-    return Array.from(result).map(
-      item => ParameterTranslator.convertGlideString(item) || ''
-    );
+    return await this.setCommands.sinter(...keys);
   }
 
   async sinterstore(
     destination: RedisKey,
     ...keys: RedisKey[]
   ): Promise<number> {
-    const client = this.getClient();
-    const normalizedDestination = ParameterTranslator.normalizeKey(destination);
-    const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
-    return await client.sinterstore(normalizedDestination, normalizedKeys);
+    return await this.setCommands.sinterstore(destination, ...keys);
   }
 
   async sdiff(...keys: RedisKey[]): Promise<string[]> {
-    const client = this.getClient();
-    const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
-    const result = await client.sdiff(normalizedKeys);
-    // GLIDE returns Set<GlideString>, convert to string array for ioredis compatibility
-    return Array.from(result).map(
-      item => ParameterTranslator.convertGlideString(item) || ''
-    );
+    return await this.setCommands.sdiff(...keys);
   }
 
   async sdiffstore(
     destination: RedisKey,
     ...keys: RedisKey[]
   ): Promise<number> {
-    const client = this.getClient();
-    const normalizedDestination = ParameterTranslator.normalizeKey(destination);
-    const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
-    return await client.sdiffstore(normalizedDestination, normalizedKeys);
+    return await this.setCommands.sdiffstore(destination, ...keys);
   }
 
   async sunion(...keys: RedisKey[]): Promise<string[]> {
-    const client = this.getClient();
-    const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
-    const result = await client.sunion(normalizedKeys);
-    // GLIDE returns Set<GlideString>, convert to string array for ioredis compatibility
-    return Array.from(result).map(
-      item => ParameterTranslator.convertGlideString(item) || ''
-    );
+    return await this.setCommands.sunion(...keys);
   }
 
   async sunionstore(
     destination: RedisKey,
     ...keys: RedisKey[]
   ): Promise<number> {
-    const client = this.getClient();
-    const normalizedDestination = ParameterTranslator.normalizeKey(destination);
-    const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
-    return await client.sunionstore(normalizedDestination, normalizedKeys);
+    return await this.setCommands.sunionstore(destination, ...keys);
   }
 
   async spop(key: RedisKey, count?: number): Promise<string | string[] | null> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-
-    if (count === undefined) {
-      // Single member pop
-      const result = await client.spop(normalizedKey);
-      return result
-        ? ParameterTranslator.convertGlideString(result) || null
-        : null;
-    } else {
-      // Multiple members pop
-      const result = await client.spopCount(normalizedKey, count);
-      return Array.from(result).map(
-        item => ParameterTranslator.convertGlideString(item) || ''
-      );
-    }
+    return await this.setCommands.spop(key, count);
   }
 
   async srandmember(
     key: RedisKey,
     count?: number
   ): Promise<string | string[] | null> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    return await this.setCommands.srandmember(key, count);
+  }
 
-    if (count === undefined) {
-      // Single member random
-      const result = await client.srandmember(normalizedKey);
-      return result
-        ? ParameterTranslator.convertGlideString(result) || null
-        : null;
-    } else {
-      // Multiple members random
-      const result = await client.srandmemberCount(normalizedKey, count);
-      return result.map(
-        item => ParameterTranslator.convertGlideString(item) || ''
-      );
+  // SORT (basic mapping using GLIDE options)
+  async sort(key: RedisKey, ...args: any[]): Promise<(string | null)[]> {
+    const normalizedKey = this.normalizeKey(key);
+    // Parse ioredis style: [BY pattern] [LIMIT offset count] [GET pattern ...] [ASC|DESC] [ALPHA]
+    const options: any = {};
+    for (let i = 0; i < args.length; i++) {
+      const token = String(args[i]).toUpperCase();
+      if (token === 'BY' && i + 1 < args.length) {
+        options.byPattern = String(args[++i]);
+      } else if (token === 'LIMIT' && i + 2 < args.length) {
+        options.limit = { offset: Number(args[++i]), count: Number(args[++i]) };
+      } else if (token === 'GET' && i + 1 < args.length) {
+        const pattern = String(args[++i]);
+        options.getPatterns = options.getPatterns || [];
+        options.getPatterns.push(pattern);
+      } else if (token === 'ASC') {
+        options.orderBy = 'ASC';
+      } else if (token === 'DESC') {
+        options.orderBy = 'DESC';
+      } else if (token === 'ALPHA') {
+        options.isAlpha = true;
+      }
     }
+    const res = await (this.glideClient as any).sort(normalizedKey, options);
+    return res.map((v: any) => ParameterTranslator.convertGlideString(v));
   }
 
   // === List Commands ===
   async lpush(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
   async lpush(key: RedisKey, elements: RedisValue[]): Promise<number>;
   async lpush(key: RedisKey, ...args: any[]): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-
-    // Handle both spread and array forms
-    let values: RedisValue[];
-    if (args.length === 1 && Array.isArray(args[0])) {
-      values = args[0];
-    } else {
-      values = args;
-    }
-
-    const normalizedValues = values.map(ParameterTranslator.normalizeValue);
-    return await client.lpush(normalizedKey, normalizedValues);
+    return await this.listCommands.lpush(key, ...args);
   }
 
   async rpush(key: RedisKey, ...elements: RedisValue[]): Promise<number>;
   async rpush(key: RedisKey, elements: RedisValue[]): Promise<number>;
   async rpush(key: RedisKey, ...args: any[]): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-
-    // Handle both spread and array forms
-    let values: RedisValue[];
-    if (args.length === 1 && Array.isArray(args[0])) {
-      values = args[0];
-    } else {
-      values = args;
-    }
-
-    const normalizedValues = values.map(ParameterTranslator.normalizeValue);
-    return await client.rpush(normalizedKey, normalizedValues);
+    return await this.listCommands.rpush(key, ...args);
   }
 
   async lpop(key: RedisKey, count?: number): Promise<string | string[] | null> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-
-    if (count !== undefined) {
-      const results = await client.lpopCount(normalizedKey, count);
-      return results
-        ? results.map(r => ParameterTranslator.convertGlideString(r) || '')
-        : null;
-    } else {
-      const result = await client.lpop(normalizedKey);
-      return ParameterTranslator.convertGlideString(result);
-    }
+    return await this.listCommands.lpop(key, count);
   }
 
   async rpop(key: RedisKey, count?: number): Promise<string | string[] | null> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-
-    if (count !== undefined) {
-      const results = await client.rpopCount(normalizedKey, count);
-      return results
-        ? results.map(r => ParameterTranslator.convertGlideString(r) || '')
-        : null;
-    } else {
-      const result = await client.rpop(normalizedKey);
-      return ParameterTranslator.convertGlideString(result);
-    }
+    return await this.listCommands.rpop(key, count);
   }
 
   async llen(key: RedisKey): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    return await client.llen(normalizedKey);
+    return await this.listCommands.llen(key);
   }
 
   async lrange(key: RedisKey, start: number, stop: number): Promise<string[]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const results = await client.lrange(normalizedKey, start, stop);
-    return results.map(r => ParameterTranslator.convertGlideString(r) || '');
+    return await this.listCommands.lrange(key, start, stop);
   }
 
   async ltrim(key: RedisKey, start: number, stop: number): Promise<string> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    await client.ltrim(normalizedKey, start, stop);
-    return 'OK';
+    return await this.listCommands.ltrim(key, start, stop);
   }
 
   async lindex(key: RedisKey, index: number): Promise<string | null> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.lindex(normalizedKey, index);
-    return ParameterTranslator.convertGlideString(result);
+    return await this.listCommands.lindex(key, index);
   }
 
   async lset(key: RedisKey, index: number, value: RedisValue): Promise<string> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const normalizedValue = ParameterTranslator.normalizeValue(value);
-    await client.lset(normalizedKey, index, normalizedValue);
-    return 'OK';
+    return await this.listCommands.lset(key, index, value);
   }
 
   async lrem(key: RedisKey, count: number, value: RedisValue): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const normalizedValue = ParameterTranslator.normalizeValue(value);
-    return await client.lrem(normalizedKey, count, normalizedValue);
+    return await this.listCommands.lrem(key, count, value);
+  }
+
+  async lpushx(key: RedisKey, ...elements: RedisValue[]): Promise<number> {
+    return await this.listCommands.lpushx(key, ...elements);
+  }
+
+  async rpushx(key: RedisKey, ...elements: RedisValue[]): Promise<number> {
+    return await this.listCommands.rpushx(key, ...elements);
   }
 
   async linsert(
@@ -1951,38 +1470,18 @@ export abstract class BaseClient extends EventEmitter {
     pivot: RedisValue,
     element: RedisValue
   ): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const normalizedPivot = ParameterTranslator.normalizeValue(pivot);
-    const normalizedElement = ParameterTranslator.normalizeValue(element);
-    const insertPosition = direction === 'BEFORE' ? 'before' : 'after';
-    return await client.linsert(
-      normalizedKey,
-      insertPosition as any,
-      normalizedPivot,
-      normalizedElement
-    );
+    return await this.listCommands.linsert(key, direction, pivot, element);
   }
 
   async rpoplpush(
     source: RedisKey,
     destination: RedisKey
   ): Promise<string | null> {
-    const client = this.getClient();
-    const normalizedSource = ParameterTranslator.normalizeKey(source);
-    const normalizedDest = ParameterTranslator.normalizeKey(destination);
-    const result = await client.customCommand([
-      'RPOPLPUSH',
-      normalizedSource,
-      normalizedDest,
-    ]);
-    return ParameterTranslator.convertGlideString(result);
+    return await this.listCommands.rpoplpush(source, destination);
   }
 
   // Blocking operations - critical for queue systems
   async blpop(...args: any[]): Promise<[string, string] | null> {
-    const client = this.getClient();
-
     let keys: RedisKey[];
     let timeout: number;
 
@@ -2003,7 +1502,7 @@ export abstract class BaseClient extends EventEmitter {
 
     const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
 
-    const result = await client.blpop(normalizedKeys, timeout);
+    const result = await this.glideClient.blpop(normalizedKeys, timeout);
 
     if (Array.isArray(result) && result.length === 2) {
       return [
@@ -2016,8 +1515,6 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async brpop(...args: any[]): Promise<[string, string] | null> {
-    const client = this.getClient();
-
     let keys: RedisKey[];
     let timeout: number;
 
@@ -2038,7 +1535,7 @@ export abstract class BaseClient extends EventEmitter {
 
     const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
 
-    const result = await client.brpop(normalizedKeys, timeout);
+    const result = await this.glideClient.brpop(normalizedKeys, timeout);
 
     if (Array.isArray(result) && result.length === 2) {
       return [
@@ -2055,12 +1552,11 @@ export abstract class BaseClient extends EventEmitter {
     destination: RedisKey,
     timeout: number
   ): Promise<string | null> {
-    const client = this.getClient();
-    const normalizedSource = ParameterTranslator.normalizeKey(source);
-    const normalizedDestination = ParameterTranslator.normalizeKey(destination);
+    const normalizedSource = this.normalizeKey(source);
+    const normalizedDestination = this.normalizeKey(destination);
 
     // BRPOPLPUSH is not available in GLIDE, must use customCommand
-    const result = await client.customCommand([
+    const result = await this.glideClient.customCommand([
       'BRPOPLPUSH',
       normalizedSource,
       normalizedDestination,
@@ -2071,19 +1567,13 @@ export abstract class BaseClient extends EventEmitter {
 
   // === Transaction/Script Commands ===
   async script(subcommand: string, ...args: any[]): Promise<any> {
-    const client = this.getClient();
-    return await client.customCommand([
-      'SCRIPT',
-      subcommand,
-      ...args.map(String),
-    ]);
+    return await scriptingCommands.script(this, subcommand, ...args);
   }
 
   // WATCH method - both GlideClient and GlideClusterClient inherit from BaseClient with same signature
   async watch(...keys: RedisKey[]): Promise<string> {
-    const client = this.getClient();
-    const normalizedKeys = keys.map(ParameterTranslator.normalizeKey);
-    return await client.watch(normalizedKeys);
+    const normalizedKeys = keys.map(k => this.normalizeKey(k));
+    return await this.glideClient.watch(normalizedKeys);
   }
 
   // UNWATCH method is client-specific due to different signatures - implemented in StandaloneClient/ClusterClient
@@ -2123,21 +1613,21 @@ export abstract class BaseClient extends EventEmitter {
       // String commands
       set: (key: RedisKey, value: RedisValue, ..._args: any[]) => {
         batch.set(
-          ParameterTranslator.normalizeKey(key),
+          this.normalizeKey(key),
           ParameterTranslator.normalizeValue(value)
         );
         commandCount++;
         return adapter;
       },
       get: (key: RedisKey) => {
-        batch.get(ParameterTranslator.normalizeKey(key));
+        batch.get(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
       mget: (...keys: RedisKey[]) => {
         const normalizedKeys = Array.isArray(keys[0])
-          ? keys[0].map(k => ParameterTranslator.normalizeKey(k))
-          : keys.map(k => ParameterTranslator.normalizeKey(k));
+          ? (keys[0] as any).map((k: RedisKey) => this.normalizeKey(k))
+          : keys.map(k => this.normalizeKey(k));
         batch.mget(normalizedKeys);
         commandCount++;
         return adapter;
@@ -2152,72 +1642,75 @@ export abstract class BaseClient extends EventEmitter {
           // Object format: mset({ key1: 'val1', key2: 'val2' })
           keyValues = {};
           for (const [key, value] of Object.entries(args[0])) {
-            keyValues[ParameterTranslator.normalizeKey(key)] =
+            keyValues[this.normalizeKey(key)] =
               ParameterTranslator.normalizeValue(value as RedisValue);
           }
         } else {
           // Array format: mset('key1', 'val1', 'key2', 'val2')
           keyValues = {};
           for (let i = 0; i < args.length; i += 2) {
-            const key = ParameterTranslator.normalizeKey(args[i]);
+            const key = this.normalizeKey(args[i]);
             const value = ParameterTranslator.normalizeValue(args[i + 1]);
             keyValues[key] = value;
           }
         }
         batch.mset(keyValues);
+        commandCount++;
         return adapter;
       },
       del: (...keys: RedisKey[]) => {
-        batch.del(keys.map(k => ParameterTranslator.normalizeKey(k)));
+        batch.del(keys.map(k => this.normalizeKey(k)));
+        commandCount++;
         return adapter;
       },
       exists: (...keys: RedisKey[]) => {
-        batch.exists(keys.map(k => ParameterTranslator.normalizeKey(k)));
+        batch.exists(keys.map(k => this.normalizeKey(k)));
+        commandCount++;
         return adapter;
       },
       expire: (key: RedisKey, seconds: number) => {
-        batch.expire(ParameterTranslator.normalizeKey(key), seconds);
+        batch.expire(this.normalizeKey(key), seconds);
         commandCount++;
         return adapter;
       },
       pexpire: (key: RedisKey, milliseconds: number) => {
-        batch.pexpire(ParameterTranslator.normalizeKey(key), milliseconds);
+        batch.pexpire(this.normalizeKey(key), milliseconds);
         commandCount++;
         return adapter;
       },
       ttl: (key: RedisKey) => {
-        batch.ttl(ParameterTranslator.normalizeKey(key));
+        batch.ttl(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
       pttl: (key: RedisKey) => {
-        batch.pttl(ParameterTranslator.normalizeKey(key));
+        batch.pttl(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
 
       // Hash commands
       hset: (key: RedisKey, ...args: any[]) => {
-        const normalizedKey = ParameterTranslator.normalizeKey(key);
+        const normalizedKey = this.normalizeKey(key);
         const fieldValues = ParameterTranslator.parseHashSetArgs(args);
         batch.hset(normalizedKey, fieldValues);
         commandCount++;
         return adapter;
       },
       hget: (key: RedisKey, field: string) => {
-        batch.hget(ParameterTranslator.normalizeKey(key), field);
+        batch.hget(this.normalizeKey(key), field);
         commandCount++;
         return adapter;
       },
       hgetall: (key: RedisKey) => {
-        batch.hgetall(ParameterTranslator.normalizeKey(key));
+        batch.hgetall(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
 
       // List commands
       lpush: (key: RedisKey, ...elements: RedisValue[]) => {
-        const normalizedKey = ParameterTranslator.normalizeKey(key);
+        const normalizedKey = this.normalizeKey(key);
         const normalizedElements = elements.map(e =>
           ParameterTranslator.normalizeValue(e)
         );
@@ -2225,13 +1718,22 @@ export abstract class BaseClient extends EventEmitter {
         commandCount++;
         return adapter;
       },
+      lpushx: (key: RedisKey, ...elements: RedisValue[]) => {
+        const normalizedKey = this.normalizeKey(key);
+        const normalizedElements = elements.map(e =>
+          ParameterTranslator.normalizeValue(e)
+        );
+        batch.customCommand(['LPUSHX', normalizedKey, ...normalizedElements]);
+        commandCount++;
+        return adapter;
+      },
       rpop: (key: RedisKey) => {
-        batch.rpop(ParameterTranslator.normalizeKey(key));
+        batch.rpop(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
       rpush: (key: RedisKey, ...elements: RedisValue[]) => {
-        const normalizedKey = ParameterTranslator.normalizeKey(key);
+        const normalizedKey = this.normalizeKey(key);
         const normalizedElements = elements.map(e =>
           ParameterTranslator.normalizeValue(e)
         );
@@ -2239,24 +1741,33 @@ export abstract class BaseClient extends EventEmitter {
         commandCount++;
         return adapter;
       },
+      rpushx: (key: RedisKey, ...elements: RedisValue[]) => {
+        const normalizedKey = this.normalizeKey(key);
+        const normalizedElements = elements.map(e =>
+          ParameterTranslator.normalizeValue(e)
+        );
+        batch.customCommand(['RPUSHX', normalizedKey, ...normalizedElements]);
+        commandCount++;
+        return adapter;
+      },
       lpop: (key: RedisKey) => {
-        batch.lpop(ParameterTranslator.normalizeKey(key));
+        batch.lpop(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
       llen: (key: RedisKey) => {
-        batch.llen(ParameterTranslator.normalizeKey(key));
+        batch.llen(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
       lrange: (key: RedisKey, start: number, stop: number) => {
-        batch.lrange(ParameterTranslator.normalizeKey(key), start, stop);
+        batch.lrange(this.normalizeKey(key), start, stop);
         commandCount++;
         return adapter;
       },
       lrem: (key: RedisKey, count: number, element: RedisValue) => {
         batch.lrem(
-          ParameterTranslator.normalizeKey(key),
+          this.normalizeKey(key),
           count,
           ParameterTranslator.normalizeValue(element)
         );
@@ -2264,14 +1775,14 @@ export abstract class BaseClient extends EventEmitter {
         return adapter;
       },
       ltrim: (key: RedisKey, start: number, stop: number) => {
-        batch.ltrim(ParameterTranslator.normalizeKey(key), start, stop);
+        batch.ltrim(this.normalizeKey(key), start, stop);
         commandCount++;
         return adapter;
       },
 
       // Sorted Set commands (critical for BullMQ priorities/delays)
       zadd: (key: RedisKey, ...args: any[]) => {
-        const normalizedKey = ParameterTranslator.normalizeKey(key);
+        const normalizedKey = this.normalizeKey(key);
         // Handle different zadd patterns: zadd key score member, zadd key score1 member1 score2 member2, etc.
         const scoreMembers: any = {};
         for (let i = 0; i < args.length; i += 2) {
@@ -2284,7 +1795,7 @@ export abstract class BaseClient extends EventEmitter {
         return adapter;
       },
       zrem: (key: RedisKey, ...members: RedisValue[]) => {
-        const normalizedKey = ParameterTranslator.normalizeKey(key);
+        const normalizedKey = this.normalizeKey(key);
         const normalizedMembers = members.map(m =>
           ParameterTranslator.normalizeValue(m)
         );
@@ -2293,7 +1804,7 @@ export abstract class BaseClient extends EventEmitter {
         return adapter;
       },
       zrange: (key: RedisKey, start: number, stop: number) => {
-        batch.zrange(ParameterTranslator.normalizeKey(key), {
+        batch.zrange(this.normalizeKey(key), {
           start,
           end: stop,
         });
@@ -2302,7 +1813,7 @@ export abstract class BaseClient extends EventEmitter {
       },
       zrevrange: (key: RedisKey, start: number, stop: number) => {
         // GLIDE batch might not support zrevrange, use customCommand
-        const normalizedKey = ParameterTranslator.normalizeKey(key);
+        const normalizedKey = this.normalizeKey(key);
         batch.customCommand([
           'ZREVRANGE',
           normalizedKey,
@@ -2313,12 +1824,12 @@ export abstract class BaseClient extends EventEmitter {
         return adapter;
       },
       zcard: (key: RedisKey) => {
-        batch.zcard(ParameterTranslator.normalizeKey(key));
+        batch.zcard(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
       zcount: (key: RedisKey, min: string | number, max: string | number) => {
-        batch.zcount(ParameterTranslator.normalizeKey(key), {
+        batch.zcount(this.normalizeKey(key), {
           min: String(min),
           max: String(max),
         });
@@ -2328,7 +1839,7 @@ export abstract class BaseClient extends EventEmitter {
 
       // Set commands
       sadd: (key: RedisKey, ...members: RedisValue[]) => {
-        const normalizedKey = ParameterTranslator.normalizeKey(key);
+        const normalizedKey = this.normalizeKey(key);
         const normalizedMembers = members.map(m =>
           ParameterTranslator.normalizeValue(m)
         );
@@ -2337,7 +1848,7 @@ export abstract class BaseClient extends EventEmitter {
         return adapter;
       },
       srem: (key: RedisKey, ...members: RedisValue[]) => {
-        const normalizedKey = ParameterTranslator.normalizeKey(key);
+        const normalizedKey = this.normalizeKey(key);
         const normalizedMembers = members.map(m =>
           ParameterTranslator.normalizeValue(m)
         );
@@ -2346,51 +1857,51 @@ export abstract class BaseClient extends EventEmitter {
         return adapter;
       },
       smembers: (key: RedisKey) => {
-        batch.smembers(ParameterTranslator.normalizeKey(key));
+        batch.smembers(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
       scard: (key: RedisKey) => {
-        batch.scard(ParameterTranslator.normalizeKey(key));
+        batch.scard(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
 
       // Additional hash commands
       hdel: (key: RedisKey, ...fields: string[]) => {
-        batch.hdel(ParameterTranslator.normalizeKey(key), fields);
+        batch.hdel(this.normalizeKey(key), fields);
         commandCount++;
         return adapter;
       },
       hlen: (key: RedisKey) => {
-        batch.hlen(ParameterTranslator.normalizeKey(key));
+        batch.hlen(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
       hkeys: (key: RedisKey) => {
-        batch.hkeys(ParameterTranslator.normalizeKey(key));
+        batch.hkeys(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
       hvals: (key: RedisKey) => {
-        batch.hvals(ParameterTranslator.normalizeKey(key));
+        batch.hvals(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
 
       // String commands
       incr: (key: RedisKey) => {
-        batch.incr(ParameterTranslator.normalizeKey(key));
+        batch.incr(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
       decr: (key: RedisKey) => {
-        batch.decr(ParameterTranslator.normalizeKey(key));
+        batch.decr(this.normalizeKey(key));
         commandCount++;
         return adapter;
       },
       incrby: (key: RedisKey, increment: number) => {
-        batch.incrby(ParameterTranslator.normalizeKey(key), increment);
+        batch.incrby(this.normalizeKey(key), increment);
         commandCount++;
         return adapter;
       },
@@ -2414,8 +1925,7 @@ export abstract class BaseClient extends EventEmitter {
             return []; // ioredis returns empty array for empty pipeline
           }
 
-          const client = this.getClient();
-          const result = await (client as any).exec(batch, false); // Don't raise on error
+          const result = await this.glideClient.exec(batch, false); // Don't raise on error
 
           // Convert results to ioredis format: Array<[Error | null, any]>
           if (result === null) return null; // Transaction was discarded
@@ -2443,94 +1953,57 @@ export abstract class BaseClient extends EventEmitter {
 
   // Connection info
   async ping(message?: string): Promise<string> {
-    const client = await this.ensureClient();
     const options = message ? { message } : undefined;
-    const result = await client.ping(options);
+    const result = await this.glideClient.ping(options);
     return ParameterTranslator.convertGlideString(result) || 'PONG';
   }
 
   async info(section?: string): Promise<string> {
-    const client = this.getClient();
-    let result: any;
-    if (section) {
-      // Use customCommand for specific sections
-      result = await (client as any).customCommand(['INFO', section]);
-    } else {
-      result = await client.info();
-    }
-    return ParameterTranslator.convertGlideString(result) || '';
+    return await serverCommands.info(this, section);
   }
 
   // CLIENT command support (critical for BullMQ)
   async client(subcommand: string, ...args: any[]): Promise<any> {
-    const client = this.getClient();
-    const commandArgs = [
-      'CLIENT',
-      subcommand.toUpperCase(),
-      ...args.map(arg => String(arg)),
-    ];
-    const result = await (client as any).customCommand(commandArgs);
+    return await serverCommands.client(this, subcommand, ...args);
+  }
 
-    // Handle different CLIENT subcommand return types
-    if (subcommand.toUpperCase() === 'LIST') {
-      return ParameterTranslator.convertGlideString(result) || '';
-    } else if (subcommand.toUpperCase() === 'SETNAME') {
-      return ParameterTranslator.convertGlideString(result) || 'OK';
-    } else {
-      return result;
-    }
+  async clientId(): Promise<number> {
+    return await serverCommands.clientId(this);
+  }
+
+  async configGet(parameter: string | string[]): Promise<string[]> {
+    return await serverCommands.configGet(this, parameter);
+  }
+
+  async configSet(map: Record<string, string>): Promise<'OK'> {
+    return await serverCommands.configSet(this, map);
+  }
+
+  async configRewrite(): Promise<'OK'> {
+    return await serverCommands.configRewrite(this);
+  }
+
+  async configResetStat(): Promise<'OK'> {
+    return await serverCommands.configResetStat(this);
   }
 
   // Database management commands (critical for BullMQ cleanup)
   async flushall(mode?: 'SYNC' | 'ASYNC'): Promise<string> {
-    const client = this.getClient();
-
-    // GLIDE has direct flushall method - check for both GlideClient and GlideClusterClient
-    if (
-      'flushall' in client &&
-      typeof (client as any).flushall === 'function'
-    ) {
-      // GLIDE uses FlushMode enum, not string
-      const FlushMode = require('@valkey/valkey-glide').FlushMode;
-      const flushMode = mode === 'ASYNC' ? FlushMode.ASYNC : FlushMode.SYNC;
-      const result = await (client as any).flushall(flushMode);
-      return ParameterTranslator.convertGlideString(result) || 'OK';
-    } else {
-      // Fallback to custom command
-      const args = mode ? ['FLUSHALL', mode] : ['FLUSHALL'];
-      const result = await (client as any).customCommand(args);
-      return ParameterTranslator.convertGlideString(result) || 'OK';
-    }
+    return await serverCommands.flushall(this, mode);
   }
 
   async flushdb(mode?: 'SYNC' | 'ASYNC'): Promise<string> {
-    const client = this.getClient();
-
-    // GLIDE has direct flushdb method - check for both GlideClient and GlideClusterClient
-    if ('flushdb' in client && typeof (client as any).flushdb === 'function') {
-      // GLIDE uses FlushMode enum, not string
-      const FlushMode = require('@valkey/valkey-glide').FlushMode;
-      const flushMode = mode === 'ASYNC' ? FlushMode.ASYNC : FlushMode.SYNC;
-      const result = await (client as any).flushdb(flushMode);
-      return ParameterTranslator.convertGlideString(result) || 'OK';
-    } else {
-      // Fallback to custom command
-      const args = mode ? ['FLUSHDB', mode] : ['FLUSHDB'];
-      const result = await (client as any).customCommand(args);
-      return ParameterTranslator.convertGlideString(result) || 'OK';
-    }
+    return await serverCommands.flushdb(this, mode);
   }
 
   // === JSON Commands (ValkeyJSON compatible) ===
-  // TODO: Implement JsonCommands directly
   async jsonSet(
     key: RedisKey,
     path: string,
     value: any,
     options?: 'NX' | 'XX'
   ): Promise<string | null> {
-    const client = this.getClient();
-    const normalizedKey = String(key);
+    const normalizedKey = this.normalizeKey(String(key));
     const jsonValue = JSON.stringify(value);
     const args = ['JSON.SET', normalizedKey, path, jsonValue];
 
@@ -2538,7 +2011,7 @@ export abstract class BaseClient extends EventEmitter {
       args.push(options);
     }
 
-    const result = await client.customCommand(args);
+    const result = await this.glideClient.customCommand(args);
     return result === 'OK' ? 'OK' : null;
   }
 
@@ -2551,8 +2024,7 @@ export abstract class BaseClient extends EventEmitter {
       space?: string;
     }
   ): Promise<string | null> {
-    const client = this.getClient();
-    const normalizedKey = String(key);
+    const normalizedKey = this.normalizeKey(String(key));
     const args = ['JSON.GET', normalizedKey];
 
     if (path) {
@@ -2575,7 +2047,7 @@ export abstract class BaseClient extends EventEmitter {
       }
     }
 
-    const result = await client.customCommand(args);
+    const result = await this.glideClient.customCommand(args);
     if (result === null || result === undefined) {
       return null;
     }
@@ -2603,33 +2075,30 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonDel(key: RedisKey, path?: string): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = String(key);
+    const normalizedKey = this.normalizeKey(String(key));
     const args = ['JSON.DEL', normalizedKey];
     if (path) args.push(path);
-    const result = await client.customCommand(args);
+    const result = await this.glideClient.customCommand(args);
     return Number(result) || 0;
   }
 
   async jsonClear(key: RedisKey, path?: string): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = String(key);
+    const normalizedKey = this.normalizeKey(String(key));
     const args = ['JSON.CLEAR', normalizedKey];
     if (path) args.push(path);
-    const result = await client.customCommand(args);
+    const result = await this.glideClient.customCommand(args);
     return Number(result) || 0;
   }
 
   async jsonType(key: RedisKey, path?: string): Promise<string | null> {
-    const client = this.getClient();
-    const normalizedKey = String(key);
+    const normalizedKey = this.normalizeKey(String(key));
     const args = ['JSON.TYPE', normalizedKey];
 
     if (path) {
       args.push(path);
     }
 
-    const result = await client.customCommand(args);
+    const result = await this.glideClient.customCommand(args);
 
     // Handle all possible null/empty responses for non-existent keys
     // GLIDE may return [null], null, undefined, or empty string for non-existent keys
@@ -2668,9 +2137,8 @@ export abstract class BaseClient extends EventEmitter {
     path: string,
     value: number
   ): Promise<string | null> {
-    const client = this.getClient();
-    const normalizedKey = String(key);
-    const result = await client.customCommand([
+    const normalizedKey = this.normalizeKey(String(key));
+    const result = await this.glideClient.customCommand([
       'JSON.NUMINCRBY',
       normalizedKey,
       path,
@@ -2694,9 +2162,8 @@ export abstract class BaseClient extends EventEmitter {
     path: string,
     value: number
   ): Promise<string | null> {
-    const client = this.getClient();
-    const normalizedKey = String(key);
-    const result = await client.customCommand([
+    const normalizedKey = this.normalizeKey(String(key));
+    const result = await this.glideClient.customCommand([
       'JSON.NUMMULTBY',
       normalizedKey,
       path,
@@ -2710,10 +2177,9 @@ export abstract class BaseClient extends EventEmitter {
     path: string,
     value: string
   ): Promise<number | null> {
-    const client = this.getClient();
-    const normalizedKey = String(key);
+    const normalizedKey = this.normalizeKey(String(key));
     const jsonValue = JSON.stringify(value);
-    const result = await client.customCommand([
+    const result = await (this.glideClient as any).customCommand([
       'JSON.STRAPPEND',
       normalizedKey,
       path,
@@ -2723,11 +2189,10 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonStrLen(key: RedisKey, path?: string): Promise<number | null> {
-    const client = this.getClient();
-    const normalizedKey = String(key);
+    const normalizedKey = this.normalizeKey(String(key));
     const args = ['JSON.STRLEN', normalizedKey];
     if (path) args.push(path);
-    const result = await client.customCommand(args);
+    const result = await (this.glideClient as any).customCommand(args);
     return result !== null ? Number(result) : null;
   }
 
@@ -2736,13 +2201,12 @@ export abstract class BaseClient extends EventEmitter {
     path: string,
     ...values: any[]
   ): Promise<number | null> {
-    const client = this.getClient();
-    const normalizedKey = String(key);
+    const normalizedKey = this.normalizeKey(String(key));
 
     // Simplified approach - always JSON.stringify everything
     const jsonValues = values.map(v => JSON.stringify(v));
 
-    const result = await client.customCommand([
+    const result = await (this.glideClient as any).customCommand([
       'JSON.ARRAPPEND',
       normalizedKey,
       path,
@@ -2763,12 +2227,11 @@ export abstract class BaseClient extends EventEmitter {
     index: number,
     ...values: any[]
   ): Promise<number | null> {
-    const client = this.getClient();
     const normalizedKey = String(key);
     const jsonValues = values.map(v =>
       typeof v === 'string' ? JSON.stringify(v) : JSON.stringify(v)
     );
-    const result = await client.customCommand([
+    const result = await this.glideClient.customCommand([
       'JSON.ARRINSERT',
       normalizedKey,
       path,
@@ -2779,7 +2242,6 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonArrLen(key: RedisKey, path?: string): Promise<number | null> {
-    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.ARRLEN', normalizedKey];
 
@@ -2788,7 +2250,7 @@ export abstract class BaseClient extends EventEmitter {
     }
 
     try {
-      const result = await client.customCommand(args);
+      const result = await this.glideClient.customCommand(args);
 
       if (result === null || result === undefined) {
         return null;
@@ -2816,12 +2278,11 @@ export abstract class BaseClient extends EventEmitter {
     path?: string,
     index?: number
   ): Promise<string | null> {
-    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.ARRPOP', normalizedKey];
     if (path) args.push(path);
     if (index !== undefined) args.push(index.toString());
-    const result = await client.customCommand(args);
+    const result = await this.glideClient.customCommand(args);
     return result ? String(result) : null;
   }
 
@@ -2831,9 +2292,8 @@ export abstract class BaseClient extends EventEmitter {
     start: number,
     stop: number
   ): Promise<number | null> {
-    const client = this.getClient();
     const normalizedKey = String(key);
-    const result = await client.customCommand([
+    const result = await this.glideClient.customCommand([
       'JSON.ARRTRIM',
       normalizedKey,
       path,
@@ -2844,7 +2304,6 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonObjKeys(key: RedisKey, path?: string): Promise<string[] | null> {
-    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.OBJKEYS', normalizedKey];
 
@@ -2853,7 +2312,7 @@ export abstract class BaseClient extends EventEmitter {
     }
 
     try {
-      const result = await client.customCommand(args);
+      const result = await this.glideClient.customCommand(args);
 
       if (result === null || result === undefined) {
         return null;
@@ -2901,18 +2360,16 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async jsonObjLen(key: RedisKey, path?: string): Promise<number | null> {
-    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.OBJLEN', normalizedKey];
     if (path) args.push(path);
-    const result = await client.customCommand(args);
+    const result = await this.glideClient.customCommand(args);
     return result !== null ? Number(result) : null;
   }
 
   async jsonToggle(key: RedisKey, path: string): Promise<number> {
-    const client = this.getClient();
     const normalizedKey = String(key);
-    const result = await client.customCommand([
+    const result = await this.glideClient.customCommand([
       'JSON.TOGGLE',
       normalizedKey,
       path,
@@ -2931,39 +2388,36 @@ export abstract class BaseClient extends EventEmitter {
     key: RedisKey,
     path?: string
   ): Promise<any> {
-    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.DEBUG', subcommand, normalizedKey];
     if (path) args.push(path);
-    return await client.customCommand(args);
+    return await this.glideClient.customCommand(args);
   }
 
   async jsonForget(key: RedisKey, path?: string): Promise<number> {
-    const client = this.getClient();
     // JSON.FORGET is alias for JSON.DEL
     const normalizedKey = String(key);
     const args = ['JSON.DEL', normalizedKey];
     if (path) args.push(path);
-    const result = await client.customCommand(args);
+    const result = await this.glideClient.customCommand(args);
     return Number(result) || 0;
   }
 
   async jsonResp(key: RedisKey, path?: string): Promise<any> {
-    const client = this.getClient();
     const normalizedKey = String(key);
     const args = ['JSON.RESP', normalizedKey];
     if (path) args.push(path);
-    return await client.customCommand(args);
+    return await this.glideClient.customCommand(args);
   }
 
   // === Pub/Sub Commands - Dual Architecture ===
-  
+
   /**
    * Subscribe to channels using dual pub/sub architecture:
-   * 
+   *
    * 1. Direct GLIDE Mode (default): High-performance native callbacks, text messages only
    * 2. ioredis-Compatible Mode: Full binary support via direct TCP, Socket.IO compatible
-   * 
+   *
    * Mode is controlled by `options.enableEventBasedPubSub` flag
    */
   async subscribe(...channels: string[]): Promise<number> {
@@ -3233,7 +2687,6 @@ export abstract class BaseClient extends EventEmitter {
       } catch (error) {
         // Ignore close errors
       }
-      this.subscriberClient = null;
     }
 
     // If we have subscriptions, create a new client with callback mechanism
@@ -3313,7 +2766,8 @@ export abstract class BaseClient extends EventEmitter {
                 message instanceof Buffer
                   ? message
                   : Buffer.from(String(message), 'utf8');
-              this.emit('pmessageBuffer', messageBuffer, pattern, channel);
+              // ioredis-compatible: pmessageBuffer(pattern, channel, message)
+              this.emit('pmessageBuffer', pattern, channel, messageBuffer);
             } else {
               // Regular message
               this.emit('message', channel, message);
@@ -3397,7 +2851,7 @@ export abstract class BaseClient extends EventEmitter {
    * Public helper to create a new client (for DirectGlidePubSub publisher)
    */
   public async createDirectClient(): Promise<GlideClientType> {
-    return await this.createClient();
+    return await this.createClient(this.options);
   }
 
   /**
@@ -3428,65 +2882,51 @@ export abstract class BaseClient extends EventEmitter {
 
   // System and administrative commands
   async config(action: string, parameter?: string): Promise<string[]> {
-    const client = this.getClient();
-    const args = parameter ? [action, parameter] : [action];
-    const result = await client.customCommand(['CONFIG', ...args]);
-
-    // CONFIG GET returns key-value pairs as an array
-    if (action.toUpperCase() === 'GET' && Array.isArray(result)) {
-      return result.map(item => String(item));
-    }
-
-    return Array.isArray(result)
-      ? result.map(item => String(item))
-      : [String(result)];
+    return await serverCommands.config(this, action, parameter);
   }
 
   async dbsize(): Promise<number> {
-    const client = this.getClient();
-    const result = await client.customCommand(['DBSIZE']);
-    return Number(result) || 0;
+    return await serverCommands.dbsize(this);
   }
 
   async memory(subcommand: string, ...args: (string | number)[]): Promise<any> {
-    const client = this.getClient();
-    const commandArgs = ['MEMORY', subcommand, ...args.map(arg => String(arg))];
-    return await client.customCommand(commandArgs);
+    return await serverCommands.memory(this, subcommand, ...args);
   }
 
   async slowlog(
     subcommand: string,
     ...args: (string | number)[]
   ): Promise<any> {
-    const client = this.getClient();
-    const commandArgs = [
-      'SLOWLOG',
-      subcommand,
-      ...args.map(arg => String(arg)),
-    ];
-    const result = await client.customCommand(commandArgs);
-    return result;
+    return await serverCommands.slowlog(this, subcommand, ...args);
   }
 
   async debug(subcommand: string, ...args: (string | number)[]): Promise<any> {
-    const client = this.getClient();
-    const commandArgs = ['DEBUG', subcommand, ...args.map(arg => String(arg))];
-    return await client.customCommand(commandArgs);
+    return await serverCommands.debug(this, subcommand, ...args);
   }
 
   async echo(message: string): Promise<string> {
-    const client = this.getClient();
-    const result = await client.customCommand(['ECHO', message]);
-    return String(result);
+    return await serverCommands.echo(this, message);
   }
 
   async time(): Promise<[string, string]> {
-    const client = this.getClient();
-    const result = await client.customCommand(['TIME']);
-    if (Array.isArray(result) && result.length >= 2) {
-      return [String(result[0]), String(result[1])];
-    }
-    return ['0', '0'];
+    return await serverCommands.time(this);
+  }
+
+  async lastsave(): Promise<number> {
+    return await serverCommands.lastsave(this);
+  }
+
+  // monitor is a special streaming command; expose basic passthrough to maintain compatibility
+  async monitor(): Promise<'OK'> {
+    return await serverCommands.monitor(this);
+  }
+
+  async save(): Promise<'OK'> {
+    return await serverCommands.save(this);
+  }
+
+  async bgsave(): Promise<string> {
+    return await serverCommands.bgsave(this);
   }
 
   // Stream commands
@@ -3495,68 +2935,15 @@ export abstract class BaseClient extends EventEmitter {
     id: string,
     ...fieldsAndValues: (string | number)[]
   ): Promise<string> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const args = [
-      'XADD',
-      normalizedKey,
-      id,
-      ...fieldsAndValues.map(v => String(v)),
-    ];
-    const result = await client.customCommand(args);
-    return String(result);
+    return await streamCommands.xadd(this, key, id, ...fieldsAndValues);
   }
 
   async xlen(key: RedisKey): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.customCommand(['XLEN', normalizedKey]);
-    return Number(result) || 0;
+    return await streamCommands.xlen(this, key);
   }
 
   async xread(...args: any[]): Promise<any[]> {
-    const client = this.getClient();
-
-    // Parse ioredis-style XREAD arguments: ['STREAMS', 'stream1', 'stream2', 'id1', 'id2']
-    // Convert to GLIDE format: {stream1: 'id1', stream2: 'id2'}
-    let streamsIndex = args.findIndex(
-      arg => String(arg).toUpperCase() === 'STREAMS'
-    );
-    if (streamsIndex === -1) {
-      // Fallback to customCommand for non-standard usage
-      const result = await client.customCommand([
-        'XREAD',
-        ...args.map(arg => String(arg)),
-      ]);
-      return Array.isArray(result) ? result : [];
-    }
-
-    const streamArgs = args.slice(streamsIndex + 1);
-    const streamCount = Math.floor(streamArgs.length / 2);
-    const streamNames = streamArgs.slice(0, streamCount);
-    const streamIds = streamArgs.slice(streamCount);
-
-    // Build keys_and_ids object for GLIDE
-    const keysAndIds: Record<string, string> = {};
-    for (let i = 0; i < streamCount; i++) {
-      keysAndIds[streamNames[i]] = streamIds[i];
-    }
-
-    const result = await client.xread(keysAndIds);
-
-    if (!result || typeof result !== 'object') {
-      return [];
-    }
-
-    // Convert GLIDE format {stream1: entries, stream2: entries} to ioredis format [[stream1, entries], [stream2, entries]]
-    const ioredisResult: any[] = [];
-    for (const [streamName, entries] of Object.entries(result)) {
-      if (entries && Array.isArray(entries)) {
-        ioredisResult.push([streamName, entries]);
-      }
-    }
-
-    return ioredisResult;
+    return await streamCommands.xread(this, ...args);
   }
 
   async xrange(
@@ -3565,34 +2952,7 @@ export abstract class BaseClient extends EventEmitter {
     end: string = '+',
     count?: number
   ): Promise<any[]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-
-    // Convert ioredis boundaries to GLIDE boundary format
-    const startBoundary =
-      start === '-'
-        ? { value: '-', isInclusive: false }
-        : { value: start, isInclusive: true };
-    const endBoundary =
-      end === '+'
-        ? { value: '+', isInclusive: false }
-        : { value: end, isInclusive: true };
-
-    const options = count !== undefined ? { count } : undefined;
-
-    const result = await client.xrange(
-      normalizedKey,
-      startBoundary,
-      endBoundary,
-      options
-    );
-
-    // GLIDE returns StreamEntryDataType | null, we need to return array format
-    if (!result || !Array.isArray(result)) {
-      return [];
-    }
-
-    return result;
+    return await streamCommands.xrange(this, key, start, end, count);
   }
 
   async xrevrange(
@@ -3601,62 +2961,28 @@ export abstract class BaseClient extends EventEmitter {
     end: string = '-',
     count?: number
   ): Promise<any[]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
+    return await streamCommands.xrevrange(this, key, start, end, count);
+  }
 
-    // Convert ioredis boundaries to GLIDE boundary format (note: start/end are reversed for XREVRANGE)
-    const startBoundary =
-      start === '+'
-        ? { value: '+', isInclusive: false }
-        : { value: start, isInclusive: true };
-    const endBoundary =
-      end === '-'
-        ? { value: '-', isInclusive: false }
-        : { value: end, isInclusive: true };
+  // === HyperLogLog Commands ===
+  async pfadd(key: RedisKey, ...elements: RedisValue[]): Promise<number> {
+    return await hllCommands.pfadd(this, key, ...elements);
+  }
 
-    const options = count !== undefined ? { count } : undefined;
+  async pfcount(...keys: RedisKey[]): Promise<number> {
+    return await hllCommands.pfcount(this, ...keys);
+  }
 
-    // Use GLIDE's xrevrange method (if available) or fallback to customCommand
-    try {
-      const result = await (client as any).xrevrange(
-        normalizedKey,
-        startBoundary,
-        endBoundary,
-        options
-      );
-
-      if (!result || !Array.isArray(result)) {
-        return [];
-      }
-
-      return result;
-    } catch (error) {
-      // Fallback to customCommand
-      const args = ['XREVRANGE', normalizedKey, start, end];
-      if (count !== undefined) {
-        args.push('COUNT', String(count));
-      }
-      const result = await client.customCommand(args);
-      return Array.isArray(result) ? result : [];
-    }
+  async pfmerge(destination: RedisKey, ...keys: RedisKey[]): Promise<'OK'> {
+    return await hllCommands.pfmerge(this, destination, ...keys);
   }
 
   async xdel(key: RedisKey, ...ids: string[]): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.customCommand(['XDEL', normalizedKey, ...ids]);
-    return Number(result) || 0;
+    return await streamCommands.xdel(this, key, ...ids);
   }
 
   async xtrim(key: RedisKey, ...args: any[]): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.customCommand([
-      'XTRIM',
-      normalizedKey,
-      ...args.map(arg => String(arg)),
-    ]);
-    return Number(result) || 0;
+    return await streamCommands.xtrim(this, key, ...args);
   }
 
   async xgroup(
@@ -3665,57 +2991,19 @@ export abstract class BaseClient extends EventEmitter {
     group: string,
     ...args: (string | number)[]
   ): Promise<any> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const commandArgs = [
-      'XGROUP',
-      action,
-      normalizedKey,
-      group,
-      ...args.map(arg => String(arg)),
-    ];
-    return await client.customCommand(commandArgs);
+    return await streamCommands.xgroup(this, action, key, group, ...args);
   }
 
-  async xreadgroup(...args: any[]): Promise<any[]> {
-    const client = this.getClient();
-    const result = await client.customCommand([
-      'XREADGROUP',
-      'GROUP',
-      ...args.map(arg => String(arg)),
-    ]);
-    return Array.isArray(result) ? result : [];
+  async xreadgroup(
+    group: string,
+    consumer: string,
+    ...args: any[]
+  ): Promise<any[]> {
+    return await streamCommands.xreadgroup(this, group, consumer, ...args);
   }
 
   async xack(key: RedisKey, group: string, ...ids: string[]): Promise<number> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const result = await client.customCommand([
-      'XACK',
-      normalizedKey,
-      group,
-      ...ids,
-    ]);
-    return Number(result) || 0;
-  }
-
-  async xpending(
-    key: RedisKey,
-    group: string,
-    range?: { start: string; end: string; count: number; consumer?: string }
-  ): Promise<any> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const args = ['XPENDING', normalizedKey, group];
-
-    if (range) {
-      args.push(range.start, range.end, String(range.count));
-      if (range.consumer) {
-        args.push(range.consumer);
-      }
-    }
-
-    return await client.customCommand(args);
+    return await streamCommands.xack(this, key, group, ...ids);
   }
 
   async xclaim(
@@ -3723,36 +3011,208 @@ export abstract class BaseClient extends EventEmitter {
     group: string,
     consumer: string,
     minIdleTime: number,
-    ...ids: string[]
-  ): Promise<any[]> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const args = [
-      'XCLAIM',
-      normalizedKey,
+    ids: string[] | string,
+    options?: {
+      idle?: number;
+      idleUnixTime?: number;
+      retryCount?: number;
+      isForce?: boolean;
+    }
+  ): Promise<any> {
+    return await streamCommands.xclaim(
+      this,
+      key,
       group,
       consumer,
-      String(minIdleTime),
-      ...ids,
-    ];
-    const result = await client.customCommand(args);
-    return Array.isArray(result) ? result : [];
+      minIdleTime,
+      ids,
+      options
+    );
   }
 
-  async xinfo(
-    subcommand: 'STREAM' | 'GROUPS' | 'CONSUMERS',
+  async xclaimJustId(
     key: RedisKey,
-    group?: string
-  ): Promise<any> {
-    const client = this.getClient();
-    const normalizedKey = ParameterTranslator.normalizeKey(key);
-    const args = ['XINFO', subcommand, normalizedKey];
-
-    if (group) {
-      args.push(group);
+    group: string,
+    consumer: string,
+    minIdleTime: number,
+    ids: string[] | string,
+    options?: {
+      idle?: number;
+      idleUnixTime?: number;
+      retryCount?: number;
+      isForce?: boolean;
     }
+  ): Promise<string[]> {
+    return await streamCommands.xclaimJustId(
+      this,
+      key,
+      group,
+      consumer,
+      minIdleTime,
+      ids,
+      options
+    );
+  }
 
-    return await client.customCommand(args);
+  async xautoclaim(
+    key: RedisKey,
+    group: string,
+    consumer: string,
+    minIdleTime: number,
+    start: string,
+    count?: number
+  ): Promise<any> {
+    return await streamCommands.xautoclaim(
+      this,
+      key,
+      group,
+      consumer,
+      minIdleTime,
+      start,
+      count
+    );
+  }
+
+  async xautoclaimJustId(
+    key: RedisKey,
+    group: string,
+    consumer: string,
+    minIdleTime: number,
+    start: string,
+    count?: number
+  ): Promise<[string, string[], string[]?]> {
+    return await streamCommands.xautoclaimJustId(
+      this,
+      key,
+      group,
+      consumer,
+      minIdleTime,
+      start,
+      count
+    );
+  }
+
+  async xpending(key: RedisKey, group: string, ...args: any[]): Promise<any> {
+    return await streamCommands.xpending(this, key, group, ...args);
+  }
+
+  async xinfoConsumers(
+    key: RedisKey,
+    group: string
+  ): Promise<Record<string, any>[]> {
+    return await streamCommands.xinfoConsumers(this, key, group);
+  }
+
+  async xinfoGroups(key: RedisKey): Promise<Record<string, any>[]> {
+    return await streamCommands.xinfoGroups(this, key);
+  }
+
+  async xinfoStream(key: RedisKey, full?: boolean | number): Promise<any> {
+    return await streamCommands.xinfoStream(this, key, full);
+  }
+
+  // === GEO Commands (mapped to GLIDE GEO APIs) ===
+  async geoadd(
+    key: RedisKey,
+    ...args: Array<string | number>
+  ): Promise<number> {
+    return await geoCommands.geoadd(this, key, ...args);
+  }
+
+  async geopos(
+    key: RedisKey,
+    ...members: string[]
+  ): Promise<([number, number] | null)[]> {
+    return await geoCommands.geopos(this, key, ...members);
+  }
+
+  async geodist(
+    key: RedisKey,
+    member1: string,
+    member2: string,
+    unit?: 'm' | 'km' | 'mi' | 'ft'
+  ): Promise<string | null> {
+    return await geoCommands.geodist(this, key, member1, member2, unit as any);
+  }
+
+  async geohash(
+    key: RedisKey,
+    ...members: string[]
+  ): Promise<(string | null)[]> {
+    return await geoCommands.geohash(this, key, ...members);
+  }
+
+  async geosearch(
+    key: RedisKey,
+    from: { member?: string; longitude?: number; latitude?: number },
+    by: {
+      radius?: number;
+      unit?: 'm' | 'km' | 'mi' | 'ft';
+      width?: number;
+      height?: number;
+    },
+    options?: {
+      withCoord?: boolean;
+      withDist?: boolean;
+      withHash?: boolean;
+      count?: number;
+      any?: boolean;
+      order?: 'ASC' | 'DESC';
+    }
+  ): Promise<any[]> {
+    return await geoCommands.geosearch(this, key, from, by, options);
+  }
+
+  async geosearchstore(
+    destination: RedisKey,
+    source: RedisKey,
+    from: { member?: string; longitude?: number; latitude?: number },
+    by: {
+      radius?: number;
+      unit?: 'm' | 'km' | 'mi' | 'ft';
+      width?: number;
+      height?: number;
+    },
+    options?: {
+      order?: 'ASC' | 'DESC';
+      count?: number;
+      any?: boolean;
+      storeDist?: boolean;
+    }
+  ): Promise<number> {
+    return await geoCommands.geosearchstore(
+      this,
+      destination,
+      source,
+      from,
+      by,
+      options
+    );
+  }
+
+  // === Scripting/Server wrappers ===
+  async scriptExists(...sha1s: string[]): Promise<number[]> {
+    return await scriptingCommands.scriptExists(this, ...sha1s);
+  }
+
+  async scriptFlush(mode?: 'SYNC' | 'ASYNC'): Promise<string> {
+    return await scriptingCommands.scriptFlush(this, mode);
+  }
+
+  async scriptKill(): Promise<string> {
+    return await scriptingCommands.scriptKill(this);
+  }
+
+  async clientGetName(): Promise<string | null> {
+    if ((this.glideClient as any).clientGetName) {
+      const res = await (this.glideClient as any).clientGetName();
+      return ParameterTranslator.convertGlideString(res);
+    }
+    const result = await (this.glideClient as any).customCommand([
+      'CLIENT',
+      'GETNAME',
+    ]);
+    return ParameterTranslator.convertGlideString(result);
   }
 
   // Generic command execution method (ioredis compatibility)
@@ -3760,8 +3220,6 @@ export abstract class BaseClient extends EventEmitter {
     command: string,
     ...args: (string | number | Buffer)[]
   ): Promise<any> {
-    const client = this.getClient();
-
     // Convert args to GLIDE format
     const commandArgs = args.map(arg => {
       if (typeof arg === 'string' || typeof arg === 'number') {
@@ -3774,24 +3232,36 @@ export abstract class BaseClient extends EventEmitter {
     });
 
     // Execute via customCommand
-    return await client.customCommand([command.toUpperCase(), ...commandArgs]);
+    return await this.glideClient.customCommand([
+      command.toUpperCase(),
+      ...commandArgs,
+    ]);
   }
 
   // ioredis compatibility - sendCommand
   async sendCommand(command: any): Promise<any> {
-    const client = this.getClient();
-
     // Ensure connection is alive
-    await client.ping();
+    await this.glideClient.ping();
 
+    // Accept ioredis Command object or raw array
     if (Array.isArray(command)) {
-      return await client.customCommand(command);
-    } else {
-      throw new Error('sendCommand expects array format: [command, ...args]');
+      return await this.glideClient.customCommand(command);
     }
+
+    if (command && typeof command === 'object') {
+      const name: string | undefined = command.name || command.command;
+      const args: any[] = command.args || command.argv || [];
+      if (!name) {
+        throw new Error('sendCommand: missing command name');
+      }
+      const flatArgs = [String(name).toUpperCase(), ...args.map(String)];
+      return await this.glideClient.customCommand(flatArgs);
+    }
+
+    throw new Error('sendCommand expects an array or a Command-like object');
   }
 
-  // TODO: Add remaining database commands as needed
+  // Additional database commands can be added here
   // This base class contains comprehensive database commands for complete compatibility
 }
 
@@ -3804,7 +3274,7 @@ export abstract class BaseClient extends EventEmitter {
  *
  * Features:
  * - Zero-copy message delivery via native callbacks
- * - No polling or event loop overhead  
+ * - No polling or event loop overhead
  * - Automatic cluster/standalone detection
  * - Text-only messages (use IoredisPubSubClient for binary data)
  */
@@ -3821,6 +3291,7 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
     string,
     (message: DirectPubSubMessage) => void
   >();
+  glideClient: any;
 
   constructor(baseClient: BaseClient) {
     this.baseClient = baseClient;
@@ -4098,240 +3569,15 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
     return await this.baseClient.createDirectSubscriberClient(subscriberConfig);
   }
 
-  // Transaction Commands for Bull/BullMQ compatibility
-  async multi(): Promise<any> {
-    // Returns a transaction object that collects commands
-    const commands: Array<{ command: string; args: any[] }> = [];
-    const self = this;
-
-    // Create a proxy object that captures commands
-    const multiObj = {
-      commands,
-
-      // Add common database commands to the multi object
-      set: (key: string, value: any, ...args: any[]) => {
-        commands.push({ command: 'SET', args: [key, value, ...args] });
-        return multiObj;
-      },
-      get: (key: string) => {
-        commands.push({ command: 'GET', args: [key] });
-        return multiObj;
-      },
-      del: (...keys: string[]) => {
-        commands.push({ command: 'DEL', args: keys });
-        return multiObj;
-      },
-      hset: (key: string, ...args: any[]) => {
-        commands.push({ command: 'HSET', args: [key, ...args] });
-        return multiObj;
-      },
-      hget: (key: string, field: string) => {
-        commands.push({ command: 'HGET', args: [key, field] });
-        return multiObj;
-      },
-      lpush: (key: string, ...values: any[]) => {
-        commands.push({ command: 'LPUSH', args: [key, ...values] });
-        return multiObj;
-      },
-      rpush: (key: string, ...values: any[]) => {
-        commands.push({ command: 'RPUSH', args: [key, ...values] });
-        return multiObj;
-      },
-      zadd: (key: string, ...args: any[]) => {
-        commands.push({ command: 'ZADD', args: [key, ...args] });
-        return multiObj;
-      },
-
-      // Execute the transaction
-      exec: async () => {
-        const client = await (self as any).ensureConnected();
-        const results = [];
-
-        // Execute each command in sequence
-        for (const { command, args } of commands) {
-          try {
-            const result = await client.customCommand([command, ...args]);
-            results.push([null, result]);
-          } catch (error) {
-            results.push([error, null]);
-          }
-        }
-
-        return results;
-      },
-    };
-
-    return multiObj;
-  }
-
-  async exec(): Promise<any[]> {
-    // This is called on the multi object, not the client directly
-    throw new Error(
-      'EXEC should be called on the multi object returned by multi()'
-    );
-  }
-
-  async watch(...keys: string[]): Promise<string> {
-    const client = await (this as any).ensureConnected();
-    await client.customCommand(['WATCH', ...keys]);
-    return 'OK';
-  }
-
-  // === Search Commands (Valkey Search / RediSearch) ===
-  
-  /**
-   * Lists all indexes.
-   * Maps to FT._LIST command in RediSearch.
-   */
-  async ftList(): Promise<string[]> {
-    const client = await (this as any).ensureConnected();
-    const result = await GlideFt.list(client);
-    return result.map(index => String(index));
-  }
-
-  /**
-   * Creates an index and initiates a backfill of that index.
-   * Maps to FT.CREATE command in RediSearch.
-   */
-  async ftCreate(indexName: string, schema?: any, options?: any): Promise<string> {
-    const client = await (this as any).ensureConnected();
-    
-    // For compatibility with older RediSearch API, handle different parameter formats
-    let indexSchema = schema;
-    let createOptions = options;
-    
-    if (Array.isArray(schema)) {
-      // If schema is an array, it might be in RediSearch v1 format
-      // Convert it to GLIDE format if needed
-      indexSchema = schema;
-    }
-    
-    const result = await GlideFt.create(client, indexName, indexSchema || [], createOptions);
-    return result;
-  }
-
-  /**
-   * Returns information about a given index.
-   * Maps to FT.INFO command in RediSearch.
-   */
-  async ftInfo(indexName: string): Promise<any> {
-    const client = await (this as any).ensureConnected();
-    const result = await GlideFt.info(client, indexName);
-    return result;
-  }
-
-  /**
-   * Deletes an index and associated content. 
-   * Maps to FT.DROPINDEX command in RediSearch.
-   * Note: In GLIDE this is called 'dropindex', in ioredis it's often called 'ftDrop'
-   */
-  async ftDrop(indexName: string, _deleteDocuments?: boolean): Promise<string> {
-    const client = await (this as any).ensureConnected();
-    // GLIDE doesn't support the deleteDocuments parameter, it always preserves documents
-    const result = await GlideFt.dropindex(client, indexName);
-    return result;
-  }
-
-  /**
-   * Uses the provided query expression to locate keys within an index.
-   * Maps to FT.SEARCH command in RediSearch.
-   */
-  async ftSearch(indexName: string, query: string, options?: any): Promise<any> {
-    const client = await (this as any).ensureConnected();
-    const result = await GlideFt.search(client, indexName, query, options);
-    return result;
-  }
-
-  /**
-   * Runs a search query on an index, and perform aggregate transformations on the results.
-   * Maps to FT.AGGREGATE command in RediSearch.
-   */
-  async ftAggregate(indexName: string, query: string, options?: any): Promise<any> {
-    const client = await (this as any).ensureConnected();
-    const result = await GlideFt.aggregate(client, indexName, query, options);
-    return result;
-  }
-
-  /**
-   * Parse a query and return information about how that query was parsed.
-   * Maps to FT.EXPLAIN command in RediSearch.
-   */
-  async ftExplain(indexName: string, query: string): Promise<string> {
-    const client = await (this as any).ensureConnected();
-    const result = await GlideFt.explain(client, indexName, query);
-    return String(result);
-  }
-
-  /**
-   * Legacy RediSearch v1 command - Add a document to an index.
-   * Note: In RediSearch v2/Valkey Search, documents are managed through regular Redis commands.
-   * This method provides compatibility but may not work as expected with newer search implementations.
-   */
-  async ftAdd(_indexName: string, docId: string, _score: number, fields: Record<string, any>): Promise<string> {
-    // For compatibility, we'll use a regular SET command to store the document
-    // and return 'OK' as expected by legacy code
-    const client = await (this as any).ensureConnected();
-    await client.customCommand(['HSET', docId, ...Object.entries(fields).flat()]);
-    return 'OK';
-  }
-
-  /**
-   * Legacy RediSearch v1 command - Get a document by ID.
-   * Note: In RediSearch v2/Valkey Search, documents are managed through regular Redis commands.
-   */
-  async ftGet(_indexName: string, docId: string): Promise<Record<string, string> | null> {
-    const client = await (this as any).ensureConnected();
-    const result = await client.customCommand(['HGETALL', docId]);
-    if (!result || (Array.isArray(result) && result.length === 0)) {
-      return null;
-    }
-    
-    // Convert array result to object format
-    if (Array.isArray(result)) {
-      const obj: Record<string, string> = {};
-      for (let i = 0; i < result.length; i += 2) {
-        obj[String(result[i])] = String(result[i + 1]);
-      }
-      return obj;
-    }
-    
-    return result;
-  }
-
-  /**
-   * Legacy RediSearch v1 command - Delete a document from an index.
-   * Note: In RediSearch v2/Valkey Search, documents are managed through regular Redis commands.
-   */
-  async ftDel(_indexName: string, docId: string): Promise<number> {
-    const client = await (this as any).ensureConnected();
-    const result = await client.customCommand(['DEL', docId]);
-    return typeof result === 'number' ? result : 1;
-  }
-
-  /**
-   * Vector search functionality - typically handled through ftSearch with vector query syntax.
-   * This provides compatibility for code that expects a separate ftVectorSearch method.
-   */
-  async ftVectorSearch(indexName: string, query: string, options?: any): Promise<any> {
-    // Vector search in Valkey Search is done through regular ftSearch with vector query syntax
-    return await this.ftSearch(indexName, query, options);
-  }
-
-  async unwatch(): Promise<string> {
-    const client = await (this as any).ensureConnected();
-    await client.customCommand(['UNWATCH']);
-    return 'OK';
-  }
+  // No transaction methods here; transactions should be performed via BaseClient pipeline/multi
 
   // ioredis compatibility - sendCommand
   async sendCommand(command: any): Promise<any> {
-    const client = await (this as any).ensureConnected();
-
     // Ensure connection is alive
-    await client.ping();
+    await this.glideClient.ping();
 
     if (Array.isArray(command)) {
-      return await client.customCommand(command);
+      return await this.glideClient.sendCommand(command);
     } else {
       throw new Error('sendCommand expects array format: [command, ...args]');
     }

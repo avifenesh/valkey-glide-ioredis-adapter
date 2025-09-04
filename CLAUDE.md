@@ -12,9 +12,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Testing
 - `npm test` - Run all tests using isolated test runner script
 - `npm run test:single` - Run single test with Node.js built-in test runner
-- `npm run test:watch` - Run tests in watch mode
-- `npm run test:coverage` - Run tests with coverage report
-- `npm run test:ci` - Run tests for CI with coverage and no watch
 - `./scripts/test-dual-mode.sh` - Run dual-mode tests (standalone + cluster)
 - `ENABLE_CLUSTER_TESTS=true ./scripts/test-dual-mode.sh` - Run both standalone and cluster tests
 
@@ -31,13 +28,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm test -- tests/unit/json-commands.test.ts` - Run specific test file
 - `npm test -- --testNamePattern="pattern"` - Run tests matching pattern
 - `npm run test:json` - Run JSON module tests specifically
-- `npm run test:search` - Run Search module tests specifically (currently disabled)
 - `npm run test:modules` - Run both JSON and Search module tests
 
 ### Node.js Native Test Commands
-- `VALKEY_HOST=localhost VALKEY_PORT=6381 timeout 30 node --test tests/unit/smoke.test.mjs` - Run specific native test
+- `VALKEY_HOST=localhost VALKEY_PORT=6383 timeout 30 node --test tests/unit/smoke.test.mjs` - Run specific native test
 - `./scripts/test-isolated.sh` - Run tests in isolated environment with proper cleanup
 - `node --test tests/unit/dual-mode-*.test.mjs` - Run dual-mode tests using Node.js test runner
+- `VALKEY_HOST=localhost VALKEY_PORT=6383 timeout 30 node --test tests/unit/string-commands.test.mjs` - Run string command tests
+- `VALKEY_HOST=localhost VALKEY_PORT=6383 timeout 30 node --test tests/unit/hash-commands.test.mjs` - Run hash command tests
+- `VALKEY_HOST=localhost VALKEY_PORT=6383 timeout 30 node --test tests/unit/json-commands.test.mjs` - Run JSON module tests with valkey-bundle
 
 ### Build & Release
 - `npm run clean` - Remove dist/ directory
@@ -45,6 +44,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run release` - Create semantic release
 - `npm run release:dry` - Test release without publishing
 - `npm run release:patch|minor|major` - Create specific version releases
+- `npm run version:patch|minor|major` - Update version without git tag
 
 ### Valkey Module Testing Environment
 - `npm run valkey:start` - Start valkey-bundle Docker container with all modules
@@ -162,7 +162,6 @@ ioredis-compatible Results
 - Unit tests for each command module (`tests/unit/`)
 - Integration tests for real-world patterns (`tests/integration/`)
 - Dual-mode tests for standalone/cluster compatibility (`tests/unit/dual-mode-*.test.mjs`)
-- Coverage threshold: 80% (branches, functions, lines, statements)  
 - Special module testing with valkey-bundle Docker setup
 
 ### Key Implementation Notes
@@ -178,7 +177,12 @@ ioredis-compatible Results
 - `eslint.config.js` - ESLint with TypeScript and Prettier integration
 - Test setup in `tests/setup/` with global setup and teardown
 - `scripts/` - Shell scripts for test environment management and releases
-- `docker-compose.valkey-bundle.yml` - Docker configuration for module testing
+  - `test-isolated.sh` - Isolated test runner with proper cleanup
+  - `test-dual-mode.sh` - Dual-mode testing (standalone + cluster)
+  - `start-valkey-bundle.sh` / `stop-valkey-bundle.sh` - Valkey module container management
+  - `release.sh` - Semantic release management
+- `docker-compose.valkey-bundle.yml` - Docker configuration for module testing with JSON/Search modules
+- `docker-compose.test.yml` - Additional test environment configuration
 - `tests/utils/test-modes.mjs` - Dual-mode testing configuration utilities
 
 ## Testing Environment Requirements
@@ -191,6 +195,9 @@ ioredis-compatible Results
 - Use valkey-bundle Docker container: `npm run valkey:start`
 - Or manually: `docker-compose -f docker-compose.valkey-bundle.yml up -d`
 - JSON module must be loaded on the server for full functionality
+- Container exposes port 6380 for module testing (separate from regular testing on 6379)
+- Container includes health checks to ensure modules are loaded before tests run
+- Use `npm run valkey:test` to start container in test mode with proper environment configuration
 
 ### Test Execution Patterns
 - **Sequential execution**: Tests configured for connection stability
@@ -275,7 +282,7 @@ testBothModes('String Commands', (getClient, mode) => {
 
 ## Recent Changes & Status
 
-### Current Development Focus (as of commit 2c5e39c)
+### Current Development Focus
 - **Internal naming updated to Valkey consistently** across the codebase
 - **Dual-mode testing framework implemented** - Tests can run against both standalone and cluster modes
 - **Node.js built-in test runner migration completed** - 100% test pass rate achieved
