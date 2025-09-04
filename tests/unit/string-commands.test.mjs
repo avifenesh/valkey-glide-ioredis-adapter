@@ -34,9 +34,8 @@ describe('String Commands (ioredis compatibility)', () => {
     }
 
     // Use test server configuration
-    const config = testUtils.getStandaloneConfig();
+    const config = { ...testUtils.getStandaloneConfig(), lazyConnect: false };
     redis = new Redis(config);
-    await redis.connect();
 
     // Clean up any existing test data
     try {

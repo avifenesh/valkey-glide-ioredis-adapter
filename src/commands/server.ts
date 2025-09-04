@@ -7,6 +7,7 @@ export async function info(
   client: BaseClient,
   section?: string
 ): Promise<string> {
+  await (client as any).ensureConnection();
   let result: any;
   if (section) {
     result = await (client as any).glideClient.customCommand(['INFO', section]);
@@ -21,6 +22,7 @@ export async function client(
   subcommand: string,
   ...args: any[]
 ): Promise<any> {
+  await (client as any).ensureConnection();
   const commandArgs = [
     'CLIENT',
     subcommand.toUpperCase(),
@@ -38,6 +40,7 @@ export async function client(
 }
 
 export async function clientId(client: BaseClient): Promise<number> {
+  await (client as any).ensureConnection();
   if ((client as any).glideClient.clientId) {
     return await (client as any).glideClient.clientId();
   }
@@ -52,6 +55,7 @@ export async function configGet(
   client: BaseClient,
   parameter: string | string[]
 ): Promise<string[]> {
+  await (client as any).ensureConnection();
   const params = Array.isArray(parameter) ? parameter : [parameter];
   if ((client as any).glideClient.configGet) {
     const res = await (client as any).glideClient.configGet(params);
@@ -71,6 +75,7 @@ export async function configSet(
   client: BaseClient,
   map: Record<string, string>
 ): Promise<'OK'> {
+  await (client as any).ensureConnection();
   if ((client as any).glideClient.configSet) {
     return await (client as any).glideClient.configSet(map);
   }
@@ -84,6 +89,7 @@ export async function configSet(
 }
 
 export async function configRewrite(client: BaseClient): Promise<'OK'> {
+  await (client as any).ensureConnection();
   if ((client as any).glideClient.configRewrite)
     return await (client as any).glideClient.configRewrite();
   const result = await (client as any).glideClient.customCommand([
@@ -94,6 +100,7 @@ export async function configRewrite(client: BaseClient): Promise<'OK'> {
 }
 
 export async function configResetStat(client: BaseClient): Promise<'OK'> {
+  await (client as any).ensureConnection();
   if ((client as any).glideClient.configResetStat)
     return await (client as any).glideClient.configResetStat();
   const result = await (client as any).glideClient.customCommand([
@@ -108,6 +115,7 @@ export async function config(
   action: string,
   parameter?: string
 ): Promise<string[]> {
+  await (client as any).ensureConnection();
   const args = parameter ? [action, parameter] : [action];
   const result = await (client as any).glideClient.customCommand([
     'CONFIG',
@@ -126,6 +134,7 @@ export async function flushall(
   client: BaseClient,
   mode?: 'SYNC' | 'ASYNC'
 ): Promise<string> {
+  await (client as any).ensureConnection();
   if (
     'flushall' in (client as any).glideClient &&
     typeof (client as any).glideClient.flushall === 'function'
@@ -145,6 +154,7 @@ export async function flushdb(
   client: BaseClient,
   mode?: 'SYNC' | 'ASYNC'
 ): Promise<string> {
+  await (client as any).ensureConnection();
   if (
     'flushdb' in (client as any).glideClient &&
     typeof (client as any).glideClient.flushdb === 'function'
@@ -161,6 +171,7 @@ export async function flushdb(
 }
 
 export async function dbsize(client: BaseClient): Promise<number> {
+  await (client as any).ensureConnection();
   const result = await (client as any).glideClient.customCommand(['DBSIZE']);
   return Number(result) || 0;
 }
@@ -170,6 +181,7 @@ export async function memory(
   subcommand: string,
   ...args: (string | number)[]
 ): Promise<any> {
+  await (client as any).ensureConnection();
   const commandArgs = ['MEMORY', subcommand, ...args.map(arg => String(arg))];
   return await (client as any).glideClient.customCommand(commandArgs);
 }
@@ -179,6 +191,7 @@ export async function slowlog(
   subcommand: string,
   ...args: (string | number)[]
 ): Promise<any> {
+  await (client as any).ensureConnection();
   const commandArgs = ['SLOWLOG', subcommand, ...args.map(arg => String(arg))];
   return await (client as any).glideClient.customCommand(commandArgs);
 }
@@ -188,16 +201,19 @@ export async function debug(
   subcommand: string,
   ...args: (string | number)[]
 ): Promise<any> {
+  await (client as any).ensureConnection();
   const commandArgs = ['DEBUG', subcommand, ...args.map(arg => String(arg))];
   return await (client as any).glideClient.customCommand(commandArgs);
 }
 
 export async function echo(client: BaseClient, message: string): Promise<string> {
+  await (client as any).ensureConnection();
   const result = await (client as any).glideClient.customCommand(['ECHO', message]);
   return String(result);
 }
 
 export async function time(client: BaseClient): Promise<[string, string]> {
+  await (client as any).ensureConnection();
   const result = await (client as any).glideClient.customCommand(['TIME']);
   if (Array.isArray(result) && result.length >= 2) {
     return [String(result[0]), String(result[1])];
@@ -206,21 +222,25 @@ export async function time(client: BaseClient): Promise<[string, string]> {
 }
 
 export async function lastsave(client: BaseClient): Promise<number> {
+  await (client as any).ensureConnection();
   const result = await (client as any).glideClient.customCommand(['LASTSAVE']);
   return Number(result) || 0;
 }
 
 export async function save(client: BaseClient): Promise<'OK'> {
+  await (client as any).ensureConnection();
   const result = await (client as any).glideClient.customCommand(['SAVE']);
   return (ParameterTranslator.convertGlideString(result) as any) || 'OK';
 }
 
 export async function bgsave(client: BaseClient): Promise<string> {
+  await (client as any).ensureConnection();
   const result = await (client as any).glideClient.customCommand(['BGSAVE']);
   return ParameterTranslator.convertGlideString(result) || 'OK';
 }
 
 export async function monitor(client: BaseClient): Promise<'OK'> {
+  await (client as any).ensureConnection();
   const result = await (client as any).glideClient.customCommand(['MONITOR']);
   return (ParameterTranslator.convertGlideString(result) as any) || 'OK';
 }
