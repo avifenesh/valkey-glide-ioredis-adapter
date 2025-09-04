@@ -2,19 +2,14 @@
  * ioredis-Compatible Pub/Sub Client for Valkey
  * 
  * Direct TCP connection with RESP protocol parsing for full binary data support.
- * Connects to Valkey server using Redis protocol for full ioredis compatibility.
- * Used for Socket.IO compatibility and applications requiring binary message handling.
- * 
- * Part of the dual pub/sub architecture:
- * - DirectGlidePubSub: High-performance GLIDE native callbacks (text only)
- * - IoredisPubSubClient: Full ioredis compatibility with binary support
+ * Provides Socket.IO compatibility and binary message handling through the
+ * dual pub/sub architecture.
  */
 
 import { EventEmitter } from 'events';
 import { Socket } from 'net';
 import { RedisOptions } from '../types';
 
-// RESP protocol constants for better maintainability
 const RESP_TYPES = {
   ARRAY: '*',
   BULK_STRING: '$',
@@ -22,7 +17,6 @@ const RESP_TYPES = {
   CRLF: '\r\n'
 } as const;
 
-// Connection timeout and retry constants
 const CONNECTION_DEFAULTS = {
   TIMEOUT: 10000,
   DEFAULT_PORT: 6379,
@@ -45,6 +39,11 @@ export class IoredisPubSubClient extends EventEmitter {
   private readonly patternSubscriptions = new Set<string>();
   private buffer = Buffer.alloc(0);
   private readonly keyPrefix: string;
+  // Awaitable unsubscribe acks
+  private pendingUnsub = new Map<string, () => void>();
+  private pendingPUnsub = new Map<string, () => void>();
+  private unsubAllResolve: (() => void) | null = null;
+  private punsubAllResolve: (() => void) | null = null;
 
   constructor(private options: RedisOptions) {
     super();
@@ -68,17 +67,48 @@ export class IoredisPubSubClient extends EventEmitter {
       }, timeoutMs);
 
       this.socket = new Socket();
+      // Prevent this socket from keeping the event loop alive
+      try { this.socket.unref(); } catch {}
 
-      // Connection success handler
-      this.socket.once('connect', () => {
+      this.socket.once('connect', async () => {
+        try { this.socket && this.socket.unref && this.socket.unref(); } catch {}
         clearTimeout(timeout);
-        this.connectionStatus = 'connected';
-        this.emit('connect');
-        this.emit('ready');
-        resolve();
+        try {
+          // Optional AUTH
+          if (this.options.password) {
+            if (this.options.username) {
+              await this.sendCommand([
+                'AUTH',
+                this.options.username,
+                this.options.password,
+              ]);
+            } else {
+              await this.sendCommand(['AUTH', this.options.password]);
+            }
+          }
+          // Optional CLIENT SETNAME
+          if (this.options.clientName) {
+            await this.sendCommand([
+              'CLIENT',
+              'SETNAME',
+              this.options.clientName,
+            ]);
+          }
+          // Optional SELECT
+          if (typeof this.options.db === 'number') {
+            await this.sendCommand(['SELECT', String(this.options.db)]);
+          }
+          this.connectionStatus = 'connected';
+          this.emit('connect');
+          this.emit('ready');
+          resolve();
+        } catch (handshakeErr) {
+          this.cleanup();
+          this.emit('error', handshakeErr as Error);
+          reject(handshakeErr);
+        }
       });
 
-      // Data handler for RESP protocol
       this.socket.on('data', (data: Buffer) => {
         try {
           this.handleRespData(data);
@@ -87,7 +117,6 @@ export class IoredisPubSubClient extends EventEmitter {
         }
       });
 
-      // Error handler
       this.socket.once('error', (error: Error) => {
         clearTimeout(timeout);
         this.cleanup();
@@ -95,7 +124,6 @@ export class IoredisPubSubClient extends EventEmitter {
         reject(error);
       });
 
-      // Connection close handler
       this.socket.on('close', (hadError: boolean) => {
         this.connectionStatus = 'disconnected';
         this.emit('close');
@@ -133,27 +161,23 @@ export class IoredisPubSubClient extends EventEmitter {
       this.socket = null;
     }
     this.connectionStatus = 'disconnected';
-    this.buffer = Buffer.alloc(0); // Clear parsing buffer
+    this.buffer = Buffer.alloc(0);
   }
 
-  // === RESP Protocol Parsing ===
-  
   /**
-   * Handles incoming RESP data by parsing messages and updating buffer
-   * @param data Incoming buffer data from socket
+   * Handles incoming RESP data by parsing messages and updating buffer.
+   * @param data - Incoming buffer data from socket
+   * @private
    */
   private handleRespData(data: Buffer): void {
     this.buffer = Buffer.concat([this.buffer, data]);
 
-    // Parse all complete messages from buffer
     while (this.buffer.length > 0) {
       const parseResult = this.parseRespMessage(this.buffer);
       if (!parseResult) break;
 
-      // Update buffer to remove parsed data
       this.buffer = this.buffer.subarray(parseResult.consumed);
 
-      // Process parsed pub/sub message
       if (parseResult.message) {
         this.handlePubSubMessage(parseResult.message);
       }
@@ -161,9 +185,10 @@ export class IoredisPubSubClient extends EventEmitter {
   }
 
   /**
-   * Parse a single RESP message from buffer
-   * @param buffer Buffer containing RESP data
+   * Parses a single RESP message from buffer.
+   * @param buffer - Buffer containing RESP data
    * @returns Parsed message and bytes consumed, or null if incomplete
+   * @private
    */
   private parseRespMessage(
     buffer: Buffer
@@ -176,11 +201,9 @@ export class IoredisPubSubClient extends EventEmitter {
     const respType = String.fromCharCode(firstByte);
 
     if (respType === RESP_TYPES.ARRAY) {
-      // Array type - pub/sub messages are arrays
       return this.parseRespArray(buffer);
     }
 
-    // Skip non-array types (not expected in pub/sub context)
     const crlfIndex = buffer.indexOf(RESP_TYPES.CRLF);
     if (crlfIndex === -1) return null;
 
@@ -188,16 +211,16 @@ export class IoredisPubSubClient extends EventEmitter {
   }
 
   /**
-   * Parse RESP array containing pub/sub message
-   * @param buffer Buffer starting with array marker '*'
+   * Parses RESP array containing pub/sub message.
+   * @param buffer - Buffer starting with array marker '*'
    * @returns Parsed pub/sub message and bytes consumed
+   * @private
    */
   private parseRespArray(
     buffer: Buffer
   ): { message: RespMessage | null; consumed: number } | null {
-    let pos = 1; // Skip array marker '*'
+    let pos = 1;
 
-    // Read array length
     const lengthEnd = buffer.indexOf(RESP_TYPES.CRLF, pos);
     if (lengthEnd === -1) return null;
 
@@ -208,7 +231,6 @@ export class IoredisPubSubClient extends EventEmitter {
 
     const elements: (string | Buffer)[] = [];
 
-    // Parse each array element
     for (let i = 0; i < arrayLength; i++) {
       if (pos >= buffer.length) return null;
 
@@ -218,14 +240,12 @@ export class IoredisPubSubClient extends EventEmitter {
       const elementType = String.fromCharCode(elementTypeByte);
 
       if (elementType === RESP_TYPES.BULK_STRING) {
-        // Parse bulk string element
         const bulkStringResult = this.parseBulkString(buffer, pos);
         if (!bulkStringResult) return null;
         
         elements.push(bulkStringResult.value);
         pos = bulkStringResult.consumed;
       } else if (elementType === RESP_TYPES.INTEGER) {
-        // Parse integer element
         const crlfIndex = buffer.indexOf(RESP_TYPES.CRLF, pos);
         if (crlfIndex === -1) return null;
         
@@ -233,20 +253,19 @@ export class IoredisPubSubClient extends EventEmitter {
         elements.push(intValue);
         pos = crlfIndex + RESP_TYPES.CRLF.length;
       } else {
-        // Unexpected element type in pub/sub message
         return null;
       }
     }
 
-    // Parse pub/sub message from elements
     const message = this.createPubSubMessage(elements);
     return { message, consumed: pos };
   }
 
   /**
-   * Creates a pub/sub message from parsed RESP array elements
-   * @param elements Array elements from RESP array
+   * Creates a pub/sub message from parsed RESP array elements.
+   * @param elements - Array elements from RESP array
    * @returns Parsed pub/sub message or null if invalid
+   * @private
    */
   private createPubSubMessage(elements: (string | Buffer)[]): RespMessage | null {
     if (elements.length < 3) return null;
@@ -259,7 +278,7 @@ export class IoredisPubSubClient extends EventEmitter {
           return {
             type: 'message',
             channel: this.bufferToString(elements[1]!),
-            message: elements[2] // Preserve Buffer for binary data
+            message: elements[2]
           };
         }
         break;
@@ -270,17 +289,19 @@ export class IoredisPubSubClient extends EventEmitter {
             type: 'pmessage',
             pattern: this.bufferToString(elements[1]!),
             channel: this.bufferToString(elements[2]!),
-            message: elements[3] // Preserve Buffer for binary data
+            message: elements[3]
           };
         }
         break;
         
       case 'subscribe':
       case 'psubscribe':
+      case 'unsubscribe':
+      case 'punsubscribe':
         if (elements.length >= 3) {
           const count = parseInt(this.bufferToString(elements[2]!));
           return {
-            type: messageType as 'subscribe' | 'psubscribe',
+            type: messageType as any,
             channel: this.bufferToString(elements[1]!),
             count: isNaN(count) ? 0 : count
           };
@@ -288,23 +309,25 @@ export class IoredisPubSubClient extends EventEmitter {
         break;
     }
     
-    return null; // Unknown or invalid message type
+    return null;
   }
 
   /**
-   * Safely converts Buffer or string to string
-   * @param value Buffer or string value
+   * Safely converts Buffer or string to string.
+   * @param value - Buffer or string value
    * @returns String representation
+   * @private
    */
   private bufferToString(value: string | Buffer): string {
     return Buffer.isBuffer(value) ? value.toString() : String(value);
   }
 
   /**
-   * Parse RESP bulk string from buffer
-   * @param buffer Buffer containing RESP data
-   * @param startPos Starting position in buffer (should point to '$')
+   * Parses RESP bulk string from buffer.
+   * @param buffer - Buffer containing RESP data
+   * @param startPos - Starting position in buffer (should point to '$')
    * @returns Parsed bulk string value and bytes consumed
+   * @private
    */
   private parseBulkString(
     buffer: Buffer,
@@ -312,39 +335,33 @@ export class IoredisPubSubClient extends EventEmitter {
   ): { value: Buffer; consumed: number } | null {
     if (startPos >= buffer.length) return null;
     
-    // Verify bulk string marker
     const startByte = buffer[startPos];
     if (startByte === undefined || String.fromCharCode(startByte) !== RESP_TYPES.BULK_STRING) {
       return null;
     }
 
-    let pos = startPos + 1; // Skip '$' marker
+    let pos = startPos + 1;
 
-    // Find length specification end
     const lengthEnd = buffer.indexOf(RESP_TYPES.CRLF, pos);
     if (lengthEnd === -1) return null;
 
-    // Parse string length
     const stringLength = parseInt(buffer.subarray(pos, lengthEnd).toString());
     if (isNaN(stringLength) || stringLength < 0) return null;
     
     pos = lengthEnd + RESP_TYPES.CRLF.length;
 
-    // Check if we have enough data for the string + CRLF
     if (pos + stringLength + RESP_TYPES.CRLF.length > buffer.length) return null;
 
-    // Extract raw Buffer to preserve binary data (critical for Socket.IO/MessagePack)
     const value = buffer.subarray(pos, pos + stringLength);
     pos += stringLength + RESP_TYPES.CRLF.length;
 
     return { value, consumed: pos };
   }
 
-  // === Event Emission ===
-  
   /**
-   * Process parsed pub/sub message and emit appropriate events
-   * @param message Parsed pub/sub message
+   * Processes parsed pub/sub message and emits appropriate events.
+   * @param message - Parsed pub/sub message
+   * @private
    */
   private handlePubSubMessage(message: RespMessage): void {
     switch (message.type) {
@@ -356,47 +373,77 @@ export class IoredisPubSubClient extends EventEmitter {
         this.handlePatternMessage(message);
         break;
         
-      // Subscription confirmations are handled but not emitted as user events
       case 'subscribe':
       case 'psubscribe':
-        // These are internal confirmations, no user-facing events needed
         break;
+      case 'unsubscribe': {
+        // Resolve channel-specific or all-unsubscribe awaits
+        const key = message.channel;
+        const resolver = this.pendingUnsub.get(key);
+        if (resolver) {
+          this.pendingUnsub.delete(key);
+          try { resolver(); } catch {}
+        }
+        if ((message.count ?? 0) === 0 && this.unsubAllResolve) {
+          const r = this.unsubAllResolve; this.unsubAllResolve = null;
+          try { r(); } catch {}
+        }
+        break;
+      }
+      case 'punsubscribe': {
+        const key = message.channel;
+        const resolver = this.pendingPUnsub.get(key);
+        if (resolver) {
+          this.pendingPUnsub.delete(key);
+          try { resolver(); } catch {}
+        }
+        if ((message.count ?? 0) === 0 && this.punsubAllResolve) {
+          const r = this.punsubAllResolve; this.punsubAllResolve = null;
+          try { r(); } catch {}
+        }
+        break;
+      }
     }
   }
 
   /**
-   * Handle regular channel message
+   * Handles regular channel message.
+   * @param message - Message object containing channel and data
+   * @private
    */
   private handleRegularMessage(message: RespMessage): void {
     if (!message.channel || message.message === undefined) return;
 
     const cleanChannel = this.removeKeyPrefix(message.channel);
-    const messageData = message.message!; // Safe after undefined check
+    const messageData = message.message!;
     const messageBuffer = this.ensureBuffer(messageData);
 
-    // Emit both string and buffer variants for compatibility
     this.emit('message', cleanChannel, messageData);
     this.emit('messageBuffer', cleanChannel, messageBuffer);
   }
 
   /**
-   * Handle pattern-based message
+   * Handles pattern-based message.
+   * @param message - Message object containing pattern, channel, and data
+   * @private
    */
   private handlePatternMessage(message: RespMessage): void {
     if (!message.pattern || !message.channel || message.message === undefined) return;
 
     const cleanPattern = this.removeKeyPrefix(message.pattern);
     const cleanChannel = this.removeKeyPrefix(message.channel);
-    const messageData = message.message!; // Safe after undefined check
+    const messageData = message.message!;
     const messageBuffer = this.ensureBuffer(messageData);
 
-    // Emit both string and buffer variants for compatibility  
     this.emit('pmessage', cleanPattern, cleanChannel, messageData);
     this.emit('pmessageBuffer', cleanPattern, cleanChannel, messageBuffer);
   }
 
   /**
-   * Remove key prefix from channel/pattern name if present
+   * Removes key prefix from channel/pattern name if present.
+   * @param name - Channel or pattern name
+   * @returns Name without prefix
+   * @private
    */
   private removeKeyPrefix(name: string): string {
     return this.keyPrefix && name.startsWith(this.keyPrefix) 
@@ -405,7 +452,10 @@ export class IoredisPubSubClient extends EventEmitter {
   }
 
   /**
-   * Ensure message is available as Buffer for binary compatibility
+   * Ensures message is available as Buffer for binary compatibility.
+   * @param message - Message data as string or Buffer
+   * @returns Buffer representation of the message
+   * @private
    */
   private ensureBuffer(message: string | Buffer): Buffer {
     return Buffer.isBuffer(message) 
@@ -413,11 +463,10 @@ export class IoredisPubSubClient extends EventEmitter {
       : Buffer.from(String(message), 'utf8');
   }
 
-  // === Command Transmission ===
-
   /**
-   * Send RESP command to server
-   * @param command Array of command arguments
+   * Sends RESP command to server.
+   * @param command - Array of command arguments
+   * @private
    */
   private async sendCommand(command: string[]): Promise<void> {
     await this.ensureConnected();
@@ -427,9 +476,10 @@ export class IoredisPubSubClient extends EventEmitter {
   }
 
   /**
-   * Send RESP command with binary data to server
-   * @param command Array of command arguments
-   * @param binaryData Binary message data
+   * Sends RESP command with binary data to server.
+   * @param command - Array of command arguments
+   * @param binaryData - Binary message data
+   * @private
    */
   private async sendCommandWithBinary(
     command: string[],
@@ -441,28 +491,25 @@ export class IoredisPubSubClient extends EventEmitter {
       ? binaryData
       : Buffer.from(binaryData, 'utf8');
 
-    // Build command header
     const totalArgs = command.length + 1;
     let header = `${RESP_TYPES.ARRAY}${totalArgs}${RESP_TYPES.CRLF}`;
 
-    // Add string command arguments
     for (const arg of command) {
       header += `${RESP_TYPES.BULK_STRING}${Buffer.byteLength(arg)}${RESP_TYPES.CRLF}${arg}${RESP_TYPES.CRLF}`;
     }
 
-    // Add binary data length
     header += `${RESP_TYPES.BULK_STRING}${dataBuffer.length}${RESP_TYPES.CRLF}`;
 
-    // Send command in parts to handle binary data properly
     this.socket!.write(header);
     this.socket!.write(dataBuffer);
     this.socket!.write(RESP_TYPES.CRLF);
   }
 
   /**
-   * Build RESP command string from arguments
-   * @param command Command arguments
+   * Builds RESP command string from arguments.
+   * @param command - Command arguments
    * @returns RESP formatted command string
+   * @private
    */
   private buildRespCommand(command: string[]): string {
     let resp = `${RESP_TYPES.ARRAY}${command.length}${RESP_TYPES.CRLF}`;
@@ -476,7 +523,8 @@ export class IoredisPubSubClient extends EventEmitter {
   }
 
   /**
-   * Ensure connection is established before sending commands
+   * Ensures connection is established before sending commands.
+   * @private
    */
   private async ensureConnected(): Promise<void> {
     if (!this.socket || this.connectionStatus !== 'connected') {
@@ -484,11 +532,9 @@ export class IoredisPubSubClient extends EventEmitter {
     }
   }
 
-  // === Public API Methods ===
-
   /**
-   * Subscribe to a channel
-   * @param channel Channel name to subscribe to
+   * Subscribes to a channel.
+   * @param channel - Channel name to subscribe to
    */
   async subscribe(channel: string): Promise<void> {
     const prefixedChannel = this.keyPrefix + channel;
@@ -497,23 +543,31 @@ export class IoredisPubSubClient extends EventEmitter {
   }
 
   /**
-   * Unsubscribe from channel(s)
-   * @param channel Specific channel to unsubscribe from, or undefined for all
+   * Unsubscribes from channel(s).
+   * @param channel - Specific channel to unsubscribe from, or undefined for all
    */
   async unsubscribe(channel?: string): Promise<void> {
     if (channel) {
       const prefixedChannel = this.keyPrefix + channel;
       this.subscriptions.delete(prefixedChannel);
+      const ack = new Promise<void>(resolve => this.pendingUnsub.set(prefixedChannel, resolve));
       await this.sendCommand(['UNSUBSCRIBE', prefixedChannel]);
+      await Promise.race([ack, new Promise<void>(r => setTimeout(r, 500))]);
     } else {
       this.subscriptions.clear();
+      const ack = new Promise<void>(resolve => (this.unsubAllResolve = resolve));
       await this.sendCommand(['UNSUBSCRIBE']);
+      await Promise.race([ack, new Promise<void>(r => setTimeout(r, 500))]);
+    }
+    // Auto-close socket when nothing is subscribed
+    if (this.subscriptions.size === 0 && this.patternSubscriptions.size === 0) {
+      this.disconnect();
     }
   }
 
   /**
-   * Subscribe to a pattern
-   * @param pattern Pattern to subscribe to (supports wildcards)
+   * Subscribes to a pattern.
+   * @param pattern - Pattern to subscribe to (supports wildcards)
    */
   async psubscribe(pattern: string): Promise<void> {
     const prefixedPattern = this.keyPrefix + pattern;
@@ -522,39 +576,43 @@ export class IoredisPubSubClient extends EventEmitter {
   }
 
   /**
-   * Unsubscribe from pattern(s)
-   * @param pattern Specific pattern to unsubscribe from, or undefined for all
+   * Unsubscribes from pattern(s).
+   * @param pattern - Specific pattern to unsubscribe from, or undefined for all
    */
   async punsubscribe(pattern?: string): Promise<void> {
     if (pattern) {
       const prefixedPattern = this.keyPrefix + pattern;
       this.patternSubscriptions.delete(prefixedPattern);
+      const ack = new Promise<void>(resolve => this.pendingPUnsub.set(prefixedPattern, resolve));
       await this.sendCommand(['PUNSUBSCRIBE', prefixedPattern]);
+      await Promise.race([ack, new Promise<void>(r => setTimeout(r, 500))]);
     } else {
       this.patternSubscriptions.clear();
+      const ack = new Promise<void>(resolve => (this.punsubAllResolve = resolve));
       await this.sendCommand(['PUNSUBSCRIBE']);
+      await Promise.race([ack, new Promise<void>(r => setTimeout(r, 500))]);
+    }
+    // Auto-close socket when nothing is subscribed
+    if (this.subscriptions.size === 0 && this.patternSubscriptions.size === 0) {
+      this.disconnect();
     }
   }
 
   /**
-   * Publish message to channel
-   * @param channel Channel to publish to
-   * @param message Message data (string or binary)
-   * @returns Number of subscribers that received the message (always 1 in this implementation)
+   * Publishes message to channel.
+   * @param channel - Channel to publish to
+   * @param message - Message data (string or binary)
+   * @returns Number of subscribers that received the message
    */
   async publish(channel: string, message: string | Buffer): Promise<number> {
     const prefixedChannel = this.keyPrefix + channel;
-
-    // Note: Pub/sub connections are typically one-way, so we don't get 
-    // the actual subscriber count. Return 1 to indicate successful send.
     await this.sendCommandWithBinary(['PUBLISH', prefixedChannel], message);
     return 1;
   }
 
-  // === ioredis Compatibility ===
-
   /**
-   * Get connection status in ioredis-compatible format
+   * Gets connection status in ioredis-compatible format.
+   * @returns Connection status string
    */
   get status(): string {
     switch (this.connectionStatus) {
@@ -568,7 +626,7 @@ export class IoredisPubSubClient extends EventEmitter {
   }
 
   /**
-   * Create a duplicate client instance with same configuration
+   * Creates a duplicate client instance with same configuration.
    * @returns New IoredisPubSubClient instance
    */
   duplicate(): IoredisPubSubClient {

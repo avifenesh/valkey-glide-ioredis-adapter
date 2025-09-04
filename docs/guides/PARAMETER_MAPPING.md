@@ -16,6 +16,7 @@
 | `commandTimeout` | number | `requestTimeout` | number | ⚠️ Maps to same GLIDE field |
 | `readFrom` | string | `readFrom` | ReadFrom | ✅ Our extension |
 | `clientAz` | string | `clientAz` | string | ✅ Our extension |
+| `scanAllowNonCoveredSlots` | boolean | Cluster scan option | `ClusterScanOptions.allowNonCoveredSlots` | ✅ Adapter-only; cluster SCAN continues past non-covered slots when true |
 
 ## Advanced Parameter Translation
 
@@ -105,6 +106,10 @@ if (options.connectTimeout !== undefined) {
 ### Cluster Behavior
 - **ioredis**: Manual failover delays (`retryDelayOnFailover`)
 - **GLIDE**: Automatic cluster topology discovery with intelligent jitter
+
+### SCAN Semantics (Cluster)
+- GLIDE uses `ClusterScanCursor` with an opaque cursor id and `isFinished()`; our adapter returns that id as the ioredis `cursor` token and returns `'0'` only when finished. This is ioredis-compatible (cursor is a string), but the token may be non-numeric.
+- Adapter option `scanAllowNonCoveredSlots` toggles GLIDE’s `allowNonCoveredSlots` to continue scanning during resharding/failover gaps.
 
 ## Implementation Strategy
 
