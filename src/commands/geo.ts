@@ -6,6 +6,7 @@ export async function geoadd(
   key: RedisKey,
   ...args: Array<string | number>
 ): Promise<number> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const map = new Map<string, { longitude: number; latitude: number }>();
   for (let i = 0; i < args.length; i += 3) {
@@ -23,6 +24,7 @@ export async function geopos(
   key: RedisKey,
   ...members: string[]
 ): Promise<([number, number] | null)[]> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   return await (client as any).glideClient.geopos(normalizedKey, members);
 }
@@ -34,6 +36,7 @@ export async function geodist(
   member2: string,
   unit?: 'm' | 'km' | 'mi' | 'ft'
 ): Promise<string | null> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const options: any = {};
   if (unit) options.unit = unit;
@@ -51,6 +54,7 @@ export async function geohash(
   key: RedisKey,
   ...members: string[]
 ): Promise<(string | null)[]> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   return await (client as any).glideClient.geohash(normalizedKey, members);
 }
@@ -74,6 +78,7 @@ export async function geosearch(
     order?: 'ASC' | 'DESC';
   }
 ): Promise<any[]> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   let origin: any;
   if (from.member) origin = { member: from.member };
@@ -124,6 +129,7 @@ export async function geosearchstore(
     storeDist?: boolean;
   }
 ): Promise<number> {
+  await (client as any).ensureConnection();
   const dest = (client as any).normalizeKey(destination);
   const src = (client as any).normalizeKey(source);
   let origin: any;

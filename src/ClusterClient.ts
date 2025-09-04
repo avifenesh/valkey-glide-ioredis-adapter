@@ -182,6 +182,7 @@ export class ClusterClient extends BaseClient {
 
   // Cluster: aggregate DB size across nodes using GLIDE's native implementation
   async dbsize(): Promise<number> {
+    await this.ensureConnection();
     const result = await (this.glideClient as GlideClusterClient).dbsize();
     return Number(result) || 0;
   }
@@ -191,6 +192,7 @@ export class ClusterClient extends BaseClient {
 
   // KEYS method using SCAN for cluster client
   async keys(pattern: string = '*'): Promise<string[]> {
+    await this.ensureConnection();
     const { ClusterScanCursor } = require('@valkey/valkey-glide');
 
     const allKeys: string[] = [];
@@ -226,6 +228,8 @@ export class ClusterClient extends BaseClient {
     message: string | Buffer,
     sharded?: boolean
   ): Promise<number> {
+    await this.ensureConnection();
+    
     // Handle binary data encoding for UTF-8 safety
     let publishMessage: string;
     if (message instanceof Buffer || message instanceof Uint8Array) {
@@ -255,6 +259,7 @@ export class ClusterClient extends BaseClient {
 
   // Abstract methods implementation for pub/sub support
   protected async getBaseSubscriberConfig(): Promise<GlideClusterClientConfiguration> {
+    await this.ensureConnection();
     return {
       addresses: this.clusterNodes.map(node => ({
         host: node.host,
@@ -294,12 +299,14 @@ export class ClusterClient extends BaseClient {
   }
 
   protected async createSubscriberClient(): Promise<GlideClientType> {
+    await this.ensureConnection();
     const config = await this.getBaseSubscriberConfig();
     return await this.createSubscriberClientFromConfig(config);
   }
 
   // Override ssubscribe and sunsubscribe for cluster-specific sharded pub/sub
   async ssubscribe(...channels: string[]): Promise<number> {
+    await this.ensureConnection();
     // Add new sharded channels to our subscription set
     const newChannels = channels.filter(
       channel => !this.subscribedShardedChannels.has(channel)
@@ -321,6 +328,7 @@ export class ClusterClient extends BaseClient {
   }
 
   async sunsubscribe(...channels: string[]): Promise<number> {
+    await this.ensureConnection();
     if (channels.length === 0) {
       // Unsubscribe from all sharded channels
       this.subscribedShardedChannels.clear();
@@ -352,6 +360,7 @@ export class ClusterClient extends BaseClient {
   }
 
   async unwatch(): Promise<string> {
+    await this.ensureConnection();
     await (this.glideClient as GlideClusterClient).unwatch();
     return 'OK';
   }

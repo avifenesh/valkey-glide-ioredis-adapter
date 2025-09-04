@@ -4,6 +4,7 @@ import { ParameterTranslator } from '../utils/ParameterTranslator';
 import { RedisKey, RedisValue } from '../types';
 
 export async function get(client: BaseClient, key: RedisKey): Promise<string | null> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const result = await (client as any).glideClient.get(normalizedKey);
   return ParameterTranslator.convertGlideString(result);
@@ -15,6 +16,7 @@ export async function set(
   value: RedisValue,
   ...args: any[]
 ): Promise<string | null> {
+  await (client as any).ensureConnection();
   if (key === '' || key === null || key === undefined) {
     throw new Error("ERR wrong number of arguments for 'set' command");
   }
@@ -87,6 +89,7 @@ export async function set(
 }
 
 export async function mget(client: BaseClient, ...keysOrArray: any[]): Promise<(string | null)[]> {
+  await (client as any).ensureConnection();
   const keys = Array.isArray(keysOrArray[0]) ? keysOrArray[0] : keysOrArray;
   const normalizedKeys = keys.map((k: RedisKey) => (client as any).normalizeKey(k));
   const results = await (client as any).glideClient.mget(normalizedKeys);
@@ -94,6 +97,7 @@ export async function mget(client: BaseClient, ...keysOrArray: any[]): Promise<(
 }
 
 export async function mset(client: BaseClient, ...argsOrHash: any[]): Promise<string> {
+  await (client as any).ensureConnection();
   const keyValuePairs: Record<string, string> = {};
   if (argsOrHash.length === 1 && typeof argsOrHash[0] === 'object' && !Array.isArray(argsOrHash[0])) {
     const obj = argsOrHash[0];

@@ -7,6 +7,7 @@ export async function pfadd(
   key: RedisKey,
   ...elements: RedisValue[]
 ): Promise<number> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const normalized = elements.map(e => ParameterTranslator.normalizeValue(e));
   const result = await (client as any).glideClient.customCommand([
@@ -21,6 +22,7 @@ export async function pfcount(
   client: BaseClient,
   ...keys: RedisKey[]
 ): Promise<number> {
+  await (client as any).ensureConnection();
   const normalizedKeys = keys.map(k => (client as any).normalizeKey(k));
   const result = await (client as any).glideClient.customCommand([
     'PFCOUNT',
@@ -34,6 +36,7 @@ export async function pfmerge(
   destkey: RedisKey,
   ...sourceKeys: RedisKey[]
 ): Promise<'OK'> {
+  await (client as any).ensureConnection();
   const dest = (client as any).normalizeKey(destkey);
   const sources = sourceKeys.map(k => (client as any).normalizeKey(k));
   const result = await (client as any).glideClient.customCommand([

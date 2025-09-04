@@ -8,6 +8,7 @@ export async function setbit(
   offset: number,
   value: number
 ): Promise<number> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const result = await (client as any).glideClient.setbit(
     normalizedKey,
@@ -22,8 +23,12 @@ export async function getbit(
   key: RedisKey,
   offset: number
 ): Promise<number> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
-  const result = await (client as any).glideClient.getbit(normalizedKey, offset);
+  const result = await (client as any).glideClient.getbit(
+    normalizedKey,
+    offset
+  );
   return Number(result);
 }
 
@@ -33,6 +38,7 @@ export async function bitcount(
   start?: number,
   end?: number
 ): Promise<number> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   if (start !== undefined && end !== undefined) {
     const result = await (client as any).glideClient.bitcount(normalizedKey, {
@@ -53,6 +59,7 @@ export async function bitpos(
   start?: number,
   end?: number
 ): Promise<number> {
+  await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   if (start === undefined) {
     return await (client as any).glideClient.bitpos(normalizedKey, bit);
@@ -68,6 +75,7 @@ export async function bitop(
   destkey: RedisKey,
   ...keys: RedisKey[]
 ): Promise<number> {
+  await (client as any).ensureConnection();
   const normalizedDestKey = (client as any).normalizeKey(destkey);
   const normalizedKeys = keys.map(k => (client as any).normalizeKey(k));
   const bitwiseOp = operation as keyof typeof BitwiseOperation;

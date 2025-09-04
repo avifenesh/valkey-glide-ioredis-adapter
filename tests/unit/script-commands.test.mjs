@@ -21,9 +21,8 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
   let redis;
 
   beforeEach(async () => {
-    const config = testUtils.getStandaloneConfig();
+    const config = { ...testUtils.getStandaloneConfig(), lazyConnect: false };
     redis = new Redis(config);
-    await redis.connect();
   });
 
   afterEach(async () => {

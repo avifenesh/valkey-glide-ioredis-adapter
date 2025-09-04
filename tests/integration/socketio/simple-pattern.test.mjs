@@ -34,25 +34,65 @@ describe('Simple Socket.IO Pattern Test', () => {
 
   after(async () => {
     try {
-      if (subClient) {
-        // Remove all event listeners
-        subClient.removeAllListeners();
-        
-        // Unsubscribe before disconnecting
-        try {
-          await subClient.punsubscribe();
-        } catch {
-          // Ignore unsubscribe errors
+      // Force immediate process exit after cleanup
+      const cleanup = async () => {
+        if (subClient) {
+          // Remove all event listeners
+          subClient.removeAllListeners();
+          
+          // Unsubscribe before disconnecting
+          try {
+            await subClient.punsubscribe();
+          } catch {}
+          
+          // Clean shutdown with proper connection draining
+          try {
+            await subClient.quit();
+          } catch {}
+          
+          // Additional cleanup for GLIDE connections
+          if (subClient.disconnect && typeof subClient.disconnect === 'function') {
+            try {
+              await subClient.disconnect();
+            } catch {}
+          }
+          
+          subClient = null;
+        }
+        if (pubClient) {
+          try {
+            await pubClient.quit();
+          } catch {}
+          
+          // Additional cleanup for GLIDE connections
+          if (pubClient.disconnect && typeof pubClient.disconnect === 'function') {
+            try {
+              await pubClient.disconnect();
+            } catch {}
+          }
+          
+          pubClient = null;
         }
         
-        // Clean shutdown
-        await subClient.quit();
-        subClient = null;
-      }
-      if (pubClient) {
-        await pubClient.quit();
-        pubClient = null;
-      }
+        // Allow time for connections to fully close
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Force close any remaining handles
+        const handles = (process)._getActiveHandles?.() || [];
+        handles.forEach(handle => {
+          if (handle && typeof handle.destroy === 'function') {
+            try {
+              handle.destroy();
+            } catch {}
+          } else if (handle && typeof handle.close === 'function') {
+            try {
+              handle.close();
+            } catch {}
+          }
+        });
+      };
+      
+      await cleanup();
     } catch (error) {
       // Ignore cleanup errors
       console.log('Cleanup error:', error.message);
