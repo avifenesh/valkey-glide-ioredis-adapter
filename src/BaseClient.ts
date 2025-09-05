@@ -510,8 +510,17 @@ export abstract class BaseClient extends EventEmitter {
   // ALL Database Commands - Complete Implementation
 
   // === String Commands ===
-  async get(key: RedisKey): Promise<string | null> {
-    return await stringCommands.get(this, key);
+  async get(
+    key: RedisKey,
+    cb?: (err: any, value: string | null) => void
+  ): Promise<string | null> {
+    const value = await stringCommands.get(this, key);
+    if (typeof cb === 'function') {
+      try {
+        cb(null, value);
+      } catch {}
+    }
+    return value;
   }
 
   async set(
@@ -519,7 +528,17 @@ export abstract class BaseClient extends EventEmitter {
     value: RedisValue,
     ...args: any[]
   ): Promise<string | null> {
-    return await stringCommands.set(this, key, value, ...args);
+    let cb: ((err: any, result: string | null) => void) | undefined;
+    if (args.length && typeof args[args.length - 1] === 'function') {
+      cb = args.pop() as any;
+    }
+    const result = await stringCommands.set(this, key, value, ...args);
+    if (typeof cb === 'function') {
+      try {
+        cb(null, result);
+      } catch {}
+    }
+    return result;
   }
 
   async mget(...keysOrArray: any[]): Promise<(string | null)[]> {
@@ -1993,13 +2012,43 @@ export abstract class BaseClient extends EventEmitter {
 
   // Connection info
   async ping(message?: string): Promise<string> {
+    await this.ensureConnection();
     const options = message ? { message } : undefined;
     const result = await this.glideClient.ping(options);
     return ParameterTranslator.convertGlideString(result) || 'PONG';
   }
 
+  // Database selection (ioredis compatibility) without customCommand
+  async select(db: number): Promise<'OK'> {
+    // Update options and reconnect to apply the databaseId
+    (this.options as any).db = db;
+    try {
+      await this.quit();
+    } catch {}
+    await this.connect();
+    return 'OK';
+  }
+
   async info(section?: string): Promise<string> {
     return await serverCommands.info(this, section);
+  }
+
+  // XINFO dispatcher for ioredis-compatible API
+  async xinfo(subcommand: string, ...args: any[]): Promise<any> {
+    const sub = String(subcommand).toUpperCase();
+    if (sub === 'STREAM') {
+      const [key, full] = args;
+      return await streamCommands.xinfoStream(this, key, full);
+    } else if (sub === 'GROUPS') {
+      const [key] = args;
+      return await streamCommands.xinfoGroups(this, key);
+    } else if (sub === 'CONSUMERS') {
+      const [key, group] = args;
+      return await streamCommands.xinfoConsumers(this, key, group);
+    }
+    // Fallback to raw command
+    const command = ['XINFO', sub, ...args.map(a => String(a))];
+    return await (this.glideClient as any).customCommand(command);
   }
 
   // CLIENT command support (critical for BullMQ)
@@ -2971,12 +3020,8 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   // Stream commands
-  async xadd(
-    key: RedisKey,
-    id: string,
-    ...fieldsAndValues: (string | number)[]
-  ): Promise<string> {
-    return await streamCommands.xadd(this, key, id, ...fieldsAndValues);
+  async xadd(key: RedisKey, ...args: any[]): Promise<string | null> {
+    return await streamCommands.xadd(this, key, ...args);
   }
 
   async xlen(key: RedisKey): Promise<number> {
@@ -3053,13 +3098,23 @@ export abstract class BaseClient extends EventEmitter {
     consumer: string,
     minIdleTime: number,
     ids: string[] | string,
-    options?: {
-      idle?: number;
-      idleUnixTime?: number;
-      retryCount?: number;
-      isForce?: boolean;
-    }
+    options?: any
   ): Promise<any> {
+    // Support ioredis-style 'JUSTID' flag
+    if (
+      (typeof options === 'string' && String(options).toUpperCase() === 'JUSTID') ||
+      (Array.isArray(options) && options.map((s: any) => String(s).toUpperCase()).includes('JUSTID'))
+    ) {
+      return await streamCommands.xclaimJustId(
+        this,
+        key,
+        group,
+        consumer,
+        minIdleTime,
+        ids,
+        undefined
+      );
+    }
     return await streamCommands.xclaim(
       this,
       key,
@@ -3101,8 +3156,25 @@ export abstract class BaseClient extends EventEmitter {
     consumer: string,
     minIdleTime: number,
     start: string,
-    count?: number
+    ...rest: any[]
   ): Promise<any> {
+    // Accept (key, group, consumer, minIdleTime, start, 'JUSTID') or (.., start, 'JUSTID', 'COUNT', n)
+    const upper = rest.map(a => (typeof a === 'string' ? a.toUpperCase() : a));
+    if (upper.includes('JUSTID')) {
+      const countIdx = upper.findIndex(a => a === 'COUNT');
+      const count = countIdx !== -1 && countIdx + 1 < rest.length ? Number(rest[countIdx + 1]) : undefined;
+      return await streamCommands.xautoclaimJustId(
+        this,
+        key,
+        group,
+        consumer,
+        minIdleTime,
+        start,
+        count
+      );
+    }
+    const countIdx = upper.findIndex(a => a === 'COUNT');
+    const count = countIdx !== -1 && countIdx + 1 < rest.length ? Number(rest[countIdx + 1]) : undefined;
     return await streamCommands.xautoclaim(
       this,
       key,

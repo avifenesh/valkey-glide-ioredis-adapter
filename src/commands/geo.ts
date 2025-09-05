@@ -1,5 +1,6 @@
 import { BaseClient } from '../BaseClient';
 import { RedisKey } from '../types';
+import { ConditionalChange } from '@valkey/valkey-glide/build-ts/Commands';
 
 export async function geoadd(
   client: BaseClient,
@@ -8,14 +9,36 @@ export async function geoadd(
 ): Promise<number> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
+
+  // Support NX | XX | CH flags and standard triple arguments
+  // Parse flags
+  let updateMode: ConditionalChange | undefined;
+  let changed = false;
+  let i = 0;
+  while (i < args.length) {
+    const token = String(args[i]).toUpperCase();
+    if (token === 'NX') updateMode = ConditionalChange.ONLY_IF_DOES_NOT_EXIST;
+    else if (token === 'XX') updateMode = ConditionalChange.ONLY_IF_EXISTS;
+    else if (token === 'CH') changed = true;
+    else break;
+    i++;
+  }
+
+  const remaining = args.slice(i);
+  if (remaining.length % 3 !== 0) {
+    throw new Error('GEOADD requires longitude latitude member triples');
+  }
   const map = new Map<string, { longitude: number; latitude: number }>();
-  for (let i = 0; i < args.length; i += 3) {
-    const lon = Number(args[i]);
-    const lat = Number(args[i + 1]);
-    const member = String(args[i + 2]);
+  for (let j = 0; j < remaining.length; j += 3) {
+    const lon = Number(remaining[j]);
+    const lat = Number(remaining[j + 1]);
+    const member = String(remaining[j + 2]);
     map.set(member, { longitude: lon, latitude: lat });
   }
-  const result = await (client as any).glideClient.geoadd(normalizedKey, map);
+  const options: any = {};
+  if (updateMode) options.updateMode = updateMode;
+  if (changed) options.changed = true;
+  const result = await (client as any).glideClient.geoadd(normalizedKey, map, options);
   return Number(result) || 0;
 }
 
@@ -161,5 +184,3 @@ export async function geosearchstore(
   );
   return Number(res) || 0;
 }
-
-

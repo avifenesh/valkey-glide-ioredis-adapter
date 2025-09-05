@@ -4,29 +4,71 @@ import { RedisKey } from '../types';
 export async function xadd(
   client: BaseClient,
   key: RedisKey,
-  id: string,
-  ...fieldsAndValues: (string | number)[]
-): Promise<string> {
+  ...argsIn: any[]
+): Promise<string | null> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
-  const args = [
-    'XADD',
-    normalizedKey,
-    id,
-    ...fieldsAndValues.map(v => String(v)),
-  ];
-  const result = await (client as any).glideClient.customCommand(args);
+
+  const cmd: string[] = ['XADD', normalizedKey];
+  let i = 0;
+
+  // Parse optional modifiers before ID
+  while (i < argsIn.length) {
+    const t = String(argsIn[i]);
+    const token = t.toUpperCase();
+
+    if (token === 'NOMKSTREAM') {
+      cmd.push('NOMKSTREAM');
+      i++;
+      continue;
+    }
+
+    if (token === 'MAXLEN' || token === 'MINID') {
+      cmd.push(token);
+      i++;
+      if (i < argsIn.length) {
+        const mod = String(argsIn[i]);
+        if (mod === '=' || mod === '~') {
+          cmd.push(mod);
+          i++;
+        }
+      }
+      if (i < argsIn.length) {
+        cmd.push(String(argsIn[i++]));
+      }
+      if (i + 1 < argsIn.length && String(argsIn[i]).toUpperCase() === 'LIMIT') {
+        cmd.push('LIMIT', String(argsIn[i + 1]));
+        i += 2;
+      }
+      continue;
+    }
+
+    // First non-modifier token is the ID
+    break;
+  }
+
+  if (i >= argsIn.length) {
+    throw new Error('XADD requires an ID and field/value pairs');
+  }
+
+  const id = String(argsIn[i++]);
+  cmd.push(id);
+
+  const fields = argsIn.slice(i).map(v => String(v));
+  if (fields.length % 2 !== 0) {
+    throw new Error('XADD requires field/value pairs');
+  }
+  cmd.push(...fields);
+
+  const result = await (client as any).glideClient.customCommand(cmd);
+  if (result == null) return null;
   return String(result);
 }
 
 export async function xlen(client: BaseClient, key: RedisKey): Promise<number> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
-  const result = await (client as any).glideClient.customCommand([
-    'XLEN',
-    normalizedKey,
-  ]);
-  return Number(result) || 0;
+  return await (client as any).glideClient.xlen(normalizedKey);
 }
 
 export async function xread(
@@ -157,12 +199,33 @@ export async function xtrim(
 ): Promise<number> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
-  const result = await (client as any).glideClient.customCommand([
-    'XTRIM',
-    normalizedKey,
-    ...args.map((a: any) => String(a)),
-  ]);
-  return Number(result) || 0;
+  // Parse XTRIM [MAXLEN|MINID] [=|~] threshold [LIMIT count]
+  if (args.length === 0) return 0;
+  const methodToken = String(args[0]).toUpperCase();
+  let exact = false;
+  let idx = 1;
+  if (idx < args.length) {
+    const t = String(args[idx]);
+    if (t === '=' || t === '~') {
+      exact = t === '=';
+      idx++;
+    }
+  }
+  const threshold = args[idx++];
+  let limit: number | undefined = undefined;
+  if (idx + 1 < args.length && String(args[idx]).toUpperCase() === 'LIMIT') {
+    limit = Number(args[idx + 1]);
+  }
+  const options: any = { exact };
+  if (limit !== undefined) options.limit = limit;
+  if (methodToken === 'MAXLEN') {
+    options.method = 'maxlen';
+    options.threshold = Number(threshold);
+  } else {
+    options.method = 'minid';
+    options.threshold = String(threshold);
+  }
+  return await (client as any).glideClient.xtrim(normalizedKey, options);
 }
 
 export async function xgroup(
@@ -174,14 +237,53 @@ export async function xgroup(
 ): Promise<any> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
-  const commandArgs = [
-    'XGROUP',
-    action,
-    normalizedKey,
-    group,
-    ...args.map(arg => String(arg)),
-  ];
-  return await (client as any).glideClient.customCommand(commandArgs);
+  const act = String(action).toUpperCase();
+  if (act === 'CREATE') {
+    const id = String(args[0] ?? '$');
+    const options: any = {};
+    // Optional MKSTREAM flag
+    if (args.map(a => String(a).toUpperCase()).includes('MKSTREAM')) {
+      options.createStream = true;
+    }
+    return await (client as any).glideClient.xgroupCreate(
+      normalizedKey,
+      group,
+      id,
+      options
+    );
+  } else if (act === 'DESTROY') {
+    return await (client as any).glideClient.xgroupDestroy(normalizedKey, group);
+  } else if (act === 'CREATECONSUMER') {
+    const consumer = String(args[0]);
+    return await (client as any).glideClient.xgroupCreateConsumer(
+      normalizedKey,
+      group,
+      consumer
+    );
+  } else if (act === 'DELCONSUMER') {
+    const consumer = String(args[0]);
+    return await (client as any).glideClient.xgroupDelConsumer(
+      normalizedKey,
+      group,
+      consumer
+    );
+  } else if (act === 'SETID') {
+    const id = String(args[0] ?? '0');
+    // Optional entriesRead via 'ENTRIESREAD n'
+    let entriesRead: number | undefined;
+    const upper = args.map(a => String(a).toUpperCase());
+    const idx = upper.indexOf('ENTRIESREAD');
+    if (idx !== -1 && idx + 1 < args.length) {
+      entriesRead = Number(args[idx + 1]);
+    }
+    return await (client as any).glideClient.xgroupSetId(
+      normalizedKey,
+      group,
+      id,
+      entriesRead !== undefined ? { entriesRead } : undefined
+    );
+  }
+  throw new Error(`Unsupported XGROUP action: ${action}`);
 }
 
 export async function xreadgroup(
@@ -419,5 +521,3 @@ export async function xinfoStream(
   if (full !== undefined) options.fullOptions = full;
   return await (client as any).glideClient.xinfoStream(normalizedKey, options);
 }
-
-

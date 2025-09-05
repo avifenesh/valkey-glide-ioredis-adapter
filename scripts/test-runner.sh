@@ -39,9 +39,18 @@ fi
 
 # Collect test files - use arguments if provided, otherwise find all .test.mjs files
 if [ $# -gt 0 ]; then
-  # Use provided arguments as test files
-  TEST_FILES="$@"
-  echo -e "${YELLOW}Running specified test files: $TEST_FILES${NC}"
+  # Resolve provided args into actual test files (.test.mjs)
+  RESOLVED=""
+  for path in "$@"; do
+    if [ -d "$path" ]; then
+      FILES=$(find "$path" -type f -name "*.test.mjs" -not -path "*/.*" | sort)
+      RESOLVED="$RESOLVED $FILES"
+    else
+      RESOLVED="$RESOLVED $path"
+    fi
+  done
+  TEST_FILES=$(echo "$RESOLVED" | xargs)
+  echo -e "${YELLOW}Running specified test files: ${TEST_FILES}${NC}"
 else
   # Find all .test.mjs files (only .test.mjs to avoid TS runtime, excluding hidden dirs)
   TEST_FILES=$(find tests -type f -name "*.test.mjs" -not -path "*/.*" | sort)
