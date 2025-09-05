@@ -65,6 +65,7 @@ export class IoredisPubSubClient extends EventEmitter {
         this.cleanup();
         reject(new Error(`Connection timeout after ${timeoutMs}ms`));
       }, timeoutMs);
+      (timeout as any).unref?.();
 
       this.socket = new Socket();
       // Prevent this socket from keeping the event loop alive
@@ -552,12 +553,24 @@ export class IoredisPubSubClient extends EventEmitter {
       this.subscriptions.delete(prefixedChannel);
       const ack = new Promise<void>(resolve => this.pendingUnsub.set(prefixedChannel, resolve));
       await this.sendCommand(['UNSUBSCRIBE', prefixedChannel]);
-      await Promise.race([ack, new Promise<void>(r => setTimeout(r, 500))]);
+      await Promise.race([
+        ack,
+        new Promise<void>(r => {
+          const t = setTimeout(r, 500);
+          (t as any).unref?.();
+        }),
+      ]);
     } else {
       this.subscriptions.clear();
       const ack = new Promise<void>(resolve => (this.unsubAllResolve = resolve));
       await this.sendCommand(['UNSUBSCRIBE']);
-      await Promise.race([ack, new Promise<void>(r => setTimeout(r, 500))]);
+      await Promise.race([
+        ack,
+        new Promise<void>(r => {
+          const t = setTimeout(r, 500);
+          (t as any).unref?.();
+        }),
+      ]);
     }
     // Auto-close socket when nothing is subscribed
     if (this.subscriptions.size === 0 && this.patternSubscriptions.size === 0) {
@@ -585,12 +598,24 @@ export class IoredisPubSubClient extends EventEmitter {
       this.patternSubscriptions.delete(prefixedPattern);
       const ack = new Promise<void>(resolve => this.pendingPUnsub.set(prefixedPattern, resolve));
       await this.sendCommand(['PUNSUBSCRIBE', prefixedPattern]);
-      await Promise.race([ack, new Promise<void>(r => setTimeout(r, 500))]);
+      await Promise.race([
+        ack,
+        new Promise<void>(r => {
+          const t = setTimeout(r, 500);
+          (t as any).unref?.();
+        }),
+      ]);
     } else {
       this.patternSubscriptions.clear();
       const ack = new Promise<void>(resolve => (this.punsubAllResolve = resolve));
       await this.sendCommand(['PUNSUBSCRIBE']);
-      await Promise.race([ack, new Promise<void>(r => setTimeout(r, 500))]);
+      await Promise.race([
+        ack,
+        new Promise<void>(r => {
+          const t = setTimeout(r, 500);
+          (t as any).unref?.();
+        }),
+      ]);
     }
     // Auto-close socket when nothing is subscribed
     if (this.subscriptions.size === 0 && this.patternSubscriptions.size === 0) {
