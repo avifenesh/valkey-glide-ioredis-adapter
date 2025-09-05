@@ -34,11 +34,12 @@ export function toGlideStandaloneConfig(options: RedisOptions): GlideClientConfi
     ...(options.clientAz && { clientAz: options.clientAz }),
   } as GlideClientConfiguration;
 
-  // Advanced configuration
+  // Advanced configuration - only pass if user explicitly sets values
   const advancedConfiguration: Record<string, unknown> = {};
   if (options.connectTimeout !== undefined) {
     advancedConfiguration.connectionTimeout = options.connectTimeout;
   }
+  // Only add advancedConfiguration if user provided values
   if (Object.keys(advancedConfiguration).length > 0) {
     (config as any).advancedConfiguration = advancedConfiguration;
   }
@@ -59,7 +60,7 @@ export function toGlideStandaloneConfig(options: RedisOptions): GlideClientConfi
 
   // Inflight requests limit / offline queue behavior
   if (options.enableOfflineQueue === false) {
-    (config as any).inflightRequestsLimit = 0;
+    (config as any).inflightRequestsLimit = 100;
   } else if (options.inflightRequestsLimit !== undefined) {
     (config as any).inflightRequestsLimit = options.inflightRequestsLimit;
   }
@@ -94,16 +95,17 @@ export function toGlideClusterConfig(
     ...(options.clientAz && { clientAz: options.clientAz }),
   } as GlideClusterClientConfiguration;
 
-  // Advanced configuration
+  // Advanced configuration - only pass if user explicitly sets values
   const advancedConfiguration: Record<string, unknown> = {};
   if (options.connectTimeout !== undefined) {
     advancedConfiguration.connectionTimeout = options.connectTimeout;
   }
+  // Only add advancedConfiguration if user provided values
   if (Object.keys(advancedConfiguration).length > 0) {
     (config as any).advancedConfiguration = advancedConfiguration;
   }
 
-  // Connection backoff (ensure required defaults)
+  // Connection backoff - only pass if user explicitly sets values
   const connectionBackoff: Record<string, unknown> = {};
   if (options.maxRetriesPerRequest !== undefined) {
     const retries = options.maxRetriesPerRequest === null ? 50 : options.maxRetriesPerRequest;
@@ -113,13 +115,9 @@ export function toGlideClusterConfig(
     const jitterPercent = Math.min(100, Math.max(5, Math.round(options.retryDelayOnFailover / 5)));
     connectionBackoff.jitterPercent = jitterPercent;
   }
+  // Only add connectionBackoff if user provided values
   if (Object.keys(connectionBackoff).length > 0) {
-    (config as any).connectionBackoff = {
-      numberOfRetries: (connectionBackoff as any).numberOfRetries ?? 3,
-      factor: 2,
-      exponentBase: 2,
-      ...connectionBackoff,
-    };
+    (config as any).connectionBackoff = connectionBackoff;
   }
 
   // Inflight requests limit / offline queue behavior

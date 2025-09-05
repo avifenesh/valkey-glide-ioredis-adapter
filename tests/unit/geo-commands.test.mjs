@@ -15,7 +15,7 @@ describe('GEO Commands', () => {
   beforeEach(async () => {
     client = new Redis({
       host: process.env.VALKEY_HOST || 'localhost',
-      port: parseInt(process.env.VALKEY_PORT || '6383'),
+      port: parseInt(process.env.VALKEY_PORT || '6379'),
     });
     await client.connect();
     await client.flushdb();
