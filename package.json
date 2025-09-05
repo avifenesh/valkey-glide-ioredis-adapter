@@ -29,6 +29,7 @@
     "build:watch": "tsc --watch",
     "test": "./scripts/test-runner.sh",
     "test:cov": "COVERAGE=1 ./scripts/test-runner.sh",
+    "test:unit": "./scripts/test-runner.sh tests/unit",
     "test:original": "./scripts/test-runner.sh",
     "test:batches": "./scripts/test-runner-batch.sh",
     "test:types": "tsc -p tests/types/tsconfig.json --noEmit",

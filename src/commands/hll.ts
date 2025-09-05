@@ -10,12 +10,12 @@ export async function pfadd(
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const normalized = elements.map(e => ParameterTranslator.normalizeValue(e));
-  const result = await (client as any).glideClient.customCommand([
-    'PFADD',
+  const ok: boolean = await (client as any).glideClient.pfadd(
     normalizedKey,
-    ...normalized,
-  ]);
-  return Number(result) || 0;
+    normalized
+  );
+  // ioredis returns 1 if modified/created, 0 otherwise
+  return ok ? 1 : 0;
 }
 
 export async function pfcount(
@@ -24,11 +24,7 @@ export async function pfcount(
 ): Promise<number> {
   await (client as any).ensureConnection();
   const normalizedKeys = keys.map(k => (client as any).normalizeKey(k));
-  const result = await (client as any).glideClient.customCommand([
-    'PFCOUNT',
-    ...normalizedKeys,
-  ]);
-  return Number(result) || 0;
+  return await (client as any).glideClient.pfcount(normalizedKeys);
 }
 
 export async function pfmerge(
@@ -39,11 +35,5 @@ export async function pfmerge(
   await (client as any).ensureConnection();
   const dest = (client as any).normalizeKey(destkey);
   const sources = sourceKeys.map(k => (client as any).normalizeKey(k));
-  const result = await (client as any).glideClient.customCommand([
-    'PFMERGE',
-    dest,
-    ...sources,
-  ]);
-  return (ParameterTranslator.convertGlideString(result) as any) || 'OK';
+  return await (client as any).glideClient.pfmerge(dest, sources);
 }
-

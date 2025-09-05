@@ -537,7 +537,7 @@ export interface IRedisAdapter extends EventEmitter {
   ): Promise<string | null>;
   bzpopmin(...args: any[]): Promise<[string, string, string] | null>;
   bzpopmax(...args: any[]): Promise<[string, string, string] | null>;
-  xadd(key: RedisKey, id: string, ...fieldsAndValues: any[]): Promise<string>;
+  xadd(key: RedisKey, ...args: any[]): Promise<string | null>;
   xread(...args: any[]): Promise<any>;
   xreadgroup(group: string, consumer: string, ...args: any[]): Promise<any>;
   xack(key: RedisKey, group: string, ...ids: string[]): Promise<number>;
@@ -639,11 +639,7 @@ export interface IRedisAdapter extends EventEmitter {
   time(): Promise<[string, string]>;
 
   // Stream commands
-  xadd(
-    key: RedisKey,
-    id: string,
-    ...fieldsAndValues: (string | number)[]
-  ): Promise<string>;
+  xadd(key: RedisKey, ...args: any[]): Promise<string | null>;
   xlen(key: RedisKey): Promise<number>;
   xread(...args: any[]): Promise<any[]>;
   xrange(
