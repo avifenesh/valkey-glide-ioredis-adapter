@@ -1,1225 +1,853 @@
 /**
  * Stream Commands Comprehensive Tests
- * Real-world patterns sourcing, microservices communication, real-time analytics
- * Based on Kafka-style streaming, Discord message delivery, Slack real-time updates
+ * Includes all stream operations in both standalone and cluster modes
+ * Tests real-world patterns: event sourcing, microservices, real-time analytics
  */
 
-
-import { describe, it, beforeEach, afterEach, before, after } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
-import { testUtils } from '../setup/index.mjs';
-const { Redis } = pkg;;
+const { Redis, Cluster } = pkg;
 
-describe('Stream Commands - Event Sourcing & Microservices', () => {
-  let redis;
+// Test configuration
+function getStandaloneConfig() {
+  return {
+    host: process.env.VALKEY_HOST || 'localhost',
+    port: parseInt(process.env.VALKEY_PORT || '6379'),
+    lazyConnect: true,
+  };
+}
 
-  beforeEach(async () => {
-    const config = { ...testUtils.getStandaloneConfig(), lazyConnect: false };
-    redis = new Redis(config);
-  });
+function getClusterConfig() {
+  return [
+    { host: 'localhost', port: 17000 },
+    { host: 'localhost', port: 17001 },
+    { host: 'localhost', port: 17002 }
+  ];
+}
 
-  afterEach(async () => {
-    if (redis) {
-      await redis.quit();
+// Test modes - cluster tests run by default unless explicitly disabled
+const testModes = [
+  {
+    name: 'standalone',
+    createClient: () => new Redis(getStandaloneConfig())
+  }
+];
+
+// Run cluster tests by default unless DISABLE_CLUSTER_TESTS is set
+if (process.env.DISABLE_CLUSTER_TESTS !== 'true') {
+  // Check if cluster is available before adding
+  const checkClusterAvailable = async () => {
+    try {
+      const client = new Cluster(getClusterConfig(), { lazyConnect: true });
+      await client.connect();
+      await client.quit();
+      return true;
+    } catch {
+      return false;
     }
+  };
+  
+  // We'll check availability during first test
+  testModes.push({
+    name: 'cluster',
+    createClient: () => new Cluster(getClusterConfig(), { lazyConnect: true }),
+    skipIfUnavailable: true
   });
-
-  describe('Event Sourcing Patterns', () => {
-    it('should implement user action event streaming with XADD', async () => {
-      const streamKey = 'user_actions:' + Math.random();
-
-      // Record user events
-      const loginEvent = await redis.xadd(
-        streamKey,
-        '*',
-        'event',
-        'user_login',
-        'user_id',
-        '12345',
-        'timestamp',
-        Date.now().toString(),
-        'ip_address',
-        '192.168.1.100',
-        'user_agent',
-        'Mozilla/5.0...'
-      );
-      assert.ok(loginEvent.includes('-')); // Redis stream ID format
-
-      const purchaseEvent = await redis.xadd(
-        streamKey,
-        '*',
-        'event',
-        'purchase_completed',
-        'user_id',
-        '12345',
-        'order_id',
-        'ORD-789',
-        'amount',
-        '99.99',
-        'currency',
-        'USD'
-      );
-      assert.ok(purchaseEvent.includes('-'));
-
-      const logoutEvent = await redis.xadd(
-        streamKey,
-        '*',
-        'event',
-        'user_logout',
-        'user_id',
-        '12345',
-        'session_duration',
-        '3600'
-      );
-      assert.ok(logoutEvent.includes('-'));
-
-      // Verify stream length
-      const streamLength = await redis.xlen(streamKey);
-      assert.strictEqual(streamLength, 3);
-    });
-
-    it('should read event stream with XREAD for replay', async () => {
-      const streamKey = 'order_events:' + Math.random();
-
-      // Add some order events
-      await redis.xadd(
-        streamKey,
-        '*',
-        'event',
-        'order_created',
-        'order_id',
-        'ORD-001',
-        'customer_id',
-        'CUST-123',
-        'amount',
-        '150.00'
-      );
-
-      await redis.xadd(
-        streamKey,
-        '*',
-        'event',
-        'payment_processed',
-        'order_id',
-        'ORD-001',
-        'payment_method',
-        'credit_card',
-        'status',
-        'success'
-      );
-
-      await redis.xadd(
-        streamKey,
-        '*',
-        'event',
-        'order_shipped',
-        'order_id',
-        'ORD-001',
-        'tracking_number',
-        'TRK-456',
-        'carrier',
-        'UPS'
-      );
-
-      // Read all events from beginning
-      const allEvents = await redis.xread('STREAMS', streamKey, '0');
-      assert.ok(allEvents);
-      assert.ok(Array.isArray(allEvents));
-      // Check if we have at least one stream result
-      if (!allEvents || allEvents.length === 0) {
-        // If no results, skip this test assertion
-        return;
-      }
-      assert.strictEqual(allEvents.length, 1); // One stream
-      assert.strictEqual(allEvents[0].length, 2); // [streamName, events]
-      assert.strictEqual(allEvents[0][0], streamKey);
-      assert.strictEqual(allEvents[0][1].length, 3); // Three events
-
-      // Verify event data
-      const events = allEvents[0][1];
-      assert.ok(Array.isArray(events[0][1]) && events[0][1].includes('order_created'));
-      assert.ok(Array.isArray(events[1][1]) && events[1][1].includes('payment_processed'));
-      assert.ok(Array.isArray(events[2][1]) && events[2][1].includes('order_shipped'));
-    });
-
-    it('should implement aggregate rebuilding from event stream', async () => {
-      const streamKey = 'account_events:' + Math.random();
-      const accountId = 'ACC-789';
-
-      // Record account events over time
-      await redis.xadd(
-        streamKey,
-        '*',
-        'event',
-        'account_created',
-        'account_id',
-        accountId,
-        'initial_balance',
-        '0.00',
-        'currency',
-        'USD'
-      );
-
-      await redis.xadd(
-        streamKey,
-        '*',
-        'event',
-        'deposit',
-        'account_id',
-        accountId,
-        'amount',
-        '1000.00',
-        'source',
-        'bank_transfer'
-      );
-
-      await redis.xadd(
-        streamKey,
-        '*',
-        'event',
-        'withdrawal',
-        'account_id',
-        accountId,
-        'amount',
-        '250.00',
-        'destination',
-        'ATM'
-      );
-
-      await redis.xadd(
-        streamKey,
-        '*',
-        'event',
-        'deposit',
-        'account_id',
-        accountId,
-        'amount',
-        '500.00',
-        'source',
-        'check_deposit'
-      );
-
-      // Rebuild account state by replaying events
-      const events = await redis.xread('STREAMS', streamKey, '0');
-      if (!events || events.length === 0) {
-        // If no results, skip this test assertion
-        return;
-      }
-      assert.ok(events && events.length > 0);
-      assert.ok(events[0] && events[0][1]);
-      const accountEvents = events[0][1];
-
-      let accountState = {
-        id,
-        balance,
-        transactions,
-        created,
-      };
-
-      for (const [, eventData] of accountEvents) {
-        const eventFields = {};
-        for (let i = 0; i < eventData.length; i += 2) {
-          eventFields[eventData[i]] = eventData[i + 1];
-        }
-
-        // Apply event to account state
-        if (eventFields.event === 'withdrawal') {
-          accountState.balance -= parseFloat(eventFields.amount);
-        } else if (eventFields.event === 'deposit') {
-          accountState.balance += parseFloat(eventFields.amount);
-        }
-        accountState.transactions++;
-      }
-
-      // Verify account state was rebuilt correctly
-      assert.strictEqual(accountState.balance, 1250); // 1000 - 250 + 500
-      assert.strictEqual(accountState.transactions, 2);
-    });
-
-    it('should implement order processing workflow across services', async () => {
-      const orderStreamKey = 'orders:' + Math.random();
-      const inventoryStreamKey = 'inventory:' + Math.random();
-      const paymentStreamKey = 'payments:' + Math.random();
-
-      // Order service creates order
-      const orderId = `ORD-${Math.random()}`;
-      await redis.xadd(
-        orderStreamKey,
-        '*',
-        'service',
-        'order-service',
-        'event',
-        'order_created',
-        'order_id',
-        orderId,
-        'product_id',
-        'PROD-123',
-        'quantity',
-        '2',
-        'customer_id',
-        'CUST-456'
-      );
-
-      // Inventory service reserves stock
-      await redis.xadd(
-        inventoryStreamKey,
-        '*',
-        'service',
-        'inventory-service',
-        'event',
-        'stock_reserved',
-        'order_id',
-        orderId,
-        'product_id',
-        'PROD-123',
-        'quantity_reserved',
-        '2',
-        'remaining_stock',
-        '48'
-      );
-
-      // Payment service processes payment
-      await redis.xadd(
-        paymentStreamKey,
-        '*',
-        'service',
-        'payment-service',
-        'event',
-        'payment_processed',
-        'order_id',
-        orderId,
-        'amount',
-        '199.98',
-        'payment_method',
-        'credit_card',
-        'transaction_id',
-        'TXN-789'
-      );
-
-      // Order service completes order
-      await redis.xadd(
-        orderStreamKey,
-        '*',
-        'service',
-        'order-service',
-        'event',
-        'order_completed',
-        'order_id',
-        orderId,
-        'status',
-        'completed',
-        'completion_time',
-        Date.now().toString()
-      );
-
-      // Verify all services recorded their events
-      const orderEvents = await redis.xread('STREAMS', orderStreamKey, '0');
-      const inventoryEvents = await redis.xread(
-        'STREAMS',
-        inventoryStreamKey,
-        '0'
-      );
-      const paymentEvents = await redis.xread('STREAMS', paymentStreamKey, '0');
-
-      // Add null checking for all streams
-      if (!orderEvents || !orderEvents[0] || !orderEvents[0][1]) {
-        return; // Skip if no order events found
-      }
-      if (!inventoryEvents || !inventoryEvents[0] || !inventoryEvents[0][1]) {
-        return; // Skip if no inventory events found  
-      }
-      if (!paymentEvents || !paymentEvents[0] || !paymentEvents[0][1]) {
-        return; // Skip if no payment events found
-      }
-      
-      assert.ok(orderEvents && orderEvents[0] && orderEvents[0][1]);
-      assert.ok(inventoryEvents && inventoryEvents[0] && inventoryEvents[0][1]);
-      assert.ok(paymentEvents && paymentEvents[0] && paymentEvents[0][1]);
-      
-      assert.strictEqual(orderEvents[0][1].length, 2); // Order created + completed
-      assert.strictEqual(inventoryEvents[0][1].length, 1); // Stock reserved
-      assert.strictEqual(paymentEvents[0][1].length, 1); // Payment processed
-    });
-
-    it('should implement saga pattern for distributed transactions', async () => {
-      const sagaStreamKey = 'saga:' + Math.random();
-      const tripId = `TRIP-${Math.random()}`;
-
-      // Flight booking
-      await redis.xadd(
-        sagaStreamKey,
-        '*',
-        'saga_id',
-        tripId,
-        'step',
-        'book_flight',
-        'service',
-        'flight-service',
-        'action',
-        'start',
-        'flight_id',
-        'FL-123',
-        'cost',
-        '300.00'
-      );
-
-      await redis.xadd(
-        sagaStreamKey,
-        '*',
-        'saga_id',
-        tripId,
-        'step',
-        'book_flight',
-        'service',
-        'flight-service',
-        'action',
-        'success',
-        'booking_ref',
-        'FB-456'
-      );
-
-      // Hotel booking
-      await redis.xadd(
-        sagaStreamKey,
-        '*',
-        'saga_id',
-        tripId,
-        'step',
-        'book_hotel',
-        'service',
-        'hotel-service',
-        'action',
-        'start',
-        'hotel_id',
-        'HTL-789',
-        'cost',
-        '200.00'
-      );
-
-      await redis.xadd(
-        sagaStreamKey,
-        '*',
-        'saga_id',
-        tripId,
-        'step',
-        'book_hotel',
-        'service',
-        'hotel-service',
-        'action',
-        'success',
-        'booking_ref',
-        'HB-012'
-      );
-
-      // Car rental (fails)
-      await redis.xadd(
-        sagaStreamKey,
-        '*',
-        'saga_id',
-        tripId,
-        'step',
-        'book_car',
-        'service',
-        'car-service',
-        'action',
-        'start',
-        'car_id',
-        'CAR-345',
-        'cost',
-        '150.00'
-      );
-
-      await redis.xadd(
-        sagaStreamKey,
-        '*',
-        'saga_id',
-        tripId,
-        'step',
-        'book_car',
-        'service',
-        'car-service',
-        'action',
-        'failed',
-        'error',
-        'no_availability',
-        'compensation_required',
-        'true'
-      );
-
-      // Compensating actions
-      await redis.xadd(
-        sagaStreamKey,
-        '*',
-        'saga_id',
-        tripId,
-        'step',
-        'compensate_hotel',
-        'service',
-        'hotel-service',
-        'action',
-        'cancel',
-        'booking_ref',
-        'HB-012'
-      );
-
-      await redis.xadd(
-        sagaStreamKey,
-        '*',
-        'saga_id',
-        tripId,
-        'step',
-        'compensate_flight',
-        'service',
-        'flight-service',
-        'action',
-        'cancel',
-        'booking_ref',
-        'FB-456'
-      );
-
-      // Verify saga events
-      const sagaEvents = await redis.xread('STREAMS', sagaStreamKey, '0');
-      if (!sagaEvents || !sagaEvents[0] || !sagaEvents[0][1]) {
-        return; // Skip if no saga events found
-      }
-      assert.strictEqual(sagaEvents[0][1].length, 8); // All saga steps recorded
-
-      // Count successful vs failed/compensated actions
-      let successCount = 0;
-      let failedCount = 0;
-      let compensationCount = 0;
-
-      for (const [, eventData] of sagaEvents[0][1]) {
-        const action = eventData[eventData.indexOf('action') + 1];
-        if (action === 'success') successCount++;
-        if (action === 'failed') failedCount++;
-        if (action === 'cancel') compensationCount++;
-      }
-
-      assert.strictEqual(successCount, 2); // Flight + Hotel initially succeeded
-      assert.strictEqual(failedCount, 1); // Car booking failed
-      assert.strictEqual(compensationCount, 2); // Both compensated
-    });
-
-    it('should implement event-driven notification system', async () => {
-      const notificationStreamKey = 'notifications:' + Math.random();
-      const userId = `USER-${Math.random()}`;
-
-      // User activity triggers notifications
-      await redis.xadd(
-        notificationStreamKey,
-        '*',
-        'type',
-        'mention',
-        'user_id',
-        userId,
-        'mentioned_by',
-        'john_doe',
-        'content',
-        'Hey @user, check this out',
-        'post_id',
-        'POST-123',
-        'priority',
-        'medium'
-      );
-
-      await redis.xadd(
-        notificationStreamKey,
-        '*',
-        'type',
-        'friend_request',
-        'user_id',
-        userId,
-        'from_user',
-        'jane_smith',
-        'message',
-        "Hi Let's connect",
-        'priority',
-        'low'
-      );
-
-      await redis.xadd(
-        notificationStreamKey,
-        '*',
-        'type',
-        'security_alert',
-        'user_id',
-        userId,
-        'event',
-        'login_from_new_device',
-        'device',
-        'iPhone 15',
-        'location',
-        'New York, NY',
-        'priority',
-        'high'
-      );
-
-      await redis.xadd(
-        notificationStreamKey,
-        '*',
-        'type',
-        'system_update',
-        'user_id',
-        userId,
-        'update',
-        'privacy_policy_changed',
-        'version',
-        '2.1',
-        'requires_action',
-        'true',
-        'priority',
-        'medium'
-      );
-
-      // Process notifications by priority
-      const notifications = await redis.xread(
-        'STREAMS',
-        notificationStreamKey,
-        '0'
-      );
-      if (!notifications || !notifications[0] || !notifications[0][1]) {
-        return; // Skip if no notifications found
-      }
-      const notificationList = notifications[0][1];
-
-      const prioritizedNotifications = {
-        high: [],
-        medium: [],
-        low: [],
-      };
-
-      for (const [notificationId, notificationData] of notificationList) {
-        const priority =
-          notificationData[notificationData.indexOf('priority') + 1];
-        (prioritizedNotifications)[priority].push({
-          id,
-          data,
-        });
-      }
-
-      assert.strictEqual(prioritizedNotifications.high.length, 1); // Security alert
-      assert.strictEqual(prioritizedNotifications.medium.length, 2); // Mention + System update
-      assert.strictEqual(prioritizedNotifications.low.length, 1); // Friend request
-    });
-  });
-
-  describe('Real-Time Analytics & Monitoring', () => {
-    it('should track application metrics in real-time', async () => {
-      const metricsStreamKey = 'app_metrics:' + Math.random();
-
-      // API request metrics
-      await redis.xadd(
-        metricsStreamKey,
-        '*',
-        'metric_type',
-        'api_request',
-        'endpoint',
-        '/api/users',
-        'method',
-        'GET',
-        'response_time',
-        '150',
-        'status_code',
-        '200',
-        'user_id',
-        'USER-123'
-      );
-
-      await redis.xadd(
-        metricsStreamKey,
-        '*',
-        'metric_type',
-        'api_request',
-        'endpoint',
-        '/api/orders',
-        'method',
-        'POST',
-        'response_time',
-        '450',
-        'status_code',
-        '201',
-        'user_id',
-        'USER-456'
-      );
-
-      // Database query metrics
-      await redis.xadd(
-        metricsStreamKey,
-        '*',
-        'metric_type',
-        'database_query',
-        'table',
-        'users',
-        'operation',
-        'SELECT',
-        'duration',
-        '25',
-        'rows_affected',
-        '1'
-      );
-
-      // Error tracking
-      await redis.xadd(
-        metricsStreamKey,
-        '*',
-        'metric_type',
-        'error',
-        'error_type',
-        'ValidationError',
-        'endpoint',
-        '/api/orders',
-        'error_message',
-        'Invalid email format',
-        'user_id',
-        'USER-789',
-        'stack_trace',
-        'Error at line 42...'
-      );
-
-      // System performance
-      await redis.xadd(
-        metricsStreamKey,
-        '*',
-        'metric_type',
-        'system_performance',
-        'cpu_usage',
-        '75.5',
-        'memory_usage',
-        '68.2',
-        'disk_io',
-        '120',
-        'network_io',
-        '85'
-      );
-
-      // Analyze metrics
-      const metrics = await redis.xread('STREAMS', metricsStreamKey, '0');
-      if (!metrics || !metrics[0] || !metrics[0][1]) {
-        return; // Skip if no metrics found
-      }
-      const metricEvents = metrics[0][1];
-
-      let apiRequests = 0;
-      let errors = 0;
-      let totalResponseTime = 0;
-
-      for (const [, metricData] of metricEvents) {
-        const metricType = metricData[metricData.indexOf('metric_type') + 1];
-
-        if (metricType === 'api_request') {
-          apiRequests++;
-          const responseTime = parseInt(
-            metricData[metricData.indexOf('response_time') + 1]
-          );
-          totalResponseTime += responseTime;
-        } else if (metricType === 'error') {
-          errors++;
-        }
-      }
-
-      const averageResponseTime = totalResponseTime / apiRequests;
-      assert.strictEqual(apiRequests, 2);
-      assert.strictEqual(errors, 1);
-      assert.strictEqual(averageResponseTime, 300); // (150 + 450) / 2
-    });
-
-    it('should implement user activity analytics', async () => {
-      const activityStreamKey = 'user_activity:' + Math.random();
-
-      // Track user actions
-      const actions = [
-        { action: 'page_view', page: '/dashboard', duration: '2500' },
-        {
-          action: 'button_click',
-          element: 'create_project',
-          location: 'header',
-        },
-        { action: 'form_submit', form: 'project_creation', success: 'true' },
-        { action: 'page_view', page: '/projects', duration: '1800' },
-        { action: 'item_click', item: 'project_123', action_type: 'edit' },
-        {
-          action: 'form_submit',
-          form: 'project_edit',
-          success: 'false',
-          error: 'validation',
-        },
-        { action: 'page_view', page: '/help', duration: '1200' },
-      ];
-
-      for (const action of actions) {
-        await redis.xadd(
-          activityStreamKey,
-          '*',
-          'user_id',
-          'USER-ANALYTICS-123',
-          'session_id',
-          'SESS-456',
-          'timestamp',
-          Date.now().toString(),
-          ...Object.entries(action).flat()
-        );
-      }
-
-      // Analyze user behavior
-      const activities = await redis.xread('STREAMS', activityStreamKey, '0');
-      if (!activities || !activities[0] || !activities[0][1]) {
-        return; // Skip if no activities found
-      }
-      const userActions = activities[0][1];
-
-      const analytics = {
-        pageViews,
-        clicks,
-        formSubmissions,
-        successfulSubmissions,
-        totalTimeOnPages,
-        pagesVisited: new Set(),
-      };
-
-      for (const [, activityData] of userActions) {
-        const action = activityData[activityData.indexOf('action') + 1];
-
-        switch (action) {
-          case 'page_view':
-            analytics.pageViews++;
-            const page = activityData[activityData.indexOf('page') + 1];
-            const duration = parseInt(
-              activityData[activityData.indexOf('duration') + 1]
-            );
-            analytics.pagesVisited.add(page);
-            analytics.totalTimeOnPages += duration;
-            break;
-          case 'button_click':
-          case 'item_click':
-            analytics.clicks++;
-            break;
-          case 'form_submit':
-            analytics.formSubmissions++;
-            const success =
-              activityData[activityData.indexOf('success') + 1] === 'true';
-            if (success) analytics.successfulSubmissions++;
-            break;
-        }
-      }
-
-      assert.strictEqual(analytics.pageViews, 3);
-      assert.strictEqual(analytics.clicks, 2);
-      assert.strictEqual(analytics.formSubmissions, 2);
-      assert.strictEqual(analytics.successfulSubmissions, 1);
-      assert.strictEqual(analytics.totalTimeOnPages, 365); // 45 + 120 + 200
-      assert.strictEqual(analytics.pagesVisited.size, 3); // /dashboard, /projects, /help
-    });
-  });
-
-  describe('Stream Management & Cleanup', () => {
-    it('should implement stream trimming for memory management', async () => {
-      const streamKey = 'cleanup_test:' + Math.random();
-
-      // Add multiple events
-      for (let i = 0; i < 10; i++) {
-        await redis.xadd(streamKey, '*', 'event', 'test_event', 'iteration', i);
-      }
-
-      // Trim to keep only recent 5 events
-      await redis.xtrim(streamKey, 'MAXLEN', '~', 5);
-
-      const remainingEvents = await redis.xread('STREAMS', streamKey, '0');
-      if (!remainingEvents || !remainingEvents[0] || !remainingEvents[0][1]) {
-        return; // Skip if no remaining events found
-      }
-      assert.ok(remainingEvents[0][1].length <= 5);
-    });
-
-    it('should implement time-based stream analysis', async () => {
-      const streamKey = 'time_analysis:' + Math.random();
-
-      // Add events with specific timestamps
-      const baseTime = Date.now();
-      const events = [
-        { offset: 0, event: "start" },
-        { offset: 1000, event: "step_1" },
-        { offset: 2000, event: "step_2" },
-        { offset: 3000, event: 'step_3' },
-        { offset: 4000, event: 'end' },
-      ];
-
-      const eventIds = [];
-      for (const { offset, event } of events) {
-        const timestamp = baseTime + offset;
-        const eventId = await redis.xadd(
-          streamKey,
-          '*',
-          'event',
-          event,
-          'timestamp',
-          timestamp.toString(),
-          'process_id',
-          'PROC-123'
-        );
-        eventIds.push(eventId);
-      }
-
-      // Query range of events
-      const middleEvents = await redis.xrange(
-        streamKey,
-        eventIds[1],
-        eventIds[3]
-      );
-      if (!middleEvents || middleEvents.length === 0) {
-        return; // Skip if no middle events found
-      }
-      assert.strictEqual(middleEvents.length, 3); // step_1, step_2, step_3
-
-      // Verify event data
-      const firstMiddleEvent = middleEvents[0];
-      assert.ok(Array.isArray(firstMiddleEvent[1]) && firstMiddleEvent[1].includes('step_1'));
-    });
-  });
-
-  describe('Stream Consumer Groups - Production Message Delivery', () => {
-    it('should implement reliable message processing with consumer groups', async () => {
-      const streamKey = 'orders:' + Math.random();
-      const groupName = 'order-processors';
-      const consumer1 = 'processor-1';
-      const consumer2 = 'processor-2';
-
-      // Create some orders in the stream
-      await redis.xadd(
-        streamKey,
-        '*',
-        'order_id',
-        'ORD-001',
-        'customer_id',
-        'CUST-123',
-        'amount',
-        '99.99',
-        'priority',
-        'high'
-      );
-
-      await redis.xadd(
-        streamKey,
-        '*',
-        'order_id',
-        'ORD-002',
-        'customer_id',
-        'CUST-456',
-        'amount',
-        '149.99',
-        'priority',
-        'medium'
-      );
-
-      await redis.xadd(
-        streamKey,
-        '*',
-        'order_id',
-        'ORD-003',
-        'customer_id',
-        'CUST-789',
-        'amount',
-        '79.99',
-        'priority',
-        'low'
-      );
-
-      // Create consumer group starting from beginning
-      try {
-        await redis.xgroup('CREATE', streamKey, groupName, '0', 'MKSTREAM');
-      } catch (error) {
-        // Group might already exist, continue
-      }
-
-      // Consumer 1 reads messages
-      const consumer1Messages = await redis.xreadgroup(
-        groupName,
-        consumer1,
-        'STREAMS',
-        streamKey,
-        '>'
-      );
-
-      assert.ok(consumer1Messages);
-      assert.ok(Array.isArray(consumer1Messages));
-      assert.ok(consumer1Messages.length > 0);
-
-      // Consumer 2 reads remaining messages (if any)
-      const consumer2Messages = await redis.xreadgroup(
-        groupName,
-        consumer2,
-        'STREAMS',
-        streamKey,
-        '>'
-      );
-
-      // Consumer 2 may get empty results if Consumer 1 got all messages
-      assert.ok(
-        consumer2Messages === null || Array.isArray(consumer2Messages)
-      );
-
-      // Check pending messages
-      const pendingInfo = await redis.xpending(streamKey, groupName);
-      assert.ok(pendingInfo !== undefined);
-
-      // Get delivered messages for consumer 1 if any were delivered
-      if (
-        consumer1Messages &&
-        consumer1Messages.length > 0 &&
-        consumer1Messages[0] &&
-        consumer1Messages[0][1] &&
-        consumer1Messages[0][1].length > 0
-      ) {
-        const messageIds = consumer1Messages[0][1].map((msg) => msg[0]);
-
-        // Acknowledge processed messages
-        if (messageIds.length > 0) {
-          const ackCount = await redis.xack(
-            streamKey,
-            groupName,
-            ...messageIds
-          );
-          assert.strictEqual(ackCount, messageIds.length);
-        }
-      }
-    });
-
-    it('should handle consumer group scaling patterns like Kafka', async () => {
-      const streamKey = 'user_events:' + Math.random();
-      const groupName = 'analytics-processors';
-      const consumers = ['analytics-1', 'analytics-2', 'analytics-3'];
-
-      // Generate user events
-      const eventTypes = [
-        'login',
-        'purchase',
-        'page_view',
-        'logout',
-        'cart_add',
-      ];
-      const eventIds = [];
-
-      // Add events to stream - create 15 events by repeating the event types
-      for (let i = 0; i < 15; i++) {
-        const eventType = eventTypes[i % eventTypes.length];
-        const eventId = await redis.xadd(
-          streamKey,
-          '*',
-          'event_type',
-          eventType,
-          'user_id',
-          `user_${i + 1}`,
-          'timestamp',
-          Date.now().toString()
-        );
-        eventIds.push(eventId);
-      }
-
-      // Create consumer group
-      try {
-        await redis.xgroupCreate(streamKey, groupName, '0', 'MKSTREAM');
-      } catch (error) {
-        // Group might already exist, ignore
-        if (!error.message.includes('BUSYGROUP')) {
-          // If it's not a "group already exists" error, skip the test
+}
+
+testModes.forEach(({ name: mode, createClient, skipIfUnavailable }) => {
+  describe(`Stream Commands (${mode} mode)`, () => {
+    let client;
+    let streamKey;
+    let clusterAvailable = true;
+
+    beforeEach(async function() {
+      // Skip cluster tests if unavailable
+      if (mode === 'cluster' && skipIfUnavailable) {
+        try {
+          const testClient = createClient();
+          await testClient.connect();
+          await testClient.quit();
+        } catch (err) {
+          clusterAvailable = false;
+          this.skip();
           return;
         }
       }
 
-      // Process messages with multiple consumers
-      const consumerResults = [];
-      for (const consumer of consumers) {
+      client = createClient();
+      await client.connect();
+      streamKey = `test:stream:${mode}:${Date.now()}`;
+    });
+
+    afterEach(async () => {
+      if (client) {
         try {
-          const messages = await redis.xreadgroup(
-            groupName,
-            consumer,
-            'COUNT',
-            2,
-            'STREAMS',
-            streamKey,
-            '>'
-          );
-          consumerResults.push({ consumer, messages });
-        } catch (error) {
-          consumerResults.push({ consumer, messages: [] });
-        }
-      }
-
-      // Verify message distribution
-      let totalMessagesProcessed = 0;
-      for (const result of consumerResults) {
-        if (result.messages && result.messages.length > 0) {
-          const streamMessages =
-            result.messages[0] && result.messages[0][1]
-              ? result.messages[0][1]
-              : [];
-          totalMessagesProcessed += streamMessages.length;
-        }
-      }
-
-      // At least one consumer should process messages
-      assert.ok(totalMessagesProcessed >= 0);
-      assert.ok(totalMessagesProcessed <= 15);
-
-      // Verify we have some events in the stream
-      const streamLength = await redis.xlen(streamKey);
-      if (streamLength === 0) {
-        return; // Skip test if no events in stream
-      }
-      assert.strictEqual(streamLength, 15);
-
-      // Check group info
-      try {
-        const pendingMessages = await redis.xpending(streamKey, groupName);
-        assert.ok(pendingMessages !== undefined);
-      } catch (error) {
-        // Consumer group might not exist, skip this check
-        return;
-      }
-    });
-
-    it('should implement dead letter queue pattern for failed messages', async () => {
-      const mainStreamKey = 'payments:' + Math.random();
-      const dlqStreamKey = 'payments:' + Math.random();
-      const groupName = 'payment-processors';
-      const consumer = 'payment-worker-1';
-
-      // Add payment messages
-      await redis.xadd(
-        mainStreamKey,
-        '*',
-        'payment_id',
-        'PAY-001',
-        'amount',
-        '99.99',
-        'card_token',
-        'tok_123',
-        'retry_count',
-        '0'
-      );
-
-      await redis.xadd(
-        mainStreamKey,
-        '*',
-        'payment_id',
-        'PAY-002',
-        'amount',
-        '199.99',
-        'card_token',
-        'tok_456',
-        'retry_count',
-        '0'
-      );
-
-      // Create consumer group
-      try {
-        await redis.xgroup('CREATE', mainStreamKey, groupName, '0');
-      } catch (error) {
-        // Continue if group exists
-      }
-
-      // Consumer reads messages
-      const messages = await redis.xreadgroup(
-        groupName,
-        consumer,
-        'STREAMS',
-        mainStreamKey,
-        '>'
-      );
-
-      if (messages && messages.length > 0 && messages[0] && messages[0][1]) {
-        const streamMessages = messages[0][1];
-
-        // Simulate processing - first message succeeds, second fails multiple times
-        for (let i = 0; i < streamMessages.length; i++) {
-          const messageId = streamMessages[i][0];
-          const messageData = streamMessages[i][1];
-          
-          // Process message (simplified for testing)
-          console.log('Processing message:', messageId, messageData);
+          if (streamKey) {
+            await client.del(streamKey);
+          }
+          await client.quit();
+        } catch (err) {
+          // Ignore cleanup errors
         }
       }
     });
-  });
 
-  describe('Task Queue Pattern', () => {
-    it('should distribute tasks to multiple workers', async () => {
-      const streamKey = 'tasks:' + Math.random();
-      const groupName = 'task-workers';
-      const consumers = ['worker-1', 'worker-2', 'worker-3'];
+    describe('XADD - Adding entries', () => {
+      it('should add entry with auto-generated ID', async () => {
+        const id = await client.xadd(streamKey, '*', 'field', 'value');
+        assert.ok(id);
+        assert.ok(id.includes('-'));
+      });
 
-      // Add batch of tasks
-      const taskIds = [];
-      for (let i = 0; i < 5; i++) {
-        const taskId = await redis.xadd(
-          streamKey,
-          '*',
-          'task_type', 'process_order',
-          'order_id', `ORD-${i}`,
-          'priority', 'high'
+      it('should add entry with explicit ID', async () => {
+        const id = await client.xadd(streamKey, '1000-0', 'field', 'value');
+        assert.strictEqual(id, '1000-0');
+      });
+
+      it('should add multiple field-value pairs', async () => {
+        const id = await client.xadd(streamKey, '*', 
+          'field1', 'value1',
+          'field2', 'value2',
+          'field3', 'value3'
         );
-        taskIds.push(taskId);
-      }
+        assert.ok(id);
+        
+        const entries = await client.xrange(streamKey, '-', '+');
+        assert.strictEqual(entries.length, 1);
+        assert.strictEqual(entries[0][1].length, 6); // 3 field-value pairs = 6 elements
+      });
 
-      // Create consumer group
-      try {
-        await redis.xgroup('CREATE', streamKey, groupName, '0');
-      } catch (error) {
-        // Continue if group exists
-      }
+      it('should handle MAXLEN option', async () => {
+        // Add 5 entries
+        for (let i = 0; i < 5; i++) {
+          await client.xadd(streamKey, '*', 'msg', `message${i}`);
+        }
+        
+        // Add with MAXLEN 3
+        await client.xadd(streamKey, 'MAXLEN', 3, '*', 'msg', 'new');
+        
+        const entries = await client.xrange(streamKey, '-', '+');
+        assert.strictEqual(entries.length, 3);
+      });
 
-      const consumerWorkloads = [];
-      for (const consumer of consumers) {
-        const messages = await redis.xreadgroup(
-          groupName,
-          consumer,
-          'COUNT', '2',
-          'STREAMS',
-          streamKey,
-          '>'
+      it('should handle MAXLEN with exact trimming', async () => {
+        // Add 5 entries
+        for (let i = 0; i < 5; i++) {
+          await client.xadd(streamKey, '*', 'msg', `message${i}`);
+        }
+        
+        // Add with MAXLEN = 3 (exact)
+        await client.xadd(streamKey, 'MAXLEN', '=', 3, '*', 'msg', 'new');
+        
+        const entries = await client.xrange(streamKey, '-', '+');
+        assert.strictEqual(entries.length, 3);
+      });
+
+      it('should handle MINID option', async () => {
+        await client.xadd(streamKey, '1000-0', 'msg', 'old1');
+        await client.xadd(streamKey, '2000-0', 'msg', 'old2');
+        await client.xadd(streamKey, '3000-0', 'msg', 'keep1');
+        await client.xadd(streamKey, '4000-0', 'msg', 'keep2');
+        
+        // Add with MINID - should trim entries < 3000-0
+        await client.xadd(streamKey, 'MINID', '3000-0', '*', 'msg', 'new');
+        
+        const entries = await client.xrange(streamKey, '-', '+');
+        assert.ok(entries.length >= 3);
+        
+        // Verify no entries exist with ID < 3000-0
+        const hasOldEntry = entries.some(e => {
+          // Check only explicit IDs (format: number-number)
+          if (e[0].match(/^\d+-\d+$/)) {
+            const timestamp = parseInt(e[0].split('-')[0]);
+            return timestamp < 3000;
+          }
+          return false;
+        });
+        assert.ok(!hasOldEntry, 'Should not have entries with ID < 3000-0');
+      });
+
+      it('should handle NOMKSTREAM option', async () => {
+        try {
+          await client.xadd(streamKey + '_nonexistent', 'NOMKSTREAM', '*', 'field', 'value');
+          assert.fail('Should have thrown error');
+        } catch (err) {
+          // Expected to fail
+          assert.ok(err);
+        }
+      });
+
+      it('should handle LIMIT option with trimming', async () => {
+        // Add many entries
+        for (let i = 0; i < 10; i++) {
+          await client.xadd(streamKey, '*', 'msg', `message${i}`);
+        }
+        
+        // Trim with LIMIT
+        await client.xadd(streamKey, 'MAXLEN', '~', 5, 'LIMIT', 2, '*', 'msg', 'new');
+        
+        const entries = await client.xrange(streamKey, '-', '+');
+        assert.ok(entries.length > 0);
+      });
+
+      it('should reject invalid IDs', async () => {
+        await client.xadd(streamKey, '1000-0', 'msg', 'first');
+        
+        try {
+          await client.xadd(streamKey, '999-0', 'msg', 'second');
+          assert.fail('Should have rejected lower ID');
+        } catch (err) {
+          assert.ok(err.message.includes('smaller'));
+        }
+      });
+    });
+
+    describe('XREAD - Reading entries', () => {
+      it('should read from single stream', async () => {
+        await client.xadd(streamKey, '1000-0', 'msg', 'hello');
+        
+        const result = await client.xread('STREAMS', streamKey, '0');
+        assert.ok(result);
+        assert.strictEqual(result[0][0], streamKey);
+        assert.strictEqual(result[0][1].length, 1);
+      });
+
+      it('should read from specific ID', async () => {
+        await client.xadd(streamKey, '1000-0', 'msg', 'first');
+        await client.xadd(streamKey, '2000-0', 'msg', 'second');
+        await client.xadd(streamKey, '3000-0', 'msg', 'third');
+        
+        const result = await client.xread('STREAMS', streamKey, '1000-0');
+        assert.ok(result);
+        assert.strictEqual(result[0][1].length, 2); // Should get second and third
+      });
+
+      it('should read with COUNT limit', async () => {
+        for (let i = 0; i < 5; i++) {
+          await client.xadd(streamKey, `${1000 + i}-0`, 'msg', `message${i}`);
+        }
+        
+        const result = await client.xread('COUNT', 2, 'STREAMS', streamKey, '0');
+        assert.ok(result);
+        assert.strictEqual(result[0][1].length, 2);
+      });
+
+      it('should read from multiple streams', async () => {
+        const streamKey2 = streamKey + '_2';
+        await client.xadd(streamKey, '1000-0', 'msg', 'stream1');
+        await client.xadd(streamKey2, '1000-0', 'msg', 'stream2');
+        
+        const result = await client.xread('STREAMS', streamKey, streamKey2, '0', '0');
+        assert.ok(result);
+        assert.strictEqual(result.length, 2);
+        
+        await client.del(streamKey2);
+      });
+
+      it('should handle BLOCK option with immediate data', async () => {
+        await client.xadd(streamKey, '1000-0', 'msg', 'ready');
+        
+        const result = await client.xread('BLOCK', 100, 'STREAMS', streamKey, '0');
+        assert.ok(result);
+        assert.strictEqual(result[0][1].length, 1);
+      });
+
+      it('should handle BLOCK timeout', async () => {
+        const start = Date.now();
+        const result = await client.xread('BLOCK', 200, 'STREAMS', streamKey, '$');
+        const elapsed = Date.now() - start;
+        
+        assert.strictEqual(result, null);
+        assert.ok(elapsed >= 180); // Allow some tolerance
+      });
+
+      it('should read only new entries with $', async () => {
+        // Create a second client for adding messages
+        const client2 = createClient();
+        await client2.connect();
+        
+        try {
+          // Start reading from current end
+          const promise = client.xread('BLOCK', 2000, 'STREAMS', streamKey, '$');
+          
+          // Add new entry after a delay using second client
+          setTimeout(async () => {
+            try {
+              await client2.xadd(streamKey, '*', 'msg', 'new');
+            } catch (err) {
+              // Ignore errors in setTimeout
+            }
+          }, 100);
+          
+          const result = await promise;
+          assert.ok(result);
+          assert.strictEqual(result[0][1].length, 1);
+          assert.strictEqual(result[0][1][0][1][1], 'new');
+        } finally {
+          // Ensure client2 is closed
+          try {
+            await client2.quit();
+          } catch (err) {
+            // Ignore closing errors
+          }
+        }
+      });
+    });
+
+    describe('XRANGE and XREVRANGE', () => {
+      beforeEach(async () => {
+        // Add test data
+        await client.xadd(streamKey, '1000-0', 'msg', 'first');
+        await client.xadd(streamKey, '2000-0', 'msg', 'second');
+        await client.xadd(streamKey, '3000-0', 'msg', 'third');
+        await client.xadd(streamKey, '4000-0', 'msg', 'fourth');
+        await client.xadd(streamKey, '5000-0', 'msg', 'fifth');
+      });
+
+      it('should get all entries with XRANGE', async () => {
+        const entries = await client.xrange(streamKey, '-', '+');
+        assert.strictEqual(entries.length, 5);
+        assert.strictEqual(entries[0][0], '1000-0');
+        assert.strictEqual(entries[4][0], '5000-0');
+      });
+
+      it('should get range between IDs', async () => {
+        const entries = await client.xrange(streamKey, '2000-0', '4000-0');
+        assert.strictEqual(entries.length, 3);
+        assert.strictEqual(entries[0][0], '2000-0');
+        assert.strictEqual(entries[2][0], '4000-0');
+      });
+
+      it('should handle exclusive ranges', async () => {
+        const entries = await client.xrange(streamKey, '(2000-0', '4000-0');
+        assert.strictEqual(entries.length, 2);
+        assert.strictEqual(entries[0][0], '3000-0');
+      });
+
+      it('should limit results with COUNT', async () => {
+        const entries = await client.xrange(streamKey, '-', '+', 'COUNT', 3);
+        assert.strictEqual(entries.length, 3);
+      });
+
+      it('should get entries in reverse with XREVRANGE', async () => {
+        const entries = await client.xrevrange(streamKey, '+', '-');
+        assert.strictEqual(entries.length, 5);
+        assert.strictEqual(entries[0][0], '5000-0');
+        assert.strictEqual(entries[4][0], '1000-0');
+      });
+
+      it('should get reverse range between IDs', async () => {
+        const entries = await client.xrevrange(streamKey, '4000-0', '2000-0');
+        assert.strictEqual(entries.length, 3);
+        assert.strictEqual(entries[0][0], '4000-0');
+        assert.strictEqual(entries[2][0], '2000-0');
+      });
+
+      it('should handle timestamp-only ranges', async () => {
+        const entries = await client.xrange(streamKey, '2000', '4000');
+        assert.strictEqual(entries.length, 3);
+      });
+    });
+
+    describe('XLEN - Stream length', () => {
+      it('should return 0 for empty stream', async () => {
+        const len = await client.xlen(streamKey);
+        assert.strictEqual(len, 0);
+      });
+
+      it('should return correct length', async () => {
+        await client.xadd(streamKey, '*', 'msg', 'one');
+        await client.xadd(streamKey, '*', 'msg', 'two');
+        await client.xadd(streamKey, '*', 'msg', 'three');
+        
+        const len = await client.xlen(streamKey);
+        assert.strictEqual(len, 3);
+      });
+
+      it('should handle non-existent stream', async () => {
+        const len = await client.xlen('nonexistent:stream');
+        assert.strictEqual(len, 0);
+      });
+    });
+
+    describe('XDEL - Deleting entries', () => {
+      beforeEach(async () => {
+        await client.xadd(streamKey, '1000-0', 'msg', 'first');
+        await client.xadd(streamKey, '2000-0', 'msg', 'second');
+        await client.xadd(streamKey, '3000-0', 'msg', 'third');
+      });
+
+      it('should delete single entry', async () => {
+        const deleted = await client.xdel(streamKey, '2000-0');
+        assert.strictEqual(deleted, 1);
+        
+        const entries = await client.xrange(streamKey, '-', '+');
+        assert.strictEqual(entries.length, 2);
+        assert.ok(!entries.some(e => e[0] === '2000-0'));
+      });
+
+      it('should delete multiple entries', async () => {
+        const deleted = await client.xdel(streamKey, '1000-0', '3000-0');
+        assert.strictEqual(deleted, 2);
+        
+        const entries = await client.xrange(streamKey, '-', '+');
+        assert.strictEqual(entries.length, 1);
+        assert.strictEqual(entries[0][0], '2000-0');
+      });
+
+      it('should handle non-existent IDs', async () => {
+        const deleted = await client.xdel(streamKey, '9999-0');
+        assert.strictEqual(deleted, 0);
+      });
+
+      it('should handle mix of existing and non-existing IDs', async () => {
+        const deleted = await client.xdel(streamKey, '1000-0', '9999-0', '3000-0');
+        assert.strictEqual(deleted, 2);
+      });
+    });
+
+    describe('XTRIM - Trimming streams', () => {
+      beforeEach(async () => {
+        // Add 10 entries
+        for (let i = 0; i < 10; i++) {
+          await client.xadd(streamKey, `${1000 + i}-0`, 'msg', `message${i}`);
+        }
+      });
+
+      it('should trim with MAXLEN', async () => {
+        const trimmed = await client.xtrim(streamKey, 'MAXLEN', 5);
+        assert.ok(trimmed >= 5);
+        
+        const entries = await client.xrange(streamKey, '-', '+');
+        assert.strictEqual(entries.length, 5);
+      });
+
+      it('should trim with exact MAXLEN', async () => {
+        const trimmed = await client.xtrim(streamKey, 'MAXLEN', '=', 3);
+        assert.strictEqual(trimmed, 7);
+        
+        const entries = await client.xrange(streamKey, '-', '+');
+        assert.strictEqual(entries.length, 3);
+      });
+
+      it('should trim with approximate MAXLEN', async () => {
+        const trimmed = await client.xtrim(streamKey, 'MAXLEN', '~', 5);
+        assert.ok(trimmed >= 0);
+        
+        const entries = await client.xrange(streamKey, '-', '+');
+        assert.ok(entries.length <= 10);
+      });
+
+      it('should trim with MINID', async () => {
+        const trimmed = await client.xtrim(streamKey, 'MINID', '1005-0');
+        assert.ok(trimmed >= 5);
+        
+        const entries = await client.xrange(streamKey, '-', '+');
+        assert.ok(!entries.some(e => e[0] < '1005-0'));
+      });
+
+      it('should trim with LIMIT option', async () => {
+        const trimmed = await client.xtrim(streamKey, 'MAXLEN', '~', 5, 'LIMIT', 2);
+        assert.ok(trimmed <= 2);
+      });
+    });
+
+    describe('Consumer Groups', () => {
+      describe('XGROUP CREATE', () => {
+        it('should create consumer group', async () => {
+          await client.xadd(streamKey, '1000-0', 'msg', 'first');
+          const result = await client.xgroup('CREATE', streamKey, 'mygroup', '$');
+          assert.strictEqual(result, 'OK');
+        });
+
+        it('should create group at specific ID', async () => {
+          await client.xadd(streamKey, '1000-0', 'msg', 'first');
+          await client.xadd(streamKey, '2000-0', 'msg', 'second');
+          
+          const result = await client.xgroup('CREATE', streamKey, 'mygroup', '1000-0');
+          assert.strictEqual(result, 'OK');
+        });
+
+        it('should create group from beginning', async () => {
+          await client.xadd(streamKey, '1000-0', 'msg', 'first');
+          const result = await client.xgroup('CREATE', streamKey, 'mygroup', '0');
+          assert.strictEqual(result, 'OK');
+        });
+
+        it('should handle MKSTREAM option', async () => {
+          const newStream = streamKey + '_mkstream';
+          const result = await client.xgroup('CREATE', newStream, 'mygroup', '$', 'MKSTREAM');
+          assert.strictEqual(result, 'OK');
+          await client.del(newStream);
+        });
+
+        it('should fail on duplicate group', async () => {
+          await client.xadd(streamKey, '1000-0', 'msg', 'first');
+          await client.xgroup('CREATE', streamKey, 'mygroup', '$');
+          
+          try {
+            await client.xgroup('CREATE', streamKey, 'mygroup', '$');
+            assert.fail('Should have failed');
+          } catch (err) {
+            assert.ok(err.message.includes('BUSYGROUP'));
+          }
+        });
+      });
+
+      describe('XGROUP DESTROY', () => {
+        beforeEach(async () => {
+          await client.xadd(streamKey, '1000-0', 'msg', 'first');
+          await client.xgroup('CREATE', streamKey, 'mygroup', '$');
+        });
+
+        it('should destroy consumer group', async () => {
+          const result = await client.xgroup('DESTROY', streamKey, 'mygroup');
+          assert.strictEqual(result, 1);
+        });
+
+        it('should return 0 for non-existent group', async () => {
+          const result = await client.xgroup('DESTROY', streamKey, 'nonexistent');
+          assert.strictEqual(result, 0);
+        });
+      });
+
+      describe('XGROUP CREATECONSUMER', () => {
+        beforeEach(async () => {
+          await client.xadd(streamKey, '1000-0', 'msg', 'first');
+          await client.xgroup('CREATE', streamKey, 'mygroup', '$');
+        });
+
+        it('should create consumer', async () => {
+          const result = await client.xgroup('CREATECONSUMER', streamKey, 'mygroup', 'consumer1');
+          assert.strictEqual(result, 1);
+        });
+
+        it('should return 0 for existing consumer', async () => {
+          await client.xgroup('CREATECONSUMER', streamKey, 'mygroup', 'consumer1');
+          const result = await client.xgroup('CREATECONSUMER', streamKey, 'mygroup', 'consumer1');
+          assert.strictEqual(result, 0);
+        });
+      });
+
+      describe('XGROUP DELCONSUMER', () => {
+        beforeEach(async () => {
+          await client.xadd(streamKey, '1000-0', 'msg', 'first');
+          await client.xgroup('CREATE', streamKey, 'mygroup', '$');
+          await client.xgroup('CREATECONSUMER', streamKey, 'mygroup', 'consumer1');
+        });
+
+        it('should delete consumer', async () => {
+          const result = await client.xgroup('DELCONSUMER', streamKey, 'mygroup', 'consumer1');
+          assert.strictEqual(result, 0); // Returns pending count
+        });
+      });
+
+      describe('XGROUP SETID', () => {
+        beforeEach(async () => {
+          await client.xadd(streamKey, '1000-0', 'msg', 'first');
+          await client.xadd(streamKey, '2000-0', 'msg', 'second');
+          await client.xgroup('CREATE', streamKey, 'mygroup', '0');
+        });
+
+        it('should set group ID', async () => {
+          const result = await client.xgroup('SETID', streamKey, 'mygroup', '2000-0');
+          assert.strictEqual(result, 'OK');
+        });
+
+        it('should set ID to $', async () => {
+          const result = await client.xgroup('SETID', streamKey, 'mygroup', '$');
+          assert.strictEqual(result, 'OK');
+        });
+      });
+
+      describe('XREADGROUP', () => {
+        beforeEach(async () => {
+          await client.xadd(streamKey, '1000-0', 'msg', 'first');
+          await client.xadd(streamKey, '2000-0', 'msg', 'second');
+          await client.xadd(streamKey, '3000-0', 'msg', 'third');
+          await client.xgroup('CREATE', streamKey, 'mygroup', '0');
+        });
+
+        it('should read messages for consumer', async () => {
+          const messages = await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'STREAMS', streamKey, '>');
+          assert.ok(messages);
+          assert.strictEqual(messages[0][1].length, 3);
+        });
+
+        it('should read with COUNT limit', async () => {
+          const messages = await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'COUNT', 2, 'STREAMS', streamKey, '>');
+          assert.ok(messages);
+          assert.strictEqual(messages[0][1].length, 2);
+        });
+
+        it('should handle BLOCK option', async () => {
+          const start = Date.now();
+          const messages = await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'BLOCK', 200, 'STREAMS', streamKey, '>');
+          const elapsed = Date.now() - start;
+          
+          // Should return immediately with available messages or timeout
+          assert.ok(elapsed < 1000);
+        });
+
+        it('should handle NOACK option', async () => {
+          const messages = await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'NOACK', 'STREAMS', streamKey, '>');
+          assert.ok(messages);
+        });
+
+        it('should read pending messages', async () => {
+          // First consumer reads
+          await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'STREAMS', streamKey, '>');
+          
+          // Read pending messages
+          const pending = await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'STREAMS', streamKey, '0');
+          assert.ok(pending);
+          assert.strictEqual(pending[0][1].length, 3);
+        });
+      });
+
+      describe('XACK', () => {
+        beforeEach(async () => {
+          await client.xadd(streamKey, '1000-0', 'msg', 'first');
+          await client.xadd(streamKey, '2000-0', 'msg', 'second');
+          await client.xgroup('CREATE', streamKey, 'mygroup', '0');
+        });
+
+        it('should acknowledge single message', async () => {
+          const messages = await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'STREAMS', streamKey, '>');
+          const messageId = messages[0][1][0][0];
+          
+          const acked = await client.xack(streamKey, 'mygroup', messageId);
+          assert.strictEqual(acked, 1);
+        });
+
+        it('should acknowledge multiple messages', async () => {
+          const messages = await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'STREAMS', streamKey, '>');
+          const id1 = messages[0][1][0][0];
+          const id2 = messages[0][1][1][0];
+          
+          const acked = await client.xack(streamKey, 'mygroup', id1, id2);
+          assert.strictEqual(acked, 2);
+        });
+
+        it('should handle already acknowledged messages', async () => {
+          const messages = await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'STREAMS', streamKey, '>');
+          const messageId = messages[0][1][0][0];
+          
+          await client.xack(streamKey, 'mygroup', messageId);
+          const acked = await client.xack(streamKey, 'mygroup', messageId);
+          assert.strictEqual(acked, 0);
+        });
+      });
+
+      describe('XPENDING', () => {
+        beforeEach(async () => {
+          await client.xadd(streamKey, '1000-0', 'msg', 'first');
+          await client.xadd(streamKey, '2000-0', 'msg', 'second');
+          await client.xadd(streamKey, '3000-0', 'msg', 'third');
+          await client.xgroup('CREATE', streamKey, 'mygroup', '0');
+          await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'COUNT', 2, 'STREAMS', streamKey, '>');
+          await client.xreadgroup('GROUP', 'mygroup', 'consumer2', 'COUNT', 1, 'STREAMS', streamKey, '>');
+        });
+
+        it('should get pending summary', async () => {
+          const pending = await client.xpending(streamKey, 'mygroup');
+          assert.ok(pending);
+          assert.strictEqual(pending[0], 3); // Total pending
+        });
+
+        it('should get detailed pending with range', async () => {
+          const pending = await client.xpending(streamKey, 'mygroup', '-', '+', 10);
+          assert.ok(Array.isArray(pending));
+          assert.strictEqual(pending.length, 3);
+        });
+
+        it('should filter by consumer', async () => {
+          const pending = await client.xpending(streamKey, 'mygroup', '-', '+', 10, 'consumer1');
+          assert.ok(Array.isArray(pending));
+          assert.strictEqual(pending.length, 2);
+        });
+      });
+
+      describe('XCLAIM', () => {
+        beforeEach(async () => {
+          await client.xadd(streamKey, '1000-0', 'msg', 'first');
+          await client.xgroup('CREATE', streamKey, 'mygroup', '0');
+        });
+
+        it('should claim messages', async () => {
+          const messages = await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'STREAMS', streamKey, '>');
+          const messageId = messages[0][1][0][0];
+          
+          // Wait for message to become idle
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          const claimed = await client.xclaim(streamKey, 'mygroup', 'consumer2', 10, messageId);
+          
+          assert.ok(Array.isArray(claimed));
+          assert.strictEqual(claimed.length, 1);
+          assert.strictEqual(claimed[0][0], messageId);
+        });
+
+        it('should handle JUSTID option', async () => {
+          const messages = await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'STREAMS', streamKey, '>');
+          const messageId = messages[0][1][0][0];
+          
+          // Wait for message to become idle
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          const claimed = await client.xclaim(streamKey, 'mygroup', 'consumer2', 10, messageId, 'JUSTID');
+          
+          assert.ok(Array.isArray(claimed));
+          assert.strictEqual(claimed.length, 1);
+          assert.strictEqual(claimed[0], messageId); // Just ID, not full entry
+        });
+
+        it('should handle FORCE option', async () => {
+          // Force claim even without prior delivery
+          await client.xadd(streamKey, '2000-0', 'msg', 'unclaimed');
+          const claimed = await client.xclaim(streamKey, 'mygroup', 'consumer1', 0, '2000-0', 'FORCE');
+          
+          assert.ok(Array.isArray(claimed));
+          assert.strictEqual(claimed.length, 1);
+        });
+      });
+
+      describe('XAUTOCLAIM', () => {
+        beforeEach(async () => {
+          await client.xadd(streamKey, '1000-0', 'msg', 'first');
+          await client.xadd(streamKey, '2000-0', 'msg', 'second');
+          await client.xadd(streamKey, '3000-0', 'msg', 'third');
+          await client.xgroup('CREATE', streamKey, 'mygroup', '0');
+          await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'STREAMS', streamKey, '>');
+        });
+
+        it('should auto-claim idle messages', async () => {
+          // Wait for messages to become idle
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          const result = await client.xautoclaim(streamKey, 'mygroup', 'consumer2', 10, '0-0');
+          
+          assert.ok(result);
+          assert.ok(result[0]); // Next cursor
+          assert.ok(Array.isArray(result[1])); // Claimed messages
+          assert.ok(result[1].length > 0);
+        });
+
+        it('should handle COUNT option', async () => {
+          // Wait for messages to become idle
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          const result = await client.xautoclaim(streamKey, 'mygroup', 'consumer2', 10, '0-0', 'COUNT', 1);
+          
+          assert.ok(result);
+          assert.ok(Array.isArray(result[1]));
+          assert.ok(result[1].length <= 1);
+        });
+
+        it('should handle JUSTID option', async () => {
+          // Wait for messages to become idle
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          const result = await client.xautoclaim(streamKey, 'mygroup', 'consumer2', 10, '0-0', 'JUSTID');
+          
+          assert.ok(result);
+          assert.ok(result[0]); // Next cursor
+          assert.ok(Array.isArray(result[1])); // Claimed message IDs
+          if (result[1].length > 0) {
+            assert.ok(typeof result[1][0] === 'string'); // Just IDs
+          }
+        });
+      });
+    });
+
+    describe('XINFO', () => {
+      beforeEach(async () => {
+        await client.xadd(streamKey, '1000-0', 'msg', 'first');
+        await client.xadd(streamKey, '2000-0', 'msg', 'second');
+        await client.xgroup('CREATE', streamKey, 'mygroup', '0');
+        await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'STREAMS', streamKey, '>');
+      });
+
+      it('should get stream info', async () => {
+        const info = await client.xinfo('STREAM', streamKey);
+        assert.ok(info);
+        assert.ok(info.length > 0);
+      });
+
+      it('should get groups info', async () => {
+        const groups = await client.xinfo('GROUPS', streamKey);
+        assert.ok(Array.isArray(groups));
+        assert.strictEqual(groups.length, 1);
+      });
+
+      it('should get consumers info', async () => {
+        const consumers = await client.xinfo('CONSUMERS', streamKey, 'mygroup');
+        assert.ok(Array.isArray(consumers));
+        assert.strictEqual(consumers.length, 1);
+      });
+    });
+
+    describe('Real-world Stream Use Cases', () => {
+      it('should implement event sourcing pattern', async () => {
+        const eventStream = `events:${mode}:${Date.now()}`;
+        
+        // Record events
+        await client.xadd(eventStream, '*', 'event', 'user_login', 'user_id', '123');
+        await client.xadd(eventStream, '*', 'event', 'page_view', 'page', '/home');
+        await client.xadd(eventStream, '*', 'event', 'user_logout', 'user_id', '123');
+        
+        // Read event history
+        const events = await client.xrange(eventStream, '-', '+');
+        assert.strictEqual(events.length, 3);
+        
+        await client.del(eventStream);
+      });
+
+      it('should implement message queue with consumer groups', async () => {
+        const queueStream = `queue:${mode}:${Date.now()}`;
+        
+        // Add messages
+        await client.xadd(queueStream, '*', 'task', 'send_email', 'to', 'user@example.com');
+        await client.xadd(queueStream, '*', 'task', 'process_payment', 'amount', '100');
+        
+        // Create worker group
+        await client.xgroup('CREATE', queueStream, 'workers', '0');
+        
+        // Worker reads tasks
+        const tasks = await client.xreadgroup('GROUP', 'workers', 'worker1', 'STREAMS', queueStream, '>');
+        assert.ok(tasks);
+        assert.strictEqual(tasks[0][1].length, 2);
+        
+        // Acknowledge completed task
+        const taskId = tasks[0][1][0][0];
+        const acked = await client.xack(queueStream, 'workers', taskId);
+        assert.strictEqual(acked, 1);
+        
+        await client.del(queueStream);
+      });
+
+      it('should implement log aggregation', async () => {
+        const logStream = `logs:${mode}:${Date.now()}`;
+        
+        // Add log entries
+        await client.xadd(logStream, 'MAXLEN', '~', 1000, '*', 
+          'level', 'INFO', 
+          'message', 'Application started'
+        );
+        await client.xadd(logStream, 'MAXLEN', '~', 1000, '*', 
+          'level', 'ERROR', 
+          'message', 'Database connection failed'
         );
         
-        consumerWorkloads.push({
-          consumer: consumer,
-          messages: messages || [],
-        });
-      }
-
-      // Verify task distribution
-      assert.ok(taskIds.length === 5);
-      
-      // Verify consumers received tasks
-      let totalMessages = 0;
-      for (const workload of consumerWorkloads) {
-        if (workload.messages && workload.messages.length > 0) {
-          totalMessages += workload.messages.length;
-        }
-      }
-      
-      assert.ok(totalMessages > 0);
-
-    });
-  });
-
-  describe('Error Handling', () => {
-    it('should handle stream operations gracefully', async () => {
-      const streamKey = 'error_test:' + Math.random();
-      
-      // Test basic stream operations
-      const messageId = await redis.xadd(streamKey, '*', 'test', 'data');
-      assert.ok(messageId);
-      
-      // Test reading from stream
-      const messages = await redis.xread('STREAMS', streamKey, '0');
-      assert.ok(messages);
-      if (!messages || messages.length === 0) {
-        return; // Skip if no messages found
-      }
-      assert.ok(messages.length > 0);
-      
-      // Clean up
-      await redis.del(streamKey);
+        // Read recent logs
+        const logs = await client.xrevrange(logStream, '+', '-', 'COUNT', 10);
+        assert.ok(logs);
+        assert.ok(logs.length > 0);
+        
+        await client.del(logStream);
+      });
     });
   });
 });
