@@ -1,14 +1,13 @@
 {
   "reporter": ["text", "lcov", "html"],
-  "all": true,
-  "src": ["src"],
+  "all": false,
+  "include": ["dist/**/*.js"],
   "exclude": [
-    "coverage/**",
-    "tests/**",
     "**/*.d.ts",
     "**/*.map",
-    "node_modules/**"
+    "node_modules/**",
+    "tests/**",
+    "coverage/**"
   ],
-  "exclude-after-remap": true,
-  "extension": [".js", ".ts"]
+  "extension": [".js"]
 }

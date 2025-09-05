@@ -10,64 +10,66 @@ const { Redis } = pkg;
 import { testUtils } from '../setup/index.mjs';
 
 describe('Connection Management (ioredis compatibility)', () => {
-  let redis;
+  let client;
 
   before(async () => {
     // Check if test servers are available
-    const serversAvailable = await testUtils.checkTestServers();
+    const serversAvailable = testUtils.checkTestServers();
     if (!serversAvailable) {
       throw new Error(
         'Test servers not available. Please start Redis server before running tests.'
       );
     }
+    // Allow previous suite cleanup to settle fully
+    await new Promise(resolve => setTimeout(resolve, 100));
   });
 
   after(async () => {
     // Final cleanup
-    if (redis) {
+    if (client) {
       try {
         // Remove all event listeners first
-        redis.removeAllListeners();
+        client.removeAllListeners();
         // Only call quit() - it does full cleanup
-        await redis.quit();
+        await client.quit();
         // Give extra time for GLIDE's internal cleanup
         await new Promise(resolve => setTimeout(resolve, 200));
       } catch {
         // Ignore cleanup errors
       }
-      redis = null;
+      client = null;
     }
   });
 
   afterEach(async () => {
-    if (redis) {
+    if (client) {
       try {
         // Remove all event listeners first
-        redis.removeAllListeners();
+        client.removeAllListeners();
         // Only call quit() - it does full cleanup
-        await redis.quit();
+        await client.quit();
         // Give extra time for GLIDE's internal cleanup
         await new Promise(resolve => setTimeout(resolve, 100));
       } catch {
         // Ignore cleanup errors
       }
-      redis = null;
+      client = null;
     }
   });
 
   describe('Client creation patterns', () => {
     it('should create client with default options', async () => {
-      const serversAvailable = await testUtils.checkTestServers();
+      const serversAvailable = testUtils.checkTestServers();
       if (!serversAvailable) {
         return; // Skip test - servers not available
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new Redis(config);
-      await redis.connect();
+      client = new Redis(config);
+      await client.connect();
 
       // Basic connectivity test
-      const result = await redis.ping();
+      const result = await client.ping();
       assert.strictEqual(result, 'PONG');
     });
 
@@ -78,84 +80,84 @@ describe('Connection Management (ioredis compatibility)', () => {
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new Redis(config.port, config.host);
-      await redis.connect();
+      client = new Redis(config.port, config.host);
+      await client.connect();
 
-      const result = await redis.ping();
+      const result = await client.ping();
       assert.strictEqual(result, 'PONG');
     });
 
     it('should create client with options object', async () => {
-      const serversAvailable = await testUtils.checkTestServers();
+      const serversAvailable = testUtils.checkTestServers();
       if (!serversAvailable) {
         return; // Skip test - servers not available
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new Redis({
+      client = new Redis({
         port: config.port,
         host: config.host,
         retryDelayOnFailover: 1000,
         maxRetriesPerRequest: 3,
       });
-      await redis.connect();
+      await client.connect();
 
-      const result = await redis.ping();
+      const result = await client.ping();
       assert.strictEqual(result, 'PONG');
     });
 
     it('should create client with redis:// URL', async () => {
-      const serversAvailable = await testUtils.checkTestServers();
+      const serversAvailable = testUtils.checkTestServers();
       if (!serversAvailable) {
         return; // Skip test - servers not available
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new Redis(`redis://${config.host}:${config.port}/0`);
-      await redis.connect();
+      client = new Redis(`redis://${config.host}:${config.port}/0`);
+      await client.connect();
 
-      const result = await redis.ping();
+      const result = await client.ping();
       assert.strictEqual(result, 'PONG');
     });
 
     it('should handle database selection', async () => {
-      const serversAvailable = await testUtils.checkTestServers();
+      const serversAvailable = testUtils.checkTestServers();
       if (!serversAvailable) {
         return; // Skip test - servers not available
       }
 
       const config = await testUtils.getStandaloneConfig();
       const db = 0;
-      redis = new Redis({ port: config.port, host: config.host, db });
-      await redis.connect();
+      client = new Redis({ port: config.port, host: config.host, db });
+      await client.connect();
 
       // Test that we're using the correct database
-      await redis.set('dbtest', 'value');
-      assert.strictEqual(await redis.get('dbtest'), 'value');
+      await client.set('dbtest', 'value');
+      assert.strictEqual(await client.get('dbtest'), 'value');
     });
   });
 
   describe('Connection lifecycle', () => {
     it('should emit ready event when connected', async () => {
-      const serversAvailable = await testUtils.checkTestServers();
+      const serversAvailable = testUtils.checkTestServers();
       if (!serversAvailable) {
         return; // Skip test - servers not available
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new Redis(config);
+      client = new Redis(config);
 
       const readyPromise = new Promise(resolve => {
-        redis.on('ready', resolve);
+        client.on('ready', resolve);
       });
 
-      await redis.connect();
+      await client.connect();
       await readyPromise;
 
-      assert.strictEqual(redis.status, 'ready');
-      
+      assert.strictEqual(client.status, 'ready');
+
       // Clean up event listeners
-      redis.removeAllListeners('ready');
+      client.removeAllListeners('ready');
     });
 
     it('should emit connect event', async () => {
@@ -165,17 +167,17 @@ describe('Connection Management (ioredis compatibility)', () => {
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new Redis(config);
+      client = new Redis(config);
 
       const connectPromise = new Promise(resolve => {
-        redis.on('connect', resolve);
+        client.on('connect', resolve);
       });
 
-      await redis.connect();
+      await client.connect();
       await connectPromise;
-      
+
       // Clean up event listeners
-      redis.removeAllListeners('connect');
+      client.removeAllListeners('connect');
     });
 
     it('should emit end event when disconnected', async () => {
@@ -185,109 +187,111 @@ describe('Connection Management (ioredis compatibility)', () => {
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new Redis(config);
-      await redis.connect();
+      client = new Redis(config);
+      await client.connect();
 
       const endPromise = new Promise(resolve => {
-        redis.on('end', resolve);
+        client.on('end', resolve);
       });
 
-      await redis.quit();
+      await client.quit();
       await endPromise;
 
-      assert.strictEqual(redis.status, 'end');
-      
+      assert.strictEqual(client.status, 'end');
+
       // Clean up event listeners
-      redis.removeAllListeners('end');
+      client.removeAllListeners('end');
     });
 
     it('should handle reconnection', async () => {
-      const serversAvailable = await testUtils.checkTestServers();
+      const serversAvailable = testUtils.checkTestServers();
       if (!serversAvailable) {
         return; // Skip test - servers not available
       }
 
       const config = await testUtils.getStandaloneConfig();
       const retryDelayOnFailover = 1000;
-      redis = new Redis({ ...config, retryDelayOnFailover });
-      await redis.connect();
+      client = new Redis({ ...config, retryDelayOnFailover });
+      await client.connect();
 
       // Simulate connection loss and recovery
       const reconnectPromise = new Promise(resolve => {
-        redis.on('ready', resolve);
+        client.on('ready', resolve);
       });
 
       // Force reconnection simulation
-      redis.disconnect();
-      await redis.connect();
+      client.disconnect();
+      await client.connect();
       await reconnectPromise;
-      
-      // Clean up event listeners
-      redis.removeAllListeners('ready');
+
+      // Clean up event removeAllListeners()
+      client.removeAllListeners();
     });
   });
 
   describe('Error handling', () => {
     it('should emit error events', async () => {
       // Use a working connection but create an error condition
-      const serversAvailable = await testUtils.checkTestServers();
+      const serversAvailable = testUtils.checkTestServers();
       if (!serversAvailable) {
         return; // Skip test - servers not available
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new Redis(config);
-      await redis.connect();
+      client = new Redis(config);
+      await client.connect();
 
       const errorPromise = new Promise(resolve => {
-        redis.on('error', resolve);
+        client.on('error', resolve);
       });
 
       // Create an error condition by running an invalid command
       try {
-        await redis.eval('invalid_lua_script_that_will_fail', 0);
+        await client.eval('invalid_lua_script_that_will_fail', 0);
       } catch (cmdError) {
         // This might trigger an error event or just throw - either is fine
       }
 
       // Give a small window for error events to fire
-      const timeoutPromise = new Promise(resolve => setTimeout(() => resolve(null), 100));
+      const timeoutPromise = new Promise(resolve =>
+        setTimeout(() => resolve(null), 100)
+      );
       const error = await Promise.race([errorPromise, timeoutPromise]);
-      
+
       // We expect either an error event OR the command to just throw
       // Both are valid error handling behaviors
       assert.ok(true); // Test passes if we get here without hanging
-      
+
       // Clean up event listeners
-      redis.removeAllListeners();
+      client.removeAllListeners();
     });
 
     it('should handle command errors gracefully', async () => {
-      const serversAvailable = await testUtils.checkTestServers();
+      const serversAvailable = testUtils.checkTestServers();
       if (!serversAvailable) {
         return; // Skip test - servers not available
       }
 
       const config = await testUtils.getStandaloneConfig();
-      redis = new Redis(config);
-      await redis.connect();
+      client = new Redis(config);
+      await client.connect();
 
       // Try to increment a non-numeric value
-      await redis.set('text', 'not_a_number');
-      await assert.rejects(redis.incr('text'));
+      await client.set('text', 'not_a_number');
+      await assert.rejects(client.incr('text'));
 
       // Connection should still be usable
-      assert.strictEqual(await redis.ping(), 'PONG');
+      assert.strictEqual(await client.ping(), 'PONG');
     });
   });
 });
 
 describe('Pipeline Operations (ioredis compatibility)', () => {
-  let redis;
+  let client;
 
   before(async () => {
     // Check if test servers are available
-    const serversAvailable = await testUtils.checkTestServers();
+    const serversAvailable = testUtils.checkTestServers();
     if (!serversAvailable) {
       throw new Error(
         'Test servers not available. Please start Redis server before running tests.'
@@ -297,41 +301,47 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
 
   after(async () => {
     // Final cleanup
-    if (redis) {
+    if (client) {
       try {
         // Remove all event listeners first
-        redis.removeAllListeners();
+        client.removeAllListeners();
         // Only call quit() - it does full cleanup
-        await redis.quit();
+        await client.quit();
         // Give reasonable time for GLIDE cleanup
         await new Promise(resolve => setTimeout(resolve, 200));
       } catch {
         // Ignore cleanup errors
       }
-      redis = null;
+      client = null;
     }
-    
-    // Workaround for GLIDE Rust backend resource cleanup limitation
-    // All tests have passed at this point - safe to exit
-    console.log('✅ All tests passed - exiting cleanly (GLIDE resource cleanup workaround)');
-    setTimeout(() => process.exit(0), 50);
+    // No forced process.exit; let the test runner manage process lifecycle
   });
 
   beforeEach(async () => {
     // Health check before each test
-    const serversAvailable = await testUtils.checkTestServers();
+    const serversAvailable = testUtils.checkTestServers();
     if (!serversAvailable) {
       throw new Error('Test servers became unavailable during test execution');
     }
 
     // Use test server configuration
     const config = await testUtils.getStandaloneConfig();
-    redis = new Redis(config);
-    await redis.connect();
+    // Enforce short timeouts in this suite to avoid hangs on teardown or reconnect
+    client = new Redis({
+      ...config,
+      connectTimeout: config.connectTimeout ?? 2000,
+      requestTimeout: config.requestTimeout ?? 3000,
+      maxRetriesPerRequest: 1,
+    });
+    // Bound connect to avoid suite-level hangs if teardown races
+    await Promise.race([
+      client.connect(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('connect timeout in test')), 4000))
+    ]);
 
     // Clean up any existing test data
     try {
-      await redis.del(
+      await client.del(
         'key1',
         'key2',
         'key3',
@@ -351,24 +361,24 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
   });
 
   afterEach(async () => {
-    if (redis) {
+    if (client) {
       try {
         // Remove all event listeners first
-        redis.removeAllListeners();
+        client.removeAllListeners();
         // Only call quit() - it does full cleanup
-        await redis.quit();
+        await client.quit();
         // Give extra time for GLIDE's internal cleanup
         await new Promise(resolve => setTimeout(resolve, 100));
       } catch {
         // Ignore cleanup errors
       }
-      redis = null;
+      client = null;
     }
   });
 
   describe('Basic pipeline operations', () => {
     it('should execute multiple commands in pipeline', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
 
       pipeline.set('key1', 'value1');
       pipeline.set('key2', 'value2');
@@ -387,7 +397,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     });
 
     it('should handle mixed command types in pipeline', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
 
       pipeline.set('string_key', 'string_value');
       pipeline.hset('hash_key', 'field', 'hash_value');
@@ -409,7 +419,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     });
 
     it('should handle errors in pipeline', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
 
       pipeline.set('number', '10');
       pipeline.incr('number'); // Should succeed
@@ -428,7 +438,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     });
 
     it('pipeline should be chainable', async () => {
-      const results = await redis
+      const results = await client
         .pipeline()
         .set('key1', 'value1')
         .set('key2', 'value2')
@@ -445,7 +455,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
 
   describe('Pipeline performance characteristics', () => {
     it('should batch commands efficiently', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
 
       // Add many commands
       for (let i = 0; i < 100; i++) {
@@ -468,7 +478,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     });
 
     it('should handle empty pipelines', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
       const results = await pipeline.exec();
       assert.deepStrictEqual(results, []);
     });
@@ -476,7 +486,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
 
   describe('Pipeline with transactions', () => {
     it('should support atomic transactions', async () => {
-      const multi = redis.multi();
+      const multi = client.multi();
 
       multi.set('counter', '0');
       multi.incr('counter');
@@ -494,9 +504,9 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     });
 
     it('should handle transaction rollback on error', async () => {
-      await redis.set('existing_string', 'text_value');
+      await client.set('existing_string', 'text_value');
 
-      const multi = redis.multi();
+      const multi = client.multi();
       multi.incr('existing_string'); // This will cause command to fail
       multi.set('should_not_be_set', 'value');
 
@@ -511,14 +521,14 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       assert.strictEqual(results[1][1], 'OK');
 
       // Second command should have executed successfully
-      assert.strictEqual(await redis.exists('should_not_be_set'), 1);
+      assert.strictEqual(await client.exists('should_not_be_set'), 1);
     });
 
     it('should support WATCH for optimistic locking', async () => {
-      await redis.set('watched_key', '10');
+      await client.set('watched_key', '10');
 
-      // Start watching
-      await redis.watch('watched_key');
+        // Start watching
+        await client.watch('watched_key');
 
       // Simulate concurrent modification
       const config = await testUtils.getStandaloneConfig();
@@ -528,23 +538,23 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       await otherClient.quit();
 
       // Transaction should fail due to watched key modification
-      const multi = redis.multi();
+      const multi = client.multi();
       multi.incr('watched_key');
 
       const results = await multi.exec();
       assert.strictEqual(results, null); // Transaction aborted
 
       // Verify original value from other client
-      assert.strictEqual(await redis.get('watched_key'), '20');
+      assert.strictEqual(await client.get('watched_key'), '20');
     });
   });
 
   describe('Pipeline error recovery', () => {
     it('should continue processing after command error', async () => {
       // Setup a key with string value that can't be incremented
-      await redis.set('non_numeric_key', 'not_a_number');
+      await client.set('non_numeric_key', 'not_a_number');
 
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
 
       pipeline.set('good1', 'value1');
       pipeline.incr('non_numeric_key'); // Will error
@@ -563,7 +573,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     });
 
     it('should handle pipeline abort', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
 
       pipeline.set('key1', 'value1');
       pipeline.set('key2', 'value2');
@@ -575,14 +585,14 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       assert.deepStrictEqual(results, []); // No commands executed
 
       // Verify no keys were set
-      assert.strictEqual(await redis.exists('key1'), 0);
-      assert.strictEqual(await redis.exists('key2'), 0);
+      assert.strictEqual(await client.exists('key1'), 0);
+      assert.strictEqual(await client.exists('key2'), 0);
     });
   });
 
   describe('Edge cases', () => {
     it('should handle very large pipelines', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
       const commandCount = 1000;
 
       for (let i = 0; i < commandCount; i++) {
@@ -600,7 +610,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     it('should handle commands with large payloads', async () => {
       const largeValue = 'x'.repeat(100000); // 100KB value
 
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
       pipeline.set('large_key', largeValue);
       pipeline.get('large_key');
 

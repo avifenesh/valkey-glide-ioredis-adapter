@@ -1,82 +1,35 @@
 // Global test setup to ensure DB cleanup after each test across the suite
+// Minimal global setup; only optional diagnostics when ADAPTER_DIAG_HANDLES=1
 import { afterEach } from 'node:test';
-import pkg from '../dist/index.js';
-import { getStandaloneConfig, getClusterConfig } from './utils/test-config.mjs';
+import { Socket as NetSocket } from 'node:net';
 
-// Global cleanup connection pool to reuse connections
-let globalCleanupClient = null;
-let globalClusterClient = null;
+// No-op afterEach to keep file valid; actual diagnostics only on beforeExit
+afterEach(() => {});
 
-afterEach(async () => {
-  // Optional diagnostics for hanging tests
-  if (process.env.ADAPTER_DIAG_HANDLES === '1') {
-    try {
-      const handles = (process)._getActiveHandles?.() || [];
-      const requests = (process)._getActiveRequests?.() || [];
-      const summarize = (arr) => arr.map(h => (h && h.constructor ? h.constructor.name : typeof h));
-      console.log('[diag] active handles:', summarize(handles));
-      console.log('[diag] active requests:', summarize(requests));
-    } catch {}
-  }
-  // Temporarily disable global cleanup to isolate hanging issue
-  // TODO: Re-enable once connection cleanup is fixed
-});
-
-// Final cleanup when process exits - use exit instead of beforeExit for sync cleanup
-process.on('exit', (code) => {
-  // Synchronous cleanup only
-  try {
-    if (globalCleanupClient) {
-      globalCleanupClient = null;
-    }
-    if (globalClusterClient) {
-      globalClusterClient = null;
-    }
-  } catch {}
-});
-
-// Handle SIGINT and SIGTERM for graceful shutdown
-['SIGINT', 'SIGTERM'].forEach(signal => {
-  process.on(signal, async () => {
-    try {
-      // Clean up global clients
-      if (globalCleanupClient) {
-        try {
-          await globalCleanupClient.quit();
-          if (globalCleanupClient.disconnect) {
-            await globalCleanupClient.disconnect();
-          }
-        } catch {}
-        globalCleanupClient = null;
-      }
-      
-      if (globalClusterClient) {
-        try {
-          await globalClusterClient.quit();
-          if (globalClusterClient.disconnect) {
-            await globalClusterClient.disconnect();
-          }
-        } catch {}
-        globalClusterClient = null;
-      }
-      
-      // Allow time for cleanup
-      await new Promise(resolve => setTimeout(resolve, 100));
-    } catch {}
-    
-    process.exit(0);
-  });
-});
-
-// Diagnostic snapshot before process exits
 if (process.env.ADAPTER_DIAG_HANDLES === '1') {
   process.on('beforeExit', () => {
     try {
       const handles = (process)._getActiveHandles?.() || [];
       const requests = (process)._getActiveRequests?.() || [];
-      const summarize = (arr) => arr.map(h => (h && h.constructor ? h.constructor.name : typeof h));
-      console.log('[diag][beforeExit] active handles:', summarize(handles));
-      console.log('[diag][beforeExit] active requests:', summarize(requests));
+
+      const summarize = (h) => {
+        if (h instanceof NetSocket) {
+          return {
+            type: 'Socket',
+            local: `${h.localAddress}:${h.localPort}`,
+            remote: `${h.remoteAddress}:${h.remotePort}`,
+            connecting: !!h.connecting,
+            destroyed: !!h.destroyed,
+            readable: !!h.readable,
+            writable: !!h.writable,
+          };
+        }
+        // Fallback to constructor name
+        return { type: h && h.constructor ? h.constructor.name : typeof h };
+      };
+
+      console.log('[diag][beforeExit] active handles:', handles.map(summarize));
+      console.log('[diag][beforeExit] active requests:', requests.map(r => r && r.constructor ? r.constructor.name : typeof r));
     } catch {}
   });
 }

@@ -16,6 +16,10 @@ export function getStandaloneConfig() {
     host: process.env.VALKEY_HOST || 'localhost',
     port: parseInt(process.env.VALKEY_PORT || '6379'),
     lazyConnect: true, // Critical for valkey-bundle compatibility
+    // Keep test connects/sniffing fast to avoid hangs
+    connectTimeout: parseInt(process.env.VALKEY_CONNECT_TIMEOUT || '2000', 10),
+    requestTimeout: parseInt(process.env.VALKEY_REQUEST_TIMEOUT || '3000', 10),
+    maxRetriesPerRequest: 1,
   };
 }
 

@@ -45,10 +45,12 @@ describe('Error Handling and Edge Cases', () => {
     });
 
     it('should handle invalid configuration gracefully', async () => {
-      // Test with various invalid configs that should not crash
-      assert.ok(() => {
-        new Redis({ host: '', port: 6379 });
-      })
+      // Ensure constructor does not throw and does not open connections
+      assert.doesNotThrow(() => {
+        const tmp = new Redis({ host: '', port: 6379, lazyConnect: true });
+        // No auto-connect; avoid leaking handles
+        tmp.disconnect();
+      });
     });
   });
 
