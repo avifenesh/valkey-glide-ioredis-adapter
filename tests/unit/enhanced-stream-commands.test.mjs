@@ -15,7 +15,7 @@ describe('Enhanced Stream Commands', () => {
   beforeEach(async () => {
     client = new Redis({
       host: process.env.VALKEY_HOST || 'localhost',
-      port: parseInt(process.env.VALKEY_PORT || '6383'),
+      port: parseInt(process.env.VALKEY_PORT || '6379'),
     });
     await client.connect();
     await client.flushdb();
@@ -194,18 +194,27 @@ describe('Enhanced Stream Commands', () => {
     });
 
     it('should read only new entries with $', async () => {
-      // Start reading from current end
-      const promise = client.xread('BLOCK', 1000, 'STREAMS', streamKey, '$');
+      // Create a second client for adding messages
+      const client2 = new Redis({
+        host: process.env.VALKEY_HOST || 'localhost',
+        port: parseInt(process.env.VALKEY_PORT || '6379'),
+      });
+      await client2.connect();
       
-      // Add new entry after a delay
+      // Start reading from current end
+      const promise = client.xread('BLOCK', 2000, 'STREAMS', streamKey, '$');
+      
+      // Add new entry after a delay using second client
       setTimeout(async () => {
-        await client.xadd(streamKey, '*', 'msg', 'new');
+        await client2.xadd(streamKey, '*', 'msg', 'new');
       }, 100);
       
       const result = await promise;
       assert.ok(result);
       assert.strictEqual(result[0][1].length, 1);
       assert.strictEqual(result[0][1][0][1][1], 'new');
+      
+      await client2.quit();
     });
   });
 
@@ -637,6 +646,9 @@ describe('Enhanced Stream Commands', () => {
       it('should handle JUSTID option', async () => {
         const messages = await client.xreadgroup('GROUP', 'mygroup', 'consumer1', 'STREAMS', streamKey, '>');
         const messageId = messages[0][1][0][0];
+        
+        // Wait for message to become idle
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         const claimed = await client.xclaim(streamKey, 'mygroup', 'consumer2', 10, messageId, 'JUSTID');
         

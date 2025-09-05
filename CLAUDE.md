@@ -96,7 +96,6 @@ ioredis-compatible Results
 **✅ Production Ready Features:**
 - All Valkey data types (String, Hash, List, Set, ZSet) - 100% functional
 - ValkeyJSON module support - 29 commands implemented
-  
 - Bull/BullMQ integration - Complete compatibility with createClient factory
 - Express sessions, Socket.IO, rate limiting - All validated
 - Transaction support (MULTI/EXEC, WATCH/UNWATCH)
@@ -138,7 +137,6 @@ ioredis-compatible Results
 - ⚠️ TEMPORARILY REMOVED - Search functionality removed in commit abae1d8 until GLIDE supports valkey-bundle syntax
 - Previously had 18/20 tests passing with comprehensive FT command coverage
 - Will be re-enabled when GLIDE adds proper valkey-bundle module support
-
 
 ## Development Patterns
 

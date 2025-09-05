@@ -25,6 +25,8 @@
     "MIGRATION.md"
   ],
   "scripts": {
+    "pretest": "npm run build",
+    "pretest:unit": "npm run build",
     "build": "tsc",
     "build:watch": "tsc --watch",
     "test": "./scripts/test-runner.sh",
