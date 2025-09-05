@@ -356,10 +356,8 @@ describePipe('Pipeline Operations (ioredis compatibility)', () => {
     }
     // Allow previous suite teardown to fully settle
     await new Promise(resolve => setTimeout(resolve, 100));
-    console.log('[pipeline-suite] before: ready');
     // Allow previous suite teardown to fully settle
     await new Promise(resolve => setTimeout(resolve, 100));
-    console.log('[pipeline-suite] before: ready');
   });
 
   after(async () => {
@@ -396,15 +394,11 @@ describePipe('Pipeline Operations (ioredis compatibility)', () => {
       requestTimeout: config.requestTimeout ?? 3000,
       maxRetriesPerRequest: 1,
     });
-    console.log('[pipeline-suite] beforeEach: connecting...');
-    console.log('[pipeline-suite] beforeEach: connecting...');
     // Bound connect to avoid suite-level hangs if teardown races
     await Promise.race([
       client.connect(),
       new Promise((_, reject) => setTimeout(() => reject(new Error('connect timeout in test')), 4000))
     ]);
-    console.log('[pipeline-suite] beforeEach: connected');
-    console.log('[pipeline-suite] beforeEach: connected');
 
     // Clean up any existing test data
     try {
@@ -452,12 +446,10 @@ describePipe('Pipeline Operations (ioredis compatibility)', () => {
       pipeline.get('key1');
       pipeline.get('key2');
 
-      console.log('[pipeline-suite] exec starting...');
       const results = await Promise.race([
         pipeline.exec(),
         new Promise((_, reject) => setTimeout(() => reject(new Error('pipeline exec timeout')), 8000))
       ]);
-      console.log('[pipeline-suite] exec finished');
 
       // ioredis returns [[error, result], [error, result], ...]
       assert.deepStrictEqual(results, [
