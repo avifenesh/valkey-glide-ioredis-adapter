@@ -25,7 +25,9 @@ export GLOBAL_TEST_SETUP=1
 export ADAPTER_DIAG_HANDLES=${ADAPTER_DIAG_HANDLES:-1}
 
 # Enable source maps for better TS remapping in coverage
-export NODE_OPTIONS="--enable-source-maps ${NODE_OPTIONS}"
+# Set max listeners to avoid warnings with many tests
+export NODE_OPTIONS="--enable-source-maps --max-old-space-size=4096 ${NODE_OPTIONS}"
+export NODE_NO_WARNINGS=1
 
 # Require Node >= 18 for the built-in test runner
 NODE_VERSION=$(node -v | sed 's/^v//; s/\..*$//')
@@ -41,8 +43,8 @@ if [ $# -gt 0 ]; then
   TEST_FILES="$@"
   echo -e "${YELLOW}Running specified test files: $TEST_FILES${NC}"
 else
-  # Find all .test.mjs files (only .test.mjs to avoid TS runtime)
-  TEST_FILES=$(find tests -type f -name "*.test.mjs" | sort)
+  # Find all .test.mjs files (only .test.mjs to avoid TS runtime, excluding hidden dirs)
+  TEST_FILES=$(find tests -type f -name "*.test.mjs" -not -path "*/.*" | sort)
   echo -e "${YELLOW}Running all test files${NC}"
 fi
 
@@ -51,12 +53,17 @@ if [ -z "$TEST_FILES" ]; then
   TEST_EXIT=0
 else
   set +e
-  GLOBAL_IMPORT="./tests/global-setup.mjs"
+  # Conditionally include global diagnostics import
+  OPT_IMPORT=""
+  if [ "$ADAPTER_DIAG_HANDLES" = "1" ]; then
+    OPT_IMPORT="--import ./tests/global-setup.mjs"
+  fi
+
   if [ "$COVERAGE" = "1" ] && command -v c8 &> /dev/null; then
-    c8 --silent node --test --test-concurrency=1 --import "$GLOBAL_IMPORT" $TEST_FILES
+    c8 node --test --test-concurrency=1 $OPT_IMPORT $TEST_FILES
     TEST_EXIT=$?
   else
-    node --test --test-concurrency=1 --import "$GLOBAL_IMPORT" $TEST_FILES
+    node --test --test-concurrency=1 $OPT_IMPORT $TEST_FILES
     TEST_EXIT=$?
   fi
   set -e

@@ -29,6 +29,8 @@
     "build:watch": "tsc --watch",
     "test": "./scripts/test-runner.sh",
     "test:cov": "COVERAGE=1 ./scripts/test-runner.sh",
+    "test:original": "./scripts/test-runner.sh",
+    "test:batches": "./scripts/test-runner-batch.sh",
     "test:types": "tsc -p tests/types/tsconfig.json --noEmit",
     "test:single": "node --test",
     "lint": "eslint src tests --ext .ts",
