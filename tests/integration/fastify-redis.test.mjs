@@ -26,7 +26,7 @@ describe('Fastify Redis Plugin Compatibility', () => {
       // Fastify plugin typically creates client like this
       client = new Redis({
         host: process.env.VALKEY_HOST || 'localhost',
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
+        port: parseInt(process.env.VALKEY_PORT || '6379'),
         family: 4,
         // Common fastify options
         lazyConnect: false,
@@ -100,7 +100,7 @@ describe('Fastify Redis Plugin Compatibility', () => {
     beforeEach(async () => {
       client = new Redis({
         host: process.env.VALKEY_HOST || 'localhost',
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
+        port: parseInt(process.env.VALKEY_PORT || '6379'),
       });
       await client.connect();
     });
