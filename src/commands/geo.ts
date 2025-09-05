@@ -131,7 +131,52 @@ export async function geosearch(
     shape,
     resultOptions
   );
-  return res.map((row: any) => row);
+  
+  // Format results to match ioredis expectations
+  return res.map((row: any) => {
+    // If result has additional data (coordinates, distance, hash)
+    if (Array.isArray(row) && row.length === 2) {
+      const [member, data] = row;
+      
+      // Handle multiple options (e.g., WITHDIST + WITHCOORD)
+      if (Array.isArray(data) && data.length > 1) {
+        // Multiple options requested - flatten the result
+        const result = [member];
+        for (const item of data) {
+          if (typeof item === 'number' || typeof item === 'string') {
+            // Distance or hash - convert to string
+            result.push(String(item));
+          } else if (Array.isArray(item)) {
+            // Coordinates - keep as array
+            result.push(item);
+          } else {
+            result.push(item);
+          }
+        }
+        return result;
+      }
+      
+      // Fix single data format
+      if (Array.isArray(data) && data.length === 1) {
+        const value = data[0];
+        
+        // Coordinates: [[lon, lat]] -> [lon, lat]
+        if (Array.isArray(value) && value.length === 2 && typeof value[0] === 'number') {
+          return [member, value];
+        }
+        
+        // Distance or Hash: [value] -> "value" (as string)
+        if (typeof value === 'number' || typeof value === 'string') {
+          return [member, String(value)];
+        }
+      }
+      
+      // Keep other formats as-is
+      return row;
+    }
+    
+    return row;
+  });
 }
 
 export async function geosearchstore(
