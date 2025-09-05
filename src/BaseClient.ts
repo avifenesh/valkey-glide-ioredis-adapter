@@ -2038,13 +2038,33 @@ export abstract class BaseClient extends EventEmitter {
     const sub = String(subcommand).toUpperCase();
     if (sub === 'STREAM') {
       const [key, full] = args;
-      return await streamCommands.xinfoStream(this, key, full);
+      const info = await streamCommands.xinfoStream(this, key, full);
+      // Convert object map to array of [field, value] pairs for ioredis compatibility
+      if (info && typeof info === 'object' && !Array.isArray(info)) {
+        const arr: any[] = [];
+        for (const [k, v] of Object.entries(info)) arr.push(k, v as any);
+        return arr;
+      }
+      return info;
     } else if (sub === 'GROUPS') {
       const [key] = args;
-      return await streamCommands.xinfoGroups(this, key);
+      const groups = await streamCommands.xinfoGroups(this, key);
+      // ioredis returns each group as an array of [field, value]
+      return (groups || []).map((g: any) => {
+        const obj: any = { name: g.name || g.groupName || g.id || g.GroupName || 'group', ...g };
+        const arr: any[] = [];
+        for (const [k, v] of Object.entries(obj)) arr.push(k, v as any);
+        return arr;
+      });
     } else if (sub === 'CONSUMERS') {
       const [key, group] = args;
-      return await streamCommands.xinfoConsumers(this, key, group);
+      const consumers = await streamCommands.xinfoConsumers(this, key, group);
+      // ioredis returns each consumer as an array of [field, value]
+      return (consumers || []).map((c: any) => {
+        const arr: any[] = [];
+        for (const [k, v] of Object.entries(c)) arr.push(k, v as any);
+        return arr;
+      });
     }
     // Fallback to raw command
     const command = ['XINFO', sub, ...args.map(a => String(a))];
@@ -3028,7 +3048,7 @@ export abstract class BaseClient extends EventEmitter {
     return await streamCommands.xlen(this, key);
   }
 
-  async xread(...args: any[]): Promise<any[]> {
+  async xread(...args: any[]): Promise<any[] | null> {
     return await streamCommands.xread(this, ...args);
   }
 
@@ -3036,8 +3056,15 @@ export abstract class BaseClient extends EventEmitter {
     key: RedisKey,
     start: string = '-',
     end: string = '+',
-    count?: number
+    ...args: any[]
   ): Promise<any[]> {
+    // Handle both xrange(key, start, end, count) and xrange(key, start, end, 'COUNT', count)
+    let count: number | undefined;
+    if (args.length === 1 && typeof args[0] === 'number') {
+      count = args[0];
+    } else if (args.length === 2 && String(args[0]).toUpperCase() === 'COUNT') {
+      count = Number(args[1]);
+    }
     return await streamCommands.xrange(this, key, start, end, count);
   }
 
@@ -3045,8 +3072,15 @@ export abstract class BaseClient extends EventEmitter {
     key: RedisKey,
     start: string = '+',
     end: string = '-',
-    count?: number
+    ...args: any[]
   ): Promise<any[]> {
+    // Handle both xrevrange(key, start, end, count) and xrevrange(key, start, end, 'COUNT', count)
+    let count: number | undefined;
+    if (args.length === 1 && typeof args[0] === 'number') {
+      count = args[0];
+    } else if (args.length === 2 && String(args[0]).toUpperCase() === 'COUNT') {
+      count = Number(args[1]);
+    }
     return await streamCommands.xrevrange(this, key, start, end, count);
   }
 
@@ -3084,7 +3118,7 @@ export abstract class BaseClient extends EventEmitter {
     group: string,
     consumer: string,
     ...args: any[]
-  ): Promise<any[]> {
+  ): Promise<any[] | null> {
     return await streamCommands.xreadgroup(this, group, consumer, ...args);
   }
 
@@ -3098,13 +3132,40 @@ export abstract class BaseClient extends EventEmitter {
     consumer: string,
     minIdleTime: number,
     ids: string[] | string,
-    options?: any
+    ...args: any[]
   ): Promise<any> {
-    // Support ioredis-style 'JUSTID' flag
-    if (
-      (typeof options === 'string' && String(options).toUpperCase() === 'JUSTID') ||
-      (Array.isArray(options) && options.map((s: any) => String(s).toUpperCase()).includes('JUSTID'))
-    ) {
+    // Parse ioredis-style options from variadic arguments
+    let justId = false;
+    let options: any = {};
+    
+    for (const arg of args) {
+      const upperArg = String(arg).toUpperCase();
+      if (upperArg === 'JUSTID') {
+        justId = true;
+      } else if (upperArg === 'FORCE') {
+        options.isForce = true;
+      } else if (upperArg === 'IDLE') {
+        // Next arg should be the idle time
+        const idx = args.indexOf(arg);
+        if (idx < args.length - 1) {
+          options.idle = Number(args[idx + 1]);
+        }
+      } else if (upperArg === 'TIME') {
+        // Next arg should be the unix time
+        const idx = args.indexOf(arg);
+        if (idx < args.length - 1) {
+          options.idleUnixTime = Number(args[idx + 1]);
+        }
+      } else if (upperArg === 'RETRYCOUNT') {
+        // Next arg should be the retry count
+        const idx = args.indexOf(arg);
+        if (idx < args.length - 1) {
+          options.retryCount = Number(args[idx + 1]);
+        }
+      }
+    }
+    
+    if (justId) {
       return await streamCommands.xclaimJustId(
         this,
         key,
@@ -3112,9 +3173,10 @@ export abstract class BaseClient extends EventEmitter {
         consumer,
         minIdleTime,
         ids,
-        undefined
+        Object.keys(options).length > 0 ? options : undefined
       );
     }
+    
     return await streamCommands.xclaim(
       this,
       key,
@@ -3122,7 +3184,7 @@ export abstract class BaseClient extends EventEmitter {
       consumer,
       minIdleTime,
       ids,
-      options
+      Object.keys(options).length > 0 ? options : undefined
     );
   }
 

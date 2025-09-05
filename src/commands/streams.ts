@@ -9,60 +9,72 @@ export async function xadd(
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
 
-  const cmd: string[] = ['XADD', normalizedKey];
+  // Translate ioredis-style args to GLIDE xadd(values, options)
   let i = 0;
+  const addOptions: any = {};
+  let trimOptions: any | undefined;
 
-  // Parse optional modifiers before ID
   while (i < argsIn.length) {
-    const t = String(argsIn[i]);
-    const token = t.toUpperCase();
-
+    const token = String(argsIn[i]).toUpperCase();
     if (token === 'NOMKSTREAM') {
-      cmd.push('NOMKSTREAM');
-      i++;
-      continue;
+      addOptions.makeStream = false; i++; continue;
     }
-
     if (token === 'MAXLEN' || token === 'MINID') {
-      cmd.push(token);
+      const method = token === 'MAXLEN' ? 'maxlen' : 'minid';
       i++;
-      if (i < argsIn.length) {
-        const mod = String(argsIn[i]);
-        if (mod === '=' || mod === '~') {
-          cmd.push(mod);
-          i++;
-        }
+      let exact = true; // Default to exact trimming when no modifier specified
+      if (i < argsIn.length && (argsIn[i] === '=' || argsIn[i] === '~')) {
+        exact = argsIn[i] === '='; i++;
       }
-      if (i < argsIn.length) {
-        cmd.push(String(argsIn[i++]));
-      }
+      const threshold = argsIn[i++];
+      let limit: number | undefined;
       if (i + 1 < argsIn.length && String(argsIn[i]).toUpperCase() === 'LIMIT') {
-        cmd.push('LIMIT', String(argsIn[i + 1]));
-        i += 2;
+        limit = Number(argsIn[i + 1]); i += 2;
       }
+      trimOptions = { method, exact, threshold: method === 'maxlen' ? Number(threshold) : String(threshold) };
+      if (limit !== undefined) trimOptions.limit = limit;
       continue;
     }
-
-    // First non-modifier token is the ID
     break;
   }
 
-  if (i >= argsIn.length) {
-    throw new Error('XADD requires an ID and field/value pairs');
-  }
-
+  // ID
+  if (i >= argsIn.length) throw new Error('XADD requires an ID and field/value pairs');
   const id = String(argsIn[i++]);
-  cmd.push(id);
+  if (id !== '*') addOptions.id = id;
 
-  const fields = argsIn.slice(i).map(v => String(v));
-  if (fields.length % 2 !== 0) {
-    throw new Error('XADD requires field/value pairs');
+  // Field-value pairs
+  const remaining = argsIn.slice(i);
+  if (remaining.length % 2 !== 0) throw new Error('XADD requires field/value pairs');
+  const values: [string, string][] = [];
+  for (let j = 0; j < remaining.length; j += 2) {
+    values.push([String(remaining[j]), String(remaining[j + 1])]);
   }
-  cmd.push(...fields);
+  if (trimOptions) addOptions.trim = trimOptions;
 
-  const result = await (client as any).glideClient.customCommand(cmd);
-  if (result == null) return null;
-  return String(result);
+  try {
+    const result = await (client as any).glideClient.xadd(normalizedKey, values, addOptions);
+    return result == null ? null : String(result);
+  } catch (err: any) {
+    // Some servers may reject certain trim+id combinations (e.g., MINID with auto-id)
+    // Fallback: perform trim first, then add without trim options
+    const msg = String(err?.message || '');
+    if (trimOptions && /Invalid stream ID/i.test(msg)) {
+      try {
+        await (client as any).glideClient.xtrim(normalizedKey, trimOptions);
+        // Only pass id if it was explicitly set (not auto-generated)
+        const fallbackOptions: any = { makeStream: addOptions.makeStream };
+        if (addOptions.id !== undefined) {
+          fallbackOptions.id = addOptions.id;
+        }
+        const result = await (client as any).glideClient.xadd(normalizedKey, values, fallbackOptions);
+        return result == null ? null : String(result);
+      } catch {
+        throw err;
+      }
+    }
+    throw err;
+  }
 }
 
 export async function xlen(client: BaseClient, key: RedisKey): Promise<number> {
@@ -74,17 +86,24 @@ export async function xlen(client: BaseClient, key: RedisKey): Promise<number> {
 export async function xread(
   client: BaseClient,
   ...args: any[]
-): Promise<any[]> {
+): Promise<any[] | null> {
   await (client as any).ensureConnection();
-  let streamsIndex = args.findIndex(
-    arg => String(arg).toUpperCase() === 'STREAMS'
-  );
+  const upperArgs = args.map(a => (typeof a === 'string' ? a.toUpperCase() : a));
+  const streamsIndex = upperArgs.indexOf('STREAMS');
+  const options: any = {};
+  const optsEnd = streamsIndex === -1 ? args.length : streamsIndex;
+  for (let i = 0; i < optsEnd; i++) {
+    const token = String(upperArgs[i]);
+    if (token === 'COUNT' && i + 1 < optsEnd) {
+      options.count = Number(args[i + 1]);
+      i++;
+    } else if (token === 'BLOCK' && i + 1 < optsEnd) {
+      options.block = Number(args[i + 1]);
+      i++;
+    }
+  }
   if (streamsIndex === -1) {
-    const result = await (client as any).glideClient.customCommand([
-      'XREAD',
-      ...args.map(arg => String(arg)),
-    ]);
-    return Array.isArray(result) ? result : [];
+    return null;
   }
 
   const streamArgs = args.slice(streamsIndex + 1);
@@ -103,15 +122,38 @@ export async function xread(
     keysAndIds[name] = id;
   }
 
-  const result = await (client as any).glideClient.xread(keysAndIds);
-  if (!result || typeof result !== 'object') return [];
-  const ioredisResult: any[] = [];
-  for (const [streamName, entries] of Object.entries(result)) {
-    if (entries && Array.isArray(entries)) {
-      ioredisResult.push([streamName, entries]);
+  // Call GLIDE xread directly without timeout race
+  // GLIDE handles the blocking internally and will return null on timeout
+  const result = await (client as any).glideClient.xread(keysAndIds, options);
+  if (result == null) return null;
+  const out: any[] = [];
+  const pushStream = (name: string, val: any) => {
+    let entries: any[] = [];
+    for (const [id, pairs] of Object.entries(val as Record<string, any>)) {
+      const flat: any[] = Array.isArray(pairs)
+        ? (pairs as any[]).flatMap((kv: any[]) => [String(kv[0]), String(kv[1])])
+        : [];
+      entries.push([String(id), flat]);
+    }
+    // Enforce COUNT semantics: at most N entries per stream
+    if (options.count !== undefined) {
+      const n = Math.max(0, Number(options.count));
+      entries = entries.slice(0, n);
+    }
+    out.push([name, entries]);
+  };
+  if (Array.isArray(result)) {
+    for (const item of result as any[]) {
+      if (item && typeof item === 'object' && 'key' in item && 'value' in item) {
+        pushStream(String(item.key), item.value || {});
+      }
+    }
+  } else if (typeof result === 'object') {
+    for (const [name, val] of Object.entries(result as Record<string, any>)) {
+      pushStream(String(name), val || {});
     }
   }
-  return ioredisResult;
+  return out;
 }
 
 export async function xrange(
@@ -123,14 +165,23 @@ export async function xrange(
 ): Promise<any[]> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
+  const toId = (v: any, isStart: boolean) => {
+    if (typeof v === 'number') {
+      const ms = Math.floor(v);
+      return isStart ? `${ms}-0` : `${ms}-999999`;
+    }
+    return String(v);
+  };
+  // GLIDE expects InfBoundary enum values ('+' and '-') directly for infinite bounds
+  // or objects with value and isInclusive for specific bounds
   const startBoundary =
     start === '-'
-      ? { value: '-', isInclusive: false }
-      : { value: start, isInclusive: true };
+      ? '-'  // InfBoundary.NegativeInfinity
+      : { value: toId(start, true), isInclusive: true };
   const endBoundary =
     end === '+'
-      ? { value: '+', isInclusive: false }
-      : { value: end, isInclusive: true };
+      ? '+'  // InfBoundary.PositiveInfinity
+      : { value: toId(end, false), isInclusive: true };
   const options = count !== undefined ? { count } : undefined;
   const result = await (client as any).glideClient.xrange(
     normalizedKey,
@@ -138,8 +189,27 @@ export async function xrange(
     endBoundary,
     options
   );
-  if (!result || !Array.isArray(result)) return [];
-  return result;
+  if (!result) return [];
+  
+  // GLIDE returns an object/dictionary: { id: [[field, value], ...], ... }
+  // Convert to ioredis format: [[id, [field, value, ...]], ...]
+  const entries: any[] = [];
+  if (typeof result === 'object' && !Array.isArray(result)) {
+    for (const [id, fieldValuePairs] of Object.entries(result)) {
+      const pairs = Array.isArray(fieldValuePairs) ? fieldValuePairs : [];
+      const flat = pairs.flatMap((kv: any[]) => [String(kv[0]), String(kv[1])]);
+      entries.push([String(id), flat]);
+    }
+  } else if (Array.isArray(result)) {
+    // Fallback for array format if GLIDE changes
+    return (result as any[]).map((entry: any) => {
+      const id = String(entry[0]);
+      const pairs = Array.isArray(entry[1]) ? entry[1] : [];
+      const flat = pairs.flatMap((kv: any[]) => [String(kv[0]), String(kv[1])]);
+      return [id, flat];
+    });
+  }
+  return entries;
 }
 
 export async function xrevrange(
@@ -151,14 +221,22 @@ export async function xrevrange(
 ): Promise<any[]> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
+  const toId = (v: any, isStart: boolean) => {
+    if (typeof v === 'number') {
+      const ms = Math.floor(v);
+      return isStart ? `${ms}-999999` : `${ms}-0`;
+    }
+    return String(v);
+  };
+  // GLIDE expects InfBoundary enum values ('+' and '-') directly for infinite bounds
   const startBoundary =
     start === '+'
-      ? { value: '+', isInclusive: false }
-      : { value: start, isInclusive: true };
+      ? '+'  // InfBoundary.PositiveInfinity
+      : { value: toId(start, true), isInclusive: true };
   const endBoundary =
     end === '-'
-      ? { value: '-', isInclusive: false }
-      : { value: end, isInclusive: true };
+      ? '-'  // InfBoundary.NegativeInfinity
+      : { value: toId(end, false), isInclusive: true };
   const options = count !== undefined ? { count } : undefined;
   try {
     const result = await (client as any).glideClient.xrevrange(
@@ -167,8 +245,27 @@ export async function xrevrange(
       endBoundary,
       options
     );
-    if (!result || !Array.isArray(result)) return [];
-    return result;
+    if (!result) return [];
+    
+    // GLIDE returns an object/dictionary: { id: [[field, value], ...], ... }
+    // Convert to ioredis format: [[id, [field, value, ...]], ...]
+    const entries: any[] = [];
+    if (typeof result === 'object' && !Array.isArray(result)) {
+      for (const [id, fieldValuePairs] of Object.entries(result)) {
+        const pairs = Array.isArray(fieldValuePairs) ? fieldValuePairs : [];
+        const flat = pairs.flatMap((kv: any[]) => [String(kv[0]), String(kv[1])]);
+        entries.push([String(id), flat]);
+      }
+    } else if (Array.isArray(result)) {
+      // Fallback for array format if GLIDE changes
+      return (result as any[]).map((entry: any) => {
+        const id = String(entry[0]);
+        const pairs = Array.isArray(entry[1]) ? entry[1] : [];
+        const flat = pairs.flatMap((kv: any[]) => [String(kv[0]), String(kv[1])]);
+        return [id, flat];
+      });
+    }
+    return entries;
   } catch {
     const args = ['XREVRANGE', normalizedKey, start, end];
     if (count !== undefined) args.push('COUNT', String(count));
@@ -184,12 +281,7 @@ export async function xdel(
 ): Promise<number> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
-  const result = await (client as any).glideClient.customCommand([
-    'XDEL',
-    normalizedKey,
-    ...ids,
-  ]);
-  return Number(result) || 0;
+  return await (client as any).glideClient.xdel(normalizedKey, ids);
 }
 
 export async function xtrim(
@@ -202,7 +294,7 @@ export async function xtrim(
   // Parse XTRIM [MAXLEN|MINID] [=|~] threshold [LIMIT count]
   if (args.length === 0) return 0;
   const methodToken = String(args[0]).toUpperCase();
-  let exact = false;
+  let exact = true; // Default to exact trimming when no modifier specified
   let idx = 1;
   if (idx < args.length) {
     const t = String(args[idx]);
@@ -239,12 +331,23 @@ export async function xgroup(
   const normalizedKey = (client as any).normalizeKey(key);
   const act = String(action).toUpperCase();
   if (act === 'CREATE') {
-    const id = String(args[0] ?? '$');
-    const options: any = {};
-    // Optional MKSTREAM flag
-    if (args.map(a => String(a).toUpperCase()).includes('MKSTREAM')) {
-      options.createStream = true;
+    // Parse id and MKSTREAM in any order
+    let mkstream = false;
+    let parsedId: string | undefined;
+    for (let i = 0; i < args.length; i++) {
+      const tok = String(args[i]).toUpperCase();
+      if (tok === 'MKSTREAM') {
+        mkstream = true;
+        continue;
+      }
+      if (parsedId === undefined) {
+        parsedId = String(args[i]);
+      }
     }
+    let id = String(parsedId ?? '$');
+    if (id === '0') id = '0-0';
+    const options: any = {};
+    if (mkstream) options.mkStream = true;
     return await (client as any).glideClient.xgroupCreate(
       normalizedKey,
       group,
@@ -252,14 +355,16 @@ export async function xgroup(
       options
     );
   } else if (act === 'DESTROY') {
-    return await (client as any).glideClient.xgroupDestroy(normalizedKey, group);
+    const ok: boolean = await (client as any).glideClient.xgroupDestroy(normalizedKey, group);
+    return ok ? 1 : 0;
   } else if (act === 'CREATECONSUMER') {
     const consumer = String(args[0]);
-    return await (client as any).glideClient.xgroupCreateConsumer(
+    const result = await (client as any).glideClient.xgroupCreateConsumer(
       normalizedKey,
       group,
       consumer
     );
+    return result ? 1 : 0;
   } else if (act === 'DELCONSUMER') {
     const consumer = String(args[0]);
     return await (client as any).glideClient.xgroupDelConsumer(
@@ -291,8 +396,16 @@ export async function xreadgroup(
   group: string,
   consumer: string,
   ...args: any[]
-): Promise<any[]> {
+): Promise<any[] | null> {
   await (client as any).ensureConnection();
+  // Support ioredis call style: xreadgroup('GROUP', group, consumer, ...)
+  if (String(group).toUpperCase() === 'GROUP') {
+    const newGroup = String(consumer);
+    const newConsumer = String(args[0] ?? '');
+    group = newGroup;
+    consumer = newConsumer;
+    args = args.slice(1);
+  }
   let streamsIndex = args.findIndex(
     arg => String(arg).toUpperCase() === 'STREAMS'
   );
@@ -333,18 +446,46 @@ export async function xreadgroup(
     if (typeof name !== 'string' || typeof id !== 'string') continue;
     keysAndIds[name] = id;
   }
-  const result = await (client as any).glideClient.xreadgroup(
-    group,
-    consumer,
-    keysAndIds,
-    options
-  );
-  if (!result || typeof result !== 'object') return [];
-  const ioredisResult: any[] = [];
-  for (const [streamName, entries] of Object.entries(result)) {
-    ioredisResult.push([streamName, entries]);
+  let result: any;
+  if (options.block !== undefined) {
+    const blockMs = Math.max(0, Number(options.block));
+    result = await Promise.race([
+      (client as any).glideClient.xreadgroup(group, consumer, keysAndIds, options),
+      new Promise(resolve => setTimeout(() => resolve(null), blockMs + 50)),
+    ]);
+  } else {
+    result = await (client as any).glideClient.xreadgroup(group, consumer, keysAndIds, options);
   }
-  return ioredisResult;
+  if (result == null) return null;
+  const out: any[] = [];
+  const pushStream = (name: string, val: any) => {
+    let entries: any[] = [];
+    for (const [id, pairs] of Object.entries(val as Record<string, any>)) {
+      if (pairs === null) {
+        entries.push([String(id), null]);
+      } else if (Array.isArray(pairs)) {
+        const flat = (pairs as any[]).flatMap((kv: any[]) => [String(kv[0]), String(kv[1])]);
+        entries.push([String(id), flat]);
+      }
+    }
+    if (options.count !== undefined) {
+      const n = Math.max(0, Number(options.count));
+      entries = entries.slice(0, n);
+    }
+    out.push([name, entries]);
+  };
+  if (Array.isArray(result)) {
+    for (const item of result as any[]) {
+      if (item && typeof item === 'object' && 'key' in item && 'value' in item) {
+        pushStream(String(item.key), item.value || {});
+      }
+    }
+  } else if (typeof result === 'object') {
+    for (const [name, val] of Object.entries(result as Record<string, any>)) {
+      pushStream(String(name), val || {});
+    }
+  }
+  return out;
 }
 
 export async function xack(
@@ -375,7 +516,7 @@ export async function xclaim(
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const idList = Array.isArray(ids) ? ids : [ids];
-  return await (client as any).glideClient.xclaim(
+  const result = await (client as any).glideClient.xclaim(
     normalizedKey,
     group,
     consumer,
@@ -383,6 +524,21 @@ export async function xclaim(
     idList,
     options
   );
+  
+  // Convert GLIDE object format to ioredis array format
+  // GLIDE returns: { id: [[field, value], ...], ... }
+  // ioredis expects: [[id, [field, value, ...]], ...]
+  if (result && typeof result === 'object' && !Array.isArray(result)) {
+    const entries: any[] = [];
+    for (const [id, fieldValuePairs] of Object.entries(result)) {
+      const pairs = Array.isArray(fieldValuePairs) ? fieldValuePairs : [];
+      const flat = pairs.flatMap((kv: any[]) => [String(kv[0]), String(kv[1])]);
+      entries.push([String(id), flat]);
+    }
+    return entries;
+  }
+  
+  return result;
 }
 
 export async function xclaimJustId(
@@ -425,7 +581,7 @@ export async function xautoclaim(
   const normalizedKey = (client as any).normalizeKey(key);
   const options: any = {};
   if (count !== undefined) options.count = count;
-  return await (client as any).glideClient.xautoclaim(
+  const result = await (client as any).glideClient.xautoclaim(
     normalizedKey,
     group,
     consumer,
@@ -433,6 +589,25 @@ export async function xautoclaim(
     String(start),
     options
   );
+  
+  // Convert GLIDE format to ioredis format
+  // GLIDE returns: [nextId, {id: [[field, value], ...], ...}, deletedIds]
+  // ioredis expects: [nextId, [[id, [field, value, ...]], ...]]
+  if (Array.isArray(result) && result.length >= 2) {
+    const [nextId, claimedMessages] = result;
+    
+    if (claimedMessages && typeof claimedMessages === 'object' && !Array.isArray(claimedMessages)) {
+      const entries: any[] = [];
+      for (const [id, fieldValuePairs] of Object.entries(claimedMessages)) {
+        const pairs = Array.isArray(fieldValuePairs) ? fieldValuePairs : [];
+        const flat = pairs.flatMap((kv: any[]) => [String(kv[0]), String(kv[1])]);
+        entries.push([String(id), flat]);
+      }
+      return [nextId, entries];
+    }
+  }
+  
+  return result;
 }
 
 export async function xautoclaimJustId(
