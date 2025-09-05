@@ -1,6 +1,6 @@
 import { BaseClient } from '../BaseClient';
 import { RedisKey } from '../types';
-import { ConditionalChange } from '@valkey/valkey-glide/build-ts/Commands';
+import { ConditionalChange } from '@valkey/valkey-glide';
 
 export async function geoadd(
   client: BaseClient,
