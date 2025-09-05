@@ -3257,49 +3257,241 @@ export abstract class BaseClient extends EventEmitter {
 
   async geosearch(
     key: RedisKey,
-    from: { member?: string; longitude?: number; latitude?: number },
-    by: {
-      radius?: number;
-      unit?: 'm' | 'km' | 'mi' | 'ft';
-      width?: number;
-      height?: number;
-    },
-    options?: {
-      withCoord?: boolean;
-      withDist?: boolean;
-      withHash?: boolean;
-      count?: number;
-      any?: boolean;
-      order?: 'ASC' | 'DESC';
-    }
+    ...args: any[]
   ): Promise<any[]> {
+    // Overload to support both token-based Redis syntax and structured options
+    if (typeof args[0] === 'string') {
+      // Token-based: FROMMEMBER <member> | FROMLONLAT <lon> <lat>, BYRADIUS r unit | BYBOX w h unit, [WITHCOORD] [WITHDIST] [WITHHASH] [COUNT n [ANY]] [ASC|DESC]
+      const upper = args.map(a => (typeof a === 'string' ? a.toUpperCase() : a));
+      let idx = 0;
+      const fromToken = upper[idx++];
+      let from: any = {};
+      if (fromToken === 'FROMMEMBER') {
+        from.member = String(args[idx++]);
+      } else if (fromToken === 'FROMLONLAT') {
+        const longitude = Number(args[idx++]);
+        const latitude = Number(args[idx++]);
+        from = { longitude, latitude };
+      } else {
+        throw new Error('Invalid geosearch origin');
+      }
+
+      const byToken = upper[idx++];
+      let by: any = {};
+      if (byToken === 'BYRADIUS') {
+        by.radius = Number(args[idx++]);
+        by.unit = String(args[idx++]);
+      } else if (byToken === 'BYBOX') {
+        by.width = Number(args[idx++]);
+        by.height = Number(args[idx++]);
+        by.unit = String(args[idx++]);
+      } else {
+        throw new Error('Invalid geosearch shape');
+      }
+
+      const options: any = {};
+      while (idx < args.length) {
+        const token = upper[idx];
+        if (token === 'WITHCOORD') {
+          options.withCoord = true;
+          idx++;
+        } else if (token === 'WITHDIST') {
+          options.withDist = true;
+          idx++;
+        } else if (token === 'WITHHASH') {
+          options.withHash = true;
+          idx++;
+        } else if (token === 'COUNT') {
+          options.count = Number(args[idx + 1]);
+          idx += 2;
+          if (upper[idx] === 'ANY') {
+            options.any = true;
+            idx++;
+          }
+        } else if (token === 'ASC' || token === 'DESC') {
+          options.order = token as 'ASC' | 'DESC';
+          idx++;
+        } else {
+          // Unknown token; stop
+          break;
+        }
+      }
+      const fromObj = from.member ? { member: from.member } : { longitude: from.longitude, latitude: from.latitude };
+      return await geoCommands.geosearch(this, key, fromObj, by, options);
+    }
+
+    // Structured form
+    const [from, by, options] = args;
     return await geoCommands.geosearch(this, key, from, by, options);
   }
 
   async geosearchstore(
     destination: RedisKey,
     source: RedisKey,
-    from: { member?: string; longitude?: number; latitude?: number },
-    by: {
-      radius?: number;
-      unit?: 'm' | 'km' | 'mi' | 'ft';
-      width?: number;
-      height?: number;
-    },
-    options?: {
-      order?: 'ASC' | 'DESC';
-      count?: number;
-      any?: boolean;
-      storeDist?: boolean;
-    }
+    ...args: any[]
   ): Promise<number> {
-    return await geoCommands.geosearchstore(
-      this,
-      destination,
-      source,
-      from,
-      by,
-      options
+    if (typeof args[0] === 'string') {
+      // Token-based
+      const upper = args.map(a => (typeof a === 'string' ? a.toUpperCase() : a));
+      let idx = 0;
+      const fromToken = upper[idx++];
+      let from: any = {};
+      if (fromToken === 'FROMMEMBER') {
+        from.member = String(args[idx++]);
+      } else if (fromToken === 'FROMLONLAT') {
+        from.longitude = Number(args[idx++]);
+        from.latitude = Number(args[idx++]);
+      } else {
+        throw new Error('Invalid geosearchstore origin');
+      }
+      const byToken = upper[idx++];
+      const by: any = {};
+      if (byToken === 'BYRADIUS') {
+        by.radius = Number(args[idx++]);
+        by.unit = String(args[idx++]);
+      } else if (byToken === 'BYBOX') {
+        by.width = Number(args[idx++]);
+        by.height = Number(args[idx++]);
+        by.unit = String(args[idx++]);
+      } else {
+        throw new Error('Invalid geosearchstore shape');
+      }
+      const options: any = {};
+      while (idx < args.length) {
+        const token = upper[idx];
+        if (token === 'COUNT') {
+          options.count = Number(args[idx + 1]);
+          idx += 2;
+          if (upper[idx] === 'ANY') {
+            options.any = true;
+            idx++;
+          }
+        } else if (token === 'ASC' || token === 'DESC') {
+          options.order = token as 'ASC' | 'DESC';
+          idx++;
+        } else if (token === 'STOREDIST') {
+          options.storeDist = true;
+          idx++;
+        } else {
+          idx++;
+        }
+      }
+      const fromObj = from.member ? { member: from.member } : { longitude: from.longitude, latitude: from.latitude };
+      return await geoCommands.geosearchstore(this, destination, source, fromObj, by, options);
+    }
+    const [from, by, options] = args;
+    return await geoCommands.geosearchstore(this, destination, source, from, by, options);
+  }
+
+  // Redis-compat GEORADIUS mapped to GEOSEARCH
+  async georadius(
+    key: RedisKey,
+    longitude: number,
+    latitude: number,
+    radius: number,
+    unit: 'm' | 'km' | 'mi' | 'ft',
+    ...rest: any[]
+  ): Promise<any> {
+    // Handle STORE/STOREDIST variants
+    const upper = rest.map(a => (typeof a === 'string' ? a.toUpperCase() : a));
+    const storeIdx = upper.indexOf('STORE');
+    const storeDistIdx = upper.indexOf('STOREDIST');
+    const options: any = {};
+    if (upper.includes('WITHCOORD')) options.withCoord = true;
+    if (upper.includes('WITHDIST')) options.withDist = true;
+    if (upper.includes('WITHHASH')) options.withHash = true;
+    const countIdx = upper.indexOf('COUNT');
+    if (countIdx !== -1 && countIdx + 1 < rest.length) {
+      options.count = Number(rest[countIdx + 1]);
+    }
+    if (upper.includes('ANY')) options.any = true;
+    if (upper.includes('ASC')) options.order = 'ASC';
+    if (upper.includes('DESC')) options.order = 'DESC';
+
+    if (storeIdx !== -1 || storeDistIdx !== -1) {
+      const dest = String(rest[(storeIdx !== -1 ? storeIdx : storeDistIdx) + 1]);
+      const storeOptions = { ...options, storeDist: storeDistIdx !== -1 };
+      return await this.geosearchstore(
+        dest,
+        key,
+        'FROMLONLAT',
+        longitude,
+        latitude,
+        'BYRADIUS',
+        radius,
+        unit,
+        ...(storeOptions.order ? [storeOptions.order] : []),
+        ...(storeOptions.count ? ['COUNT', storeOptions.count, storeOptions.any ? 'ANY' : undefined].filter(Boolean) as any[] : []),
+        storeOptions.storeDist ? 'STOREDIST' : undefined
+      );
+    }
+
+    return await this.geosearch(
+      key,
+      'FROMLONLAT',
+      longitude,
+      latitude,
+      'BYRADIUS',
+      radius,
+      unit,
+      ...(options.withDist ? ['WITHDIST'] : []),
+      ...(options.withCoord ? ['WITHCOORD'] : []),
+      ...(options.withHash ? ['WITHHASH'] : []),
+      ...(options.count ? ['COUNT', options.count, options.any ? 'ANY' : undefined].filter(Boolean) as any[] : []),
+      options.order ? options.order : undefined
+    );
+  }
+
+  // Redis-compat GEORADIUSBYMEMBER mapped to GEOSEARCH
+  async georadiusbymember(
+    key: RedisKey,
+    member: string,
+    radius: number,
+    unit: 'm' | 'km' | 'mi' | 'ft',
+    ...rest: any[]
+  ): Promise<any> {
+    const upper = rest.map(a => (typeof a === 'string' ? a.toUpperCase() : a));
+    const storeIdx = upper.indexOf('STORE');
+    const storeDistIdx = upper.indexOf('STOREDIST');
+    const options: any = {};
+    if (upper.includes('WITHCOORD')) options.withCoord = true;
+    if (upper.includes('WITHDIST')) options.withDist = true;
+    if (upper.includes('WITHHASH')) options.withHash = true;
+    const countIdx = upper.indexOf('COUNT');
+    if (countIdx !== -1 && countIdx + 1 < rest.length) options.count = Number(rest[countIdx + 1]);
+    if (upper.includes('ANY')) options.any = true;
+    if (upper.includes('ASC')) options.order = 'ASC';
+    if (upper.includes('DESC')) options.order = 'DESC';
+
+    if (storeIdx !== -1 || storeDistIdx !== -1) {
+      const dest = String(rest[(storeIdx !== -1 ? storeIdx : storeDistIdx) + 1]);
+      const storeOptions = { ...options, storeDist: storeDistIdx !== -1 };
+      return await this.geosearchstore(
+        dest,
+        key,
+        'FROMMEMBER',
+        member,
+        'BYRADIUS',
+        radius,
+        unit,
+        ...(storeOptions.order ? [storeOptions.order] : []),
+        ...(storeOptions.count ? ['COUNT', storeOptions.count, storeOptions.any ? 'ANY' : undefined].filter(Boolean) as any[] : []),
+        storeOptions.storeDist ? 'STOREDIST' : undefined
+      );
+    }
+
+    return await this.geosearch(
+      key,
+      'FROMMEMBER',
+      member,
+      'BYRADIUS',
+      radius,
+      unit,
+      ...(options.withDist ? ['WITHDIST'] : []),
+      ...(options.withCoord ? ['WITHCOORD'] : []),
+      ...(options.withHash ? ['WITHHASH'] : []),
+      ...(options.count ? ['COUNT', options.count, options.any ? 'ANY' : undefined].filter(Boolean) as any[] : []),
+      options.order ? options.order : undefined
     );
   }
 

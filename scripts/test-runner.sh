@@ -68,14 +68,30 @@ else
     OPT_IMPORT="--import ./tests/global-setup.mjs"
   fi
 
+  # Set up JSON reporter output
+  RESULTS_DIR=${TEST_RESULTS_DIR:-"test-results"}
+  mkdir -p "$RESULTS_DIR"
+  RESULTS_FILE=${TEST_RESULTS_FILE:-"$RESULTS_DIR/junit.xml"}
+
   if [ "$COVERAGE" = "1" ] && command -v c8 &> /dev/null; then
-    c8 node --test --test-concurrency=1 $OPT_IMPORT $TEST_FILES
+    c8 node --test --test-concurrency=1 $OPT_IMPORT \
+      --test-reporter=junit --test-reporter-destination="$RESULTS_FILE" \
+      $TEST_FILES
     TEST_EXIT=$?
   else
-    node --test --test-concurrency=1 $OPT_IMPORT $TEST_FILES
+    node --test --test-concurrency=1 $OPT_IMPORT \
+      --test-reporter=junit --test-reporter-destination="$RESULTS_FILE" \
+      $TEST_FILES
     TEST_EXIT=$?
   fi
   set -e
+
+  # Preserve a timestamped copy of the results if present
+  if [ -f "$RESULTS_FILE" ]; then
+    TS_NAME=$(date +"%Y%m%d-%H%M%S")
+    cp "$RESULTS_FILE" "$RESULTS_DIR/junit-$TS_NAME.xml" 2>/dev/null || true
+    echo -e "${YELLOW}Saved test report (JUnit): ${RESULTS_FILE}${NC}"
+  fi
 fi
 
 # Coverage report
