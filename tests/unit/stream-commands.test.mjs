@@ -43,17 +43,39 @@ function getClusterConfig() {
   ];
 }
 
-// Test modes - BOTH standalone and cluster MUST run
-const testModes = [
-  {
+// Test modes - Run based on environment configuration
+const testModes = [];
+
+// Add standalone mode unless disabled
+if (process.env.DISABLE_STANDALONE_TESTS !== 'true') {
+  testModes.push({
     name: 'standalone',
     createClient: () => new Redis(getStandaloneConfig())
-  },
-  {
+  });
+}
+
+// Add cluster mode if enabled or by default (unless explicitly disabled)
+if (process.env.ENABLE_CLUSTER_TESTS === 'true' || 
+    (process.env.DISABLE_CLUSTER_TESTS !== 'true' && process.env.DISABLE_STANDALONE_TESTS === 'true')) {
+  testModes.push({
     name: 'cluster',
     createClient: () => new Cluster(getClusterConfig(), { lazyConnect: true })
-  }
-];
+  });
+}
+
+// Default: run both modes if no environment variables are set
+if (testModes.length === 0 && !process.env.DISABLE_STANDALONE_TESTS && !process.env.DISABLE_CLUSTER_TESTS) {
+  testModes.push(
+    {
+      name: 'standalone',
+      createClient: () => new Redis(getStandaloneConfig())
+    },
+    {
+      name: 'cluster',
+      createClient: () => new Cluster(getClusterConfig(), { lazyConnect: true })
+    }
+  );
+}
 
 testModes.forEach(({ name: mode, createClient }) => {
   describe(`Stream Commands (${mode} mode)`, function() {

@@ -15,139 +15,122 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}=== Dual Mode Test Runner (Standalone + Cluster) ===${NC}"
 
-# Check if dual-mode tests exist
-DUAL_MODE_TESTS=($(find tests -name "*dual-mode*.test.mjs" | sort))
-
-if [ ${#DUAL_MODE_TESTS[@]} -eq 0 ]; then
-    echo -e "${YELLOW}⚠️  No dual-mode tests found. Run: npm run convert-tests${NC}"
-    echo -e "${YELLOW}   Or create tests using testBothModes() helper${NC}"
-    exit 0
+# Determine test files to run
+if [ $# -gt 0 ]; then
+    # Use provided test paths
+    TEST_PATHS="$@"
+    echo -e "${YELLOW}Running tests from: ${TEST_PATHS}${NC}"
+else
+    # Run all tests
+    TEST_PATHS="tests"
+    echo -e "${YELLOW}Running all tests${NC}"
 fi
 
-echo -e "${YELLOW}Found ${#DUAL_MODE_TESTS[@]} dual-mode test files...${NC}"
-
-# Phase 1: Test Standalone Mode (always available)
+# Phase 1: Test Standalone Mode
 echo -e "\n${GREEN}=== Phase 1: Standalone Mode Tests ===${NC}"
 
-# Start standalone infrastructure
-find_free_port() {
-    local port=$1
-    while lsof -Pi :$port -sTCP:LISTEN -t >/dev/null 2>&1; do
-        ((port++))
-    done
-    echo $port
-}
-
-VALKEY_PORT=$(find_free_port 6380)
-CONTAINER_NAME="dual-mode-standalone-$$"
-
-# Check if Docker is available
-if ! command -v docker &> /dev/null; then
-    echo -e "${YELLOW}⚠️  Docker not found. Using system Valkey if available${NC}"
+# Check for existing infrastructure or start new
+if docker ps | grep -q test-valkey-standalone; then
+    echo -e "${YELLOW}Using existing standalone infrastructure${NC}"
     export VALKEY_HOST=localhost
     export VALKEY_PORT=6379
-    DOCKER_AVAILABLE=false
+    DOCKER_CLEANUP=false
 else
-    DOCKER_AVAILABLE=true
-    echo -e "${YELLOW}Starting standalone Valkey on port $VALKEY_PORT...${NC}"
+    # Try to use docker-compose.test.yml infrastructure
+    echo -e "${YELLOW}Starting test infrastructure...${NC}"
+    docker compose -f docker-compose.test.yml up -d test-valkey-standalone >/dev/null 2>&1
     
-    docker run -d \
-        --name "$CONTAINER_NAME" \
-        -p "$VALKEY_PORT:6379" \
-        --health-cmd "valkey-cli ping" \
-        --health-interval 1s \
-        --health-timeout 3s \
-        --health-retries 5 \
-        valkey/valkey-bundle:latest >/dev/null
-
-    # Wait for health
-    echo -e "${YELLOW}Waiting for container to be healthy...${NC}"
-    while [ "$(docker inspect --format='{{.State.Health.Status}}' "$CONTAINER_NAME" 2>/dev/null || echo 'starting')" != "healthy" ]; do
-        sleep 0.5
+    # Wait for container to be ready
+    for i in {1..30}; do
+        if docker exec test-valkey-standalone valkey-cli ping 2>/dev/null | grep -q PONG; then
+            break
+        fi
+        sleep 1
     done
-
+    
     export VALKEY_HOST=localhost
-    export VALKEY_PORT=$VALKEY_PORT
-    echo -e "${GREEN}✓ Standalone Valkey ready on port $VALKEY_PORT${NC}"
+    export VALKEY_PORT=6379
+    DOCKER_CLEANUP=true
+    echo -e "${GREEN}✓ Standalone infrastructure ready${NC}"
 fi
 
 # Run standalone tests
-STANDALONE_PASSED=0
-STANDALONE_FAILED=0
+echo -e "${YELLOW}Running standalone tests...${NC}"
+export DISABLE_CLUSTER_TESTS=true
 
-for test_file in "${DUAL_MODE_TESTS[@]}"; do
-    echo -e "\n🧪 ${test_file} (standalone)..."
-    
-    if timeout 60 node --test "$test_file" 2>/dev/null; then
-        echo -e "${GREEN}✅ $test_file (standalone) - PASSED${NC}"
-        ((STANDALONE_PASSED++))
-    else
-        echo -e "${RED}❌ $test_file (standalone) - FAILED${NC}"
-        ((STANDALONE_FAILED++))
-    fi
-done
-
-# Cleanup standalone infrastructure
-if [ "$DOCKER_AVAILABLE" = true ]; then
-    echo -e "\n${YELLOW}Cleaning up standalone infrastructure...${NC}"
-    docker stop "$CONTAINER_NAME" >/dev/null 2>&1 || true
-    docker rm "$CONTAINER_NAME" >/dev/null 2>&1 || true
-fi
-
-# Phase 2: Test Cluster Mode (if enabled)
-if [ "$ENABLE_CLUSTER_TESTS" = "true" ]; then
-    echo -e "\n${GREEN}=== Phase 2: Cluster Mode Tests ===${NC}"
-    
-    # Note: Cluster infrastructure would need to be set up here
-    # For now, we'll just indicate it's not implemented
-    echo -e "${YELLOW}⚠️  Cluster mode testing requires cluster infrastructure setup${NC}"
-    echo -e "${YELLOW}   Set up Valkey cluster nodes and set VALKEY_CLUSTER_NODES${NC}"
-    
-    CLUSTER_PASSED=0
-    CLUSTER_FAILED=0
-    
-    # If cluster nodes are configured, run tests
-    if [ ! -z "$VALKEY_CLUSTER_NODES" ]; then
-        export ENABLE_CLUSTER_TESTS=true
-        
-        for test_file in "${DUAL_MODE_TESTS[@]}"; do
-            echo -e "\n🧪 ${test_file} (cluster)..."
-            
-            if timeout 60 node --test "$test_file" 2>/dev/null; then
-                echo -e "${GREEN}✅ $test_file (cluster) - PASSED${NC}"
-                ((CLUSTER_PASSED++))
-            else
-                echo -e "${RED}❌ $test_file (cluster) - FAILED${NC}"
-                ((CLUSTER_FAILED++))
-            fi
-        done
-    else
-        echo -e "${YELLOW}Skipping cluster tests - VALKEY_CLUSTER_NODES not set${NC}"
-    fi
+if [ "$COVERAGE" = "1" ]; then
+    COVERAGE=1 ./scripts/test-runner.sh $TEST_PATHS
 else
-    echo -e "\n${YELLOW}=== Phase 2: Cluster Mode Tests (Skipped) ===${NC}"
-    echo -e "${YELLOW}Set ENABLE_CLUSTER_TESTS=true to run cluster tests${NC}"
-    CLUSTER_PASSED=0
-    CLUSTER_FAILED=0
+    ./scripts/test-runner.sh $TEST_PATHS
 fi
+STANDALONE_EXIT=$?
+
+# Phase 2: Test Cluster Mode
+echo -e "\n${GREEN}=== Phase 2: Cluster Mode Tests ===${NC}"
+
+# Check for existing cluster infrastructure or start new
+if docker ps | grep -q test-valkey-cluster; then
+    echo -e "${YELLOW}Using existing cluster infrastructure${NC}"
+    CLUSTER_CLEANUP=false
+else
+    # Try to use docker-compose.test.yml infrastructure
+    echo -e "${YELLOW}Starting cluster infrastructure...${NC}"
+    docker compose -f docker-compose.test.yml up -d test-valkey-cluster-1 test-valkey-cluster-2 test-valkey-cluster-3 test-valkey-cluster-4 test-valkey-cluster-5 test-valkey-cluster-6 >/dev/null 2>&1
+    
+    # Wait for cluster to be ready
+    for i in {1..30}; do
+        if docker exec test-valkey-cluster-1 valkey-cli ping 2>/dev/null | grep -q PONG; then
+            break
+        fi
+        sleep 1
+    done
+    
+    # Initialize cluster if needed
+    docker compose -f docker-compose.test.yml --profile cluster up -d cluster-init >/dev/null 2>&1
+    sleep 5
+    
+    CLUSTER_CLEANUP=true
+    echo -e "${GREEN}✓ Cluster infrastructure ready${NC}"
+fi
+
+# Run cluster tests
+echo -e "${YELLOW}Running cluster tests...${NC}"
+unset DISABLE_CLUSTER_TESTS
+export ENABLE_CLUSTER_TESTS=true
+export DISABLE_STANDALONE_TESTS=true
+export VALKEY_CLUSTER_NODES="localhost:17000,localhost:17001,localhost:17002"
+
+if [ "$COVERAGE" = "1" ]; then
+    COVERAGE=1 ./scripts/test-runner.sh $TEST_PATHS
+else
+    ./scripts/test-runner.sh $TEST_PATHS
+fi
+CLUSTER_EXIT=$?
 
 # Summary
 echo -e "\n${GREEN}=== Dual Mode Test Summary ===${NC}"
-echo -e "Dual-mode test files: ${#DUAL_MODE_TESTS[@]}"
-echo -e "\n${GREEN}Standalone Mode:${NC}"
-echo -e "  Passed: $STANDALONE_PASSED"
-echo -e "  Failed: $STANDALONE_FAILED"
 
-if [ "$ENABLE_CLUSTER_TESTS" = "true" ]; then
-    echo -e "\n${GREEN}Cluster Mode:${NC}"
-    echo -e "  Passed: $CLUSTER_PASSED"
-    echo -e "  Failed: $CLUSTER_FAILED"
+if [ $STANDALONE_EXIT -eq 0 ]; then
+    echo -e "${GREEN}✅ Standalone Mode: PASSED${NC}"
+else
+    echo -e "${RED}❌ Standalone Mode: FAILED (exit code: $STANDALONE_EXIT)${NC}"
 fi
 
-TOTAL_FAILED=$((STANDALONE_FAILED + CLUSTER_FAILED))
+if [ $CLUSTER_EXIT -eq 0 ]; then
+    echo -e "${GREEN}✅ Cluster Mode: PASSED${NC}"
+else
+    echo -e "${RED}❌ Cluster Mode: FAILED (exit code: $CLUSTER_EXIT)${NC}"
+fi
 
-if [ $TOTAL_FAILED -gt 0 ]; then
-    echo -e "\n${RED}❌ Dual-mode testing failed with $TOTAL_FAILED failures${NC}"
+# Cleanup if we started infrastructure
+if [ "$DOCKER_CLEANUP" = true ]; then
+    echo -e "\n${YELLOW}Cleaning up test infrastructure...${NC}"
+    docker compose -f docker-compose.test.yml down >/dev/null 2>&1 || true
+fi
+
+# Exit with failure if either mode failed
+if [ $STANDALONE_EXIT -ne 0 ] || [ $CLUSTER_EXIT -ne 0 ]; then
+    echo -e "\n${RED}❌ Dual-mode testing failed${NC}"
     exit 1
 else
     echo -e "\n${GREEN}🎉 All dual-mode tests passed!${NC}"
