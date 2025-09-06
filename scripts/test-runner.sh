@@ -11,6 +11,24 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
+# Track child process PID
+TEST_PID=""
+
+# Cleanup function to kill child processes
+cleanup() {
+    echo -e "\n${YELLOW}Interrupted - cleaning up...${NC}"
+    if [ ! -z "$TEST_PID" ]; then
+        kill -TERM "$TEST_PID" 2>/dev/null || true
+        wait "$TEST_PID" 2>/dev/null || true
+    fi
+    # Kill any remaining node test processes
+    pkill -f "node --test" 2>/dev/null || true
+    exit 130
+}
+
+# Set up signal handlers
+trap cleanup SIGINT SIGTERM
+
 echo -e "${GREEN}=== Running Test Suite ===${NC}"
 
 # Optional Docker Valkey bundle bootstrap for tests that rely on it
@@ -83,14 +101,19 @@ else
   if [ "$COVERAGE" = "1" ] && command -v c8 &> /dev/null; then
     c8 node --test --test-concurrency=1 $OPT_IMPORT \
       $REPORTER_ARGS \
-      $TEST_FILES
+      $TEST_FILES &
+    TEST_PID=$!
+    wait $TEST_PID
     TEST_EXIT=$?
   else
     node --test --test-concurrency=1 $OPT_IMPORT \
       $REPORTER_ARGS \
-      $TEST_FILES
+      $TEST_FILES &
+    TEST_PID=$!
+    wait $TEST_PID
     TEST_EXIT=$?
   fi
+  TEST_PID=""
   set -e
 
   # If JUnit output was used, preserve a timestamped copy
