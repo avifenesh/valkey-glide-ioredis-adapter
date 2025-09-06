@@ -57,8 +57,7 @@ export async function evalsha(
   ...keysAndArgs: any[]
 ): Promise<any> {
   await (client as any).ensureConnection();
-  const cache = getCache(client);
-
+  
   const keys = keysAndArgs
     .slice(0, numKeys)
     .map((k: RedisKey) => (client as any).normalizeKey(k));
@@ -66,14 +65,37 @@ export async function evalsha(
     .slice(numKeys)
     .map((v: RedisValue) => ParameterTranslator.normalizeValue(v));
 
+  // First check local cache (faster)
+  const cache = getCache(client);
   if (cache.has(sha1sum)) {
-    const cached = cache.get(sha1sum)!;
-    return await (client as any).glideClient.invokeScript(cached.script, {
-      keys,
-      args,
-    });
-  } else {
-    throw new Error('NOSCRIPT No matching script. Please use EVAL.');
+    try {
+      const cached = cache.get(sha1sum)!;
+      return await (client as any).glideClient.invokeScript(cached.script, {
+        keys,
+        args,
+      });
+    } catch (err: any) {
+      // If cached script fails, try server
+      // Fall through to server attempt
+    }
+  }
+
+  // Try to execute using EVALSHA on the server
+  try {
+    const result = await (client as any).glideClient.customCommand([
+      'EVALSHA',
+      sha1sum,
+      String(numKeys),
+      ...keys,
+      ...args,
+    ]);
+    return result;
+  } catch (err: any) {
+    // If NOSCRIPT error, we already tried cache, so throw
+    if (err.message && (err.message.includes('NOSCRIPT') || err.message.includes('NoScript'))) {
+      throw new Error('NOSCRIPT No matching script. Please use EVAL.');
+    }
+    throw err;
   }
 }
 
@@ -85,8 +107,19 @@ export async function scriptLoad(
   const { Script } = require('@valkey/valkey-glide');
   const id = sha1(script);
   const glideScript = new Script(script);
+  
+  // Actually load the script to the server
+  const result = await (client as any).glideClient.customCommand([
+    'SCRIPT',
+    'LOAD',
+    script,
+  ]);
+  
+  // Cache it locally as well
   getCache(client).set(id, { script: glideScript, source: script });
-  return id;
+  
+  // Return the SHA1 hash
+  return String(result) || id;
 }
 
 export async function scriptExists(
@@ -94,16 +127,24 @@ export async function scriptExists(
   ...sha1s: string[]
 ): Promise<number[]> {
   await (client as any).ensureConnection();
-  if ((client as any).glideClient.scriptExists) {
-    const res = await (client as any).glideClient.scriptExists(sha1s);
-    return res.map((b: boolean) => (b ? 1 : 0));
-  }
+  
+  // Use customCommand to ensure consistent behavior
   const result = await (client as any).glideClient.customCommand([
     'SCRIPT',
     'EXISTS',
     ...sha1s,
   ]);
-  return Array.isArray(result) ? result.map((n: any) => Number(n)) : [];
+  
+  // Convert boolean or numeric results to numbers (1 or 0)
+  if (Array.isArray(result)) {
+    return result.map((val: any) => {
+      if (typeof val === 'boolean') return val ? 1 : 0;
+      if (typeof val === 'number') return val;
+      return Number(val) || 0;
+    });
+  }
+  
+  return [];
 }
 
 export async function scriptFlush(
@@ -144,10 +185,20 @@ export async function script(
   ...args: any[]
 ): Promise<any> {
   await (client as any).ensureConnection();
-  return await (client as any).glideClient.customCommand([
+  const result = await (client as any).glideClient.customCommand([
     'SCRIPT',
     subcommand,
     ...args.map(String),
   ]);
+  
+  // Convert boolean results to 1/0 for EXISTS subcommand
+  if (subcommand.toUpperCase() === 'EXISTS' && Array.isArray(result)) {
+    return result.map((val: any) => {
+      if (typeof val === 'boolean') return val ? 1 : 0;
+      return val;
+    });
+  }
+  
+  return result;
 }
 
