@@ -59,9 +59,9 @@ echo -e "${YELLOW}Running standalone tests...${NC}"
 export DISABLE_CLUSTER_TESTS=true
 
 if [ "$COVERAGE" = "1" ]; then
-    COVERAGE=1 ./scripts/test-runner.sh $TEST_PATHS
+    COVERAGE=1 JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS
 else
-    ./scripts/test-runner.sh $TEST_PATHS
+    JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS
 fi
 STANDALONE_EXIT=$?
 
@@ -101,9 +101,9 @@ export DISABLE_STANDALONE_TESTS=true
 export VALKEY_CLUSTER_NODES="localhost:17000,localhost:17001,localhost:17002"
 
 if [ "$COVERAGE" = "1" ]; then
-    COVERAGE=1 ./scripts/test-runner.sh $TEST_PATHS
+    COVERAGE=1 JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS
 else
-    ./scripts/test-runner.sh $TEST_PATHS
+    JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS
 fi
 CLUSTER_EXIT=$?
 

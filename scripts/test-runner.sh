@@ -68,26 +68,33 @@ else
     OPT_IMPORT="--import ./tests/global-setup.mjs"
   fi
 
-  # Set up JSON reporter output
-  RESULTS_DIR=${TEST_RESULTS_DIR:-"test-results"}
-  mkdir -p "$RESULTS_DIR"
-  RESULTS_FILE=${TEST_RESULTS_FILE:-"$RESULTS_DIR/junit.xml"}
+  # Configure test reporter based on JUNIT environment variable
+  if [ "$JUNIT" = "1" ]; then
+    # Set up JUnit reporter output
+    RESULTS_DIR=${TEST_RESULTS_DIR:-"test-results"}
+    mkdir -p "$RESULTS_DIR"
+    RESULTS_FILE=${TEST_RESULTS_FILE:-"$RESULTS_DIR/junit.xml"}
+    REPORTER_ARGS="--test-reporter=junit --test-reporter-destination=$RESULTS_FILE"
+  else
+    # Default to spec reporter for console output
+    REPORTER_ARGS="--test-reporter=spec"
+  fi
 
   if [ "$COVERAGE" = "1" ] && command -v c8 &> /dev/null; then
     c8 node --test --test-concurrency=1 $OPT_IMPORT \
-      --test-reporter=junit --test-reporter-destination="$RESULTS_FILE" \
+      $REPORTER_ARGS \
       $TEST_FILES
     TEST_EXIT=$?
   else
     node --test --test-concurrency=1 $OPT_IMPORT \
-      --test-reporter=junit --test-reporter-destination="$RESULTS_FILE" \
+      $REPORTER_ARGS \
       $TEST_FILES
     TEST_EXIT=$?
   fi
   set -e
 
-  # Preserve a timestamped copy of the results if present
-  if [ -f "$RESULTS_FILE" ]; then
+  # If JUnit output was used, preserve a timestamped copy
+  if [ "$JUNIT" = "1" ] && [ -f "$RESULTS_FILE" ]; then
     TS_NAME=$(date +"%Y%m%d-%H%M%S")
     cp "$RESULTS_FILE" "$RESULTS_DIR/junit-$TS_NAME.xml" 2>/dev/null || true
     echo -e "${YELLOW}Saved test report (JUnit): ${RESULTS_FILE}${NC}"
