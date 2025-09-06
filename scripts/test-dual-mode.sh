@@ -13,6 +13,37 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
+# Track child process
+CHILD_PID=""
+DOCKER_CLEANUP=false
+CLUSTER_CLEANUP=false
+
+# Cleanup function
+cleanup() {
+    echo -e "\n${YELLOW}Interrupted - cleaning up...${NC}"
+    
+    # Kill any running test process
+    if [ ! -z "$CHILD_PID" ]; then
+        kill -TERM "$CHILD_PID" 2>/dev/null || true
+        wait "$CHILD_PID" 2>/dev/null || true
+    fi
+    
+    # Kill any node test processes
+    pkill -f "node --test" 2>/dev/null || true
+    pkill -f "test-runner.sh" 2>/dev/null || true
+    
+    # Clean up Docker if we started it
+    if [ "$DOCKER_CLEANUP" = true ] || [ "$CLUSTER_CLEANUP" = true ]; then
+        echo -e "${YELLOW}Cleaning up test infrastructure...${NC}"
+        docker compose -f docker-compose.test.yml down >/dev/null 2>&1 || true
+    fi
+    
+    exit 130
+}
+
+# Set up signal handlers
+trap cleanup SIGINT SIGTERM
+
 echo -e "${GREEN}=== Dual Mode Test Runner (Standalone + Cluster) ===${NC}"
 
 # Determine test files to run
@@ -59,11 +90,15 @@ echo -e "${YELLOW}Running standalone tests...${NC}"
 export DISABLE_CLUSTER_TESTS=true
 
 if [ "$COVERAGE" = "1" ]; then
-    COVERAGE=1 JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS
+    COVERAGE=1 JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS &
+    CHILD_PID=$!
 else
-    JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS
+    JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS &
+    CHILD_PID=$!
 fi
+wait $CHILD_PID
 STANDALONE_EXIT=$?
+CHILD_PID=""
 
 # Phase 2: Test Cluster Mode
 echo -e "\n${GREEN}=== Phase 2: Cluster Mode Tests ===${NC}"
@@ -101,11 +136,15 @@ export DISABLE_STANDALONE_TESTS=true
 export VALKEY_CLUSTER_NODES="localhost:17000,localhost:17001,localhost:17002"
 
 if [ "$COVERAGE" = "1" ]; then
-    COVERAGE=1 JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS
+    COVERAGE=1 JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS &
+    CHILD_PID=$!
 else
-    JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS
+    JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS &
+    CHILD_PID=$!
 fi
+wait $CHILD_PID
 CLUSTER_EXIT=$?
+CHILD_PID=""
 
 # Summary
 echo -e "\n${GREEN}=== Dual Mode Test Summary ===${NC}"
@@ -122,11 +161,14 @@ else
     echo -e "${RED}❌ Cluster Mode: FAILED (exit code: $CLUSTER_EXIT)${NC}"
 fi
 
-# Cleanup if we started infrastructure
-if [ "$DOCKER_CLEANUP" = true ]; then
+# Cleanup if we started infrastructure (only if not interrupted)
+if [ "$DOCKER_CLEANUP" = true ] || [ "$CLUSTER_CLEANUP" = true ]; then
     echo -e "\n${YELLOW}Cleaning up test infrastructure...${NC}"
     docker compose -f docker-compose.test.yml down >/dev/null 2>&1 || true
 fi
+
+# Clear the trap to avoid double cleanup
+trap - SIGINT SIGTERM
 
 # Exit with failure if either mode failed
 if [ $STANDALONE_EXIT -ne 0 ] || [ $CLUSTER_EXIT -ne 0 ]; then
