@@ -41,8 +41,9 @@ Tests respect the following environment variables:
 - `DISABLE_CLUSTER_TESTS=true` - Skip cluster mode tests  
 - `ENABLE_CLUSTER_TESTS=true` - Explicitly enable cluster tests
 - `VALKEY_HOST` - Override default host (default: localhost)
-- `VALKEY_PORT` - Override default standalone port (default: 6379)
+- `VALKEY_PORT` - Override default standalone port (default: 6383)
 - `VALKEY_CLUSTER_NODES` - Override cluster nodes (default: localhost:17000,localhost:17001,localhost:17002)
+- `KEEP_INFRA=1` - Keep test infrastructure running after tests complete
 
 ## Test Infrastructure
 
@@ -59,7 +60,7 @@ docker compose -f docker-compose.test.yml --profile cluster up -d cluster-init
 ```
 
 This creates:
-- **Standalone**: Port 6379 with JSON/Search modules
+- **Standalone**: Port 6383 with JSON/Search modules
 - **Cluster**: Ports 17000-17005 (6 nodes, 3 masters + 3 replicas)
 
 ### Local Testing

@@ -64,7 +64,7 @@ echo -e "\n${GREEN}=== Phase 1: Standalone Mode Tests ===${NC}"
 if docker ps | grep -q test-valkey-standalone; then
     echo -e "${YELLOW}Using existing standalone infrastructure${NC}"
     export VALKEY_HOST=localhost
-    export VALKEY_PORT=6379
+    export VALKEY_PORT=6383
     DOCKER_CLEANUP=false
 else
     # Try to use docker-compose.test.yml infrastructure
@@ -80,7 +80,7 @@ else
     done
     
     export VALKEY_HOST=localhost
-    export VALKEY_PORT=6379
+    export VALKEY_PORT=6383
     DOCKER_CLEANUP=true
     echo -e "${GREEN}✓ Standalone infrastructure ready${NC}"
 fi
