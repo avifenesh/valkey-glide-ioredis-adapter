@@ -421,15 +421,12 @@ describe('Fastify Redis Plugin Compatibility', () => {
       });
       await existingClient.connect();
       
-      // Simulate fastify plugin using existing client
-      client = existingClient;
-      
-      await client.set('test', 'value');
-      const result = await client.get('test');
+      await existingClient.set('test', 'value');
+      const result = await existingClient.get('test');
       assert.strictEqual(result, 'value');
       
-      await client.flushdb();
-      client.disconnect();
+      await existingClient.flushdb();
+      await existingClient.quit();
     });
 
     it('should support cluster client instance', async () => {
@@ -449,7 +446,7 @@ describe('Fastify Redis Plugin Compatibility', () => {
       const result = await clusterClient.get('cluster:test');
       assert.strictEqual(result, 'value');
       
-      clusterClient.disconnect();
+      await clusterClient.quit();
     });
   });
 });
