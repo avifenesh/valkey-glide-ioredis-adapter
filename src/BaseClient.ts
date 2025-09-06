@@ -10,7 +10,7 @@ import { EventEmitter } from 'events';
 import { GlideClient, GlideClusterClient } from '@valkey/valkey-glide';
 import { RedisOptions, RedisKey, RedisValue, Multi, Pipeline } from './types';
 import { ParameterTranslator } from './utils/ParameterTranslator';
-import { TimeUnit } from '@valkey/valkey-glide';
+import { TimeUnit, InfBoundary } from '@valkey/valkey-glide';
 import * as stringCommands from './commands/strings';
 import { IoredisPubSubClient } from './utils/IoredisPubSubClient';
 import * as keyCommands from './commands/keys';
@@ -1856,6 +1856,47 @@ export abstract class BaseClient extends EventEmitter {
           ParameterTranslator.normalizeValue(m)
         );
         batch.zrem(normalizedKey, normalizedMembers);
+        commandCount++;
+        return adapter;
+      },
+      zremrangebyscore: (key: RedisKey, min: string | number, max: string | number) => {
+        const normalizedKey = this.normalizeKey(key);
+        
+        // Parse min boundary
+        let minBoundary: any;
+        if (typeof min === 'string') {
+          if (min.startsWith('(')) {
+            minBoundary = { value: parseFloat(min.slice(1)), isInclusive: false };
+          } else if (min === '-inf') {
+            minBoundary = InfBoundary.NegativeInfinity;
+          } else {
+            minBoundary = { value: parseFloat(min), isInclusive: true };
+          }
+        } else {
+          minBoundary = { value: min, isInclusive: true };
+        }
+
+        // Parse max boundary
+        let maxBoundary: any;
+        if (typeof max === 'string') {
+          if (max.startsWith('(')) {
+            maxBoundary = { value: parseFloat(max.slice(1)), isInclusive: false };
+          } else if (max === '+inf' || max === 'inf') {
+            maxBoundary = InfBoundary.PositiveInfinity;
+          } else {
+            maxBoundary = { value: parseFloat(max), isInclusive: true };
+          }
+        } else {
+          maxBoundary = { value: max, isInclusive: true };
+        }
+
+        batch.zremRangeByScore(normalizedKey, minBoundary, maxBoundary);
+        commandCount++;
+        return adapter;
+      },
+      zremrangebyrank: (key: RedisKey, start: number, stop: number) => {
+        const normalizedKey = this.normalizeKey(key);
+        batch.zremRangeByRank(normalizedKey, start, stop);
         commandCount++;
         return adapter;
       },
