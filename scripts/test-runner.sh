@@ -23,6 +23,17 @@ cleanup() {
     fi
     # Kill any remaining node test processes
     pkill -f "node --test" 2>/dev/null || true
+    
+    # Stop infrastructure if we started it
+    if [ "$INFRA_STARTED" = true ]; then
+        echo -e "${YELLOW}Stopping test infrastructure...${NC}"
+        if [ "$ENABLE_CLUSTER_TESTS" = "true" ]; then
+            docker compose -f docker-compose.test.yml down >/dev/null 2>&1 || true
+        else
+            docker stop test-valkey-standalone >/dev/null 2>&1 || true
+        fi
+    fi
+    
     exit 130
 }
 
@@ -31,12 +42,100 @@ trap cleanup SIGINT SIGTERM
 
 echo -e "${GREEN}=== Running Test Suite ===${NC}"
 
-# Optional Docker Valkey bundle bootstrap for tests that rely on it
-VALKEY_PORT=${VALKEY_PORT:-6379}
+# Infrastructure management
+VALKEY_PORT=${VALKEY_PORT:-6383}
 export VALKEY_HOST=${VALKEY_HOST:-localhost}
 export VALKEY_PORT
+INFRA_STARTED=false
 
-echo -e "${YELLOW}Using Valkey at ${VALKEY_HOST}:${VALKEY_PORT}${NC}"
+# Function to check if Valkey is accessible
+check_valkey() {
+    if command -v valkey-cli &> /dev/null; then
+        valkey-cli -h "$VALKEY_HOST" -p "$VALKEY_PORT" ping 2>/dev/null | grep -q PONG
+    elif command -v redis-cli &> /dev/null; then
+        redis-cli -h "$VALKEY_HOST" -p "$VALKEY_PORT" ping 2>/dev/null | grep -q PONG
+    elif [ -x "$(command -v docker)" ]; then
+        docker exec test-valkey-standalone valkey-cli ping 2>/dev/null | grep -q PONG
+    else
+        return 1
+    fi
+}
+
+# Check if we're in cluster mode
+if [ "$ENABLE_CLUSTER_TESTS" = "true" ]; then
+    echo -e "${YELLOW}Cluster mode detected - checking cluster infrastructure...${NC}"
+    CLUSTER_NODES=${VALKEY_CLUSTER_NODES:-"localhost:17000,localhost:17001,localhost:17002"}
+    
+    # Check if cluster is running
+    FIRST_NODE=$(echo $CLUSTER_NODES | cut -d',' -f1)
+    CLUSTER_HOST=$(echo $FIRST_NODE | cut -d':' -f1)
+    CLUSTER_PORT=$(echo $FIRST_NODE | cut -d':' -f2)
+    
+    if ! docker ps | grep -q test-valkey-cluster; then
+        echo -e "${YELLOW}Starting cluster infrastructure...${NC}"
+        docker compose -f docker-compose.test.yml up -d test-valkey-cluster-1 test-valkey-cluster-2 test-valkey-cluster-3 test-valkey-cluster-4 test-valkey-cluster-5 test-valkey-cluster-6 >/dev/null 2>&1
+        
+        # Wait for cluster to be ready
+        for i in {1..30}; do
+            if docker exec test-valkey-cluster-1 valkey-cli ping 2>/dev/null | grep -q PONG; then
+                break
+            fi
+            sleep 1
+        done
+        
+        # Initialize cluster if needed
+        docker compose -f docker-compose.test.yml --profile cluster up -d cluster-init >/dev/null 2>&1
+        sleep 5
+        
+        INFRA_STARTED=true
+        echo -e "${GREEN}✓ Cluster infrastructure ready${NC}"
+    fi
+    
+    echo -e "${YELLOW}Using Valkey Cluster at ${CLUSTER_NODES}${NC}"
+else
+    # Standalone mode
+    echo -e "${YELLOW}Checking Valkey at ${VALKEY_HOST}:${VALKEY_PORT}...${NC}"
+    
+    if ! check_valkey; then
+        echo -e "${YELLOW}Valkey not accessible, starting test infrastructure...${NC}"
+        
+        # Try Docker first
+        if [ -x "$(command -v docker)" ]; then
+            # Check if container exists but is stopped
+            if docker ps -a | grep -q test-valkey-standalone; then
+                docker start test-valkey-standalone >/dev/null 2>&1
+            else
+                # Start using docker-compose
+                docker compose -f docker-compose.test.yml up -d test-valkey-standalone >/dev/null 2>&1
+            fi
+            
+            # Wait for container to be ready
+            for i in {1..30}; do
+                if docker exec test-valkey-standalone valkey-cli ping 2>/dev/null | grep -q PONG; then
+                    break
+                fi
+                sleep 1
+            done
+            
+            if check_valkey || docker exec test-valkey-standalone valkey-cli ping 2>/dev/null | grep -q PONG; then
+                INFRA_STARTED=true
+                echo -e "${GREEN}✓ Test infrastructure started${NC}"
+            else
+                echo -e "${RED}Failed to start test infrastructure${NC}"
+                echo -e "${YELLOW}Please ensure Docker is running or start Valkey manually${NC}"
+                exit 1
+            fi
+        else
+            echo -e "${RED}Valkey is not running and Docker is not available${NC}"
+            echo -e "${YELLOW}Please start Valkey on ${VALKEY_HOST}:${VALKEY_PORT} or install Docker${NC}"
+            exit 1
+        fi
+    else
+        echo -e "${GREEN}✓ Valkey is accessible${NC}"
+    fi
+    
+    echo -e "${YELLOW}Using Valkey at ${VALKEY_HOST}:${VALKEY_PORT}${NC}"
+fi
 
 # Indicate that a global test setup is active
 export GLOBAL_TEST_SETUP=1
@@ -134,6 +233,16 @@ if [ $TEST_EXIT -eq 0 ]; then
   echo -e "\n${GREEN}All tests passed.${NC}"
 else
   echo -e "\n${RED}There were test failures (exit code $TEST_EXIT).${NC}"
+fi
+
+# Optionally stop infrastructure if we started it (can be overridden with KEEP_INFRA=1)
+if [ "$INFRA_STARTED" = true ] && [ "$KEEP_INFRA" != "1" ]; then
+  echo -e "${YELLOW}Stopping test infrastructure...${NC}"
+  if [ "$ENABLE_CLUSTER_TESTS" = "true" ]; then
+    docker compose -f docker-compose.test.yml down >/dev/null 2>&1 || true
+  else
+    docker stop test-valkey-standalone >/dev/null 2>&1 || true
+  fi
 fi
 
 exit $TEST_EXIT
