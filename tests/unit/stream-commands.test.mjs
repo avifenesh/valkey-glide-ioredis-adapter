@@ -4,21 +4,38 @@
  * Tests real-world patterns: event sourcing, microservices, real-time analytics
  */
 
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, before, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis, Cluster } = pkg;
 
-// Test configuration
+// Test configuration with auto-detection
 function getStandaloneConfig() {
+  // Priority order for standalone testing:
+  // 1. Environment variable override
+  // 2. Port 6379 (docker-compose.test.yml standard)
+  // 3. Port 6383 (common test port)
+  const port = process.env.VALKEY_PORT 
+    ? parseInt(process.env.VALKEY_PORT) 
+    : 6379; // Use standard docker test port
+    
   return {
     host: process.env.VALKEY_HOST || 'localhost',
-    port: parseInt(process.env.VALKEY_PORT || '6379'),
+    port: port,
     lazyConnect: true,
   };
 }
 
 function getClusterConfig() {
+  // Cluster nodes from docker-compose.test.yml
+  if (process.env.VALKEY_CLUSTER_NODES) {
+    return process.env.VALKEY_CLUSTER_NODES.split(',').map(node => {
+      const [host, port] = node.split(':');
+      return { host, port: parseInt(port) };
+    });
+  }
+  
+  // Default cluster configuration (docker-compose.test.yml)
   return [
     { host: 'localhost', port: 17000 },
     { host: 'localhost', port: 17001 },
@@ -26,56 +43,24 @@ function getClusterConfig() {
   ];
 }
 
-// Test modes - cluster tests run by default unless explicitly disabled
+// Test modes - BOTH standalone and cluster MUST run
 const testModes = [
   {
     name: 'standalone',
     createClient: () => new Redis(getStandaloneConfig())
+  },
+  {
+    name: 'cluster',
+    createClient: () => new Cluster(getClusterConfig(), { lazyConnect: true })
   }
 ];
 
-// Run cluster tests by default unless DISABLE_CLUSTER_TESTS is set
-if (process.env.DISABLE_CLUSTER_TESTS !== 'true') {
-  // Check if cluster is available before adding
-  const checkClusterAvailable = async () => {
-    try {
-      const client = new Cluster(getClusterConfig(), { lazyConnect: true });
-      await client.connect();
-      await client.quit();
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  
-  // We'll check availability during first test
-  testModes.push({
-    name: 'cluster',
-    createClient: () => new Cluster(getClusterConfig(), { lazyConnect: true }),
-    skipIfUnavailable: true
-  });
-}
-
-testModes.forEach(({ name: mode, createClient, skipIfUnavailable }) => {
-  describe(`Stream Commands (${mode} mode)`, () => {
+testModes.forEach(({ name: mode, createClient }) => {
+  describe(`Stream Commands (${mode} mode)`, function() {
     let client;
     let streamKey;
-    let clusterAvailable = true;
 
     beforeEach(async function() {
-      // Skip cluster tests if unavailable
-      if (mode === 'cluster' && skipIfUnavailable) {
-        try {
-          const testClient = createClient();
-          await testClient.connect();
-          await testClient.quit();
-        } catch (err) {
-          clusterAvailable = false;
-          this.skip();
-          return;
-        }
-      }
-
       client = createClient();
       await client.connect();
       streamKey = `test:stream:${mode}:${Date.now()}`;
