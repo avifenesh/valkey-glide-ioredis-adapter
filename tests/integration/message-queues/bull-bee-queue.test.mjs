@@ -85,7 +85,8 @@ describe('Message Queue Systems Integration', () => {
             const options = {
               host: config.host,
               port: config.port,
-              keyPrefix: keyPrefix + 'bull:',
+              // Bull manages its own key namespacing, don't use keyPrefix
+              // keyPrefix would conflict with Bull's Lua scripts
               // CRITICAL Bull clients need to connect immediately
               lazyConnect: false, // No lazy connections for Bull clients
             };
@@ -277,7 +278,7 @@ describe('Message Queue Systems Integration', () => {
           redis: {
             port: config.port,
             host: config.host,
-            keyPrefix: keyPrefix + 'retry:',
+            // Bull manages its own key namespacing
           },
         });
 
@@ -340,7 +341,7 @@ describe('Message Queue Systems Integration', () => {
             const options = {
               host: config.host,
               port: config.port,
-              keyPrefix: keyPrefix + 'stats:',
+              // Bull manages its own key namespacing
               lazyConnect: false,
             };
 
@@ -675,7 +676,7 @@ describe('Message Queue Systems Integration', () => {
       const config = await getStandaloneConfig();
       customRedisClient = new Redis({
         ...config,
-        keyPrefix: keyPrefix + 'custom:',
+        keyPrefix: keyPrefix,
       });
       await customRedisClient.connect();
 
@@ -746,10 +747,17 @@ describe('Message Queue Systems Integration', () => {
       queue = new Queue('custom-client-queue', {
         createClient: type => {
           // Create our enhanced Redis adapter
-          const client = new Redis({
+          const options = {
             ...config,
-            keyPrefix: keyPrefix + `bull-${type}:`,
-          });
+            // Bull manages its own key namespacing
+          };
+          
+          // Bull requires maxRetriesPerRequest to be null for bclient and subscriber
+          if (type === 'bclient' || type === 'subscriber') {
+            options.maxRetriesPerRequest = null;
+          }
+          
+          const client = new Redis(options);
 
           // Enhanced connection pattern: start connecting immediately
           client
@@ -870,10 +878,22 @@ describe('Message Queue Systems Integration', () => {
             // Create a separate client for subscriber to avoid conflicts
             const subClient = new Redis({
               ...config,
-              keyPrefix: keyPrefix + 'shared-sub:',
+              // Bull manages its own key namespacing
+              maxRetriesPerRequest: null, // Bull requirement for subscriber
             });
             subClient.connect().catch(console.error);
             return subClient;
+          }
+          
+          if (type === 'bclient') {
+            // Create a separate blocking client
+            const bClient = new Redis({
+              ...config,
+              // Bull manages its own key namespacing
+              maxRetriesPerRequest: null, // Bull requirement for bclient
+            });
+            bClient.connect().catch(console.error);
+            return bClient;
           }
 
           return sharedClient;

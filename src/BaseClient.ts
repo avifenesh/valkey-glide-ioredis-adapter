@@ -446,12 +446,12 @@ export abstract class BaseClient extends EventEmitter {
       const keys = allArgs.slice(0, numkeys);
       const scriptArgs = allArgs.slice(numkeys);
 
-      // Normalize parameters for GLIDE - preserve Buffer data for msgpack
+      // Normalize parameters for GLIDE - apply keyPrefix to keys
       const normalizedKeys = keys.map(k => {
         if (k === null || k === undefined) return '';
-        // Keep Buffer as is - GLIDE will handle Buffer conversion
-        if (k instanceof Buffer) return k;
-        return String(k);
+        // Apply keyPrefix to keys for Lua scripts (ioredis behavior)
+        const keyStr = k instanceof Buffer ? k.toString() : String(k);
+        return this.normalizeKey(keyStr);
       });
 
       const normalizedArgs = scriptArgs.map(a => {
@@ -1545,6 +1545,7 @@ export abstract class BaseClient extends EventEmitter {
 
   // Blocking operations - critical for queue systems
   async blpop(...args: any[]): Promise<[string, string] | null> {
+    await this.ensureConnection();
     let keys: RedisKey[];
     let timeout: number;
 
@@ -1578,6 +1579,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async brpop(...args: any[]): Promise<[string, string] | null> {
+    await this.ensureConnection();
     let keys: RedisKey[];
     let timeout: number;
 
@@ -1615,6 +1617,7 @@ export abstract class BaseClient extends EventEmitter {
     destination: RedisKey,
     timeout: number
   ): Promise<string | null> {
+    await this.ensureConnection();
     const normalizedSource = this.normalizeKey(source);
     const normalizedDestination = this.normalizeKey(destination);
 
