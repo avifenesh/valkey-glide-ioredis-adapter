@@ -1,20 +1,18 @@
-import { describe, it } from 'node:test';
-import assert from 'node:assert';
-
-// Global declarations for Node.js built-in globals
-/* global Buffer */
 /**
  * ResultTranslator Comprehensive Tests
  * Testing all result translation methods for GLIDE to ioredis compatibility
  */
 
-import { ResultTranslator } from '../../dist/utils/ResultTranslator.js';
+import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import assert from 'node:assert';
+import { ResultTranslator } from '../../src/utils/ResultTranslator';
+import { SortedSetDataType, GlideString } from '@valkey/valkey-glide';
 
 describe('ResultTranslator', () => {
   describe('flattenSortedSetData', () => {
-    it('should flatten valid SortedSetDataType to ioredis format', () => {
+    test('should flatten valid SortedSetDataType to ioredis format', async () => {
       const glideResult = [
-        { element: 'member1', score: 1 },
+        { element: 'member1', score: 1.0 },
         { element: 'member2', score: 2.5 },
         { element: 'member3', score: 3.14159 },
       ];
@@ -31,21 +29,21 @@ describe('ResultTranslator', () => {
       ]);
     });
 
-    it('should handle empty SortedSetDataType array', () => {
+    test('should handle empty SortedSetDataType array', async () => {
       const glideResult = [];
       const result = ResultTranslator.flattenSortedSetData(glideResult);
       assert.deepStrictEqual(result, []);
     });
 
-    it('should handle non-array input', () => {
-      const result = ResultTranslator.flattenSortedSetData(null);
+    test('should handle non-array input', async () => {
+      const result = ResultTranslator.flattenSortedSetData(null );
       assert.deepStrictEqual(result, []);
     });
 
-    it('should handle SortedSetDataType with Buffer elements', () => {
+    test('should handle SortedSetDataType with Buffer elements', async () => {
       const glideResult = [
-        { element: Buffer.from('binary_member'), score: 1 },
-        { element: 'string_member', score: 2 },
+        { element.from('binary_member'), score: 1.0 },
+        { element: 'string_member', score: 2.0 },
       ];
 
       const result = ResultTranslator.flattenSortedSetData(glideResult);
@@ -53,7 +51,7 @@ describe('ResultTranslator', () => {
       assert.deepStrictEqual(result, ['binary_member', '1', 'string_member', '2']);
     });
 
-    it('should handle SortedSetDataType with negative scores', () => {
+    test('should handle SortedSetDataType with negative scores', async () => {
       const glideResult = [
         { element: 'negative', score: -1.5 },
         { element: 'positive', score: 1.5 },
@@ -72,11 +70,11 @@ describe('ResultTranslator', () => {
       ]);
     });
 
-    it('should handle very large and small scores', () => {
+    test('should handle very large and small scores', async () => {
       const glideResult = [
-        { element: 'large', score: Number.MAX_SAFE_INTEGER },
-        { element: 'small', score: Number.MIN_SAFE_INTEGER },
-        { element: 'infinity', score: Infinity },
+        { element: 'large', score.MAX_SAFE_INTEGER },
+        { element: 'small', score.MIN_SAFE_INTEGER },
+        { element: 'infinity', score },
         { element: 'negative_infinity', score: -Infinity },
       ];
 
@@ -90,17 +88,17 @@ describe('ResultTranslator', () => {
   });
 
   describe('formatStreamEntries', () => {
-    it('should handle empty stream entries array', () => {
+    test('should handle empty stream entries array', async () => {
       const result = ResultTranslator.formatStreamEntries([]);
       assert.deepStrictEqual(result, []);
     });
 
-    it('should handle non-array input', () => {
-      const result = ResultTranslator.formatStreamEntries(null);
+    test('should handle non-array input', async () => {
+      const result = ResultTranslator.formatStreamEntries(null );
       assert.deepStrictEqual(result, []);
     });
 
-    it('should pass through stream entries', () => {
+    test('should pass through stream entries as placeholder', async () => {
       const glideResult = [
         { id: '1234567890-0', fields: { field1: 'value1', field2: 'value2' } },
         { id: '1234567891-0', fields: { field3: 'value3' } },
@@ -112,7 +110,7 @@ describe('ResultTranslator', () => {
       assert.deepStrictEqual(result, glideResult);
     });
 
-    it('should handle mixed stream entry types', () => {
+    test('should handle mixed stream entry types', async () => {
       const glideResult = ['stream_entry_1', { complex: 'object' }, null, 123];
 
       const result = ResultTranslator.formatStreamEntries(glideResult);
@@ -122,8 +120,8 @@ describe('ResultTranslator', () => {
   });
 
   describe('formatBlockingPopResult', () => {
-    it('should format valid blocking pop result', () => {
-      const glideResult = [
+    test('should format valid blocking pop result', async () => {
+      const glideResult: [GlideString, GlideString, number] = [
         'key1',
         'member1',
         5.5,
@@ -134,31 +132,31 @@ describe('ResultTranslator', () => {
       assert.deepStrictEqual(result, ['key1', 'member1', '5.5']);
     });
 
-    it('should handle null input', () => {
+    test('should handle null input', async () => {
       const result = ResultTranslator.formatBlockingPopResult(null);
       assert.strictEqual(result, null);
     });
 
-    it('should handle undefined input', () => {
-      const result = ResultTranslator.formatBlockingPopResult(undefined);
+    test('should handle undefined input', async () => {
+      const result = ResultTranslator.formatBlockingPopResult(undefined );
       assert.strictEqual(result, null);
     });
 
-    it('should handle non-array input', () => {
+    test('should handle non-array input', async () => {
       const result = ResultTranslator.formatBlockingPopResult(
-        'not-an-array'
+        'not-an-array' 
       );
       assert.strictEqual(result, null);
     });
 
-    it('should handle array with wrong length', () => {
-      const result1 = ResultTranslator.formatBlockingPopResult(['key']);
+    test('should handle array with wrong length', async () => {
+      const result1 = ResultTranslator.formatBlockingPopResult(['key'] );
       assert.strictEqual(result1, null);
 
       const result2 = ResultTranslator.formatBlockingPopResult([
         'key',
         'member',
-      ]);
+      ] );
       assert.strictEqual(result2, null);
 
       const result3 = ResultTranslator.formatBlockingPopResult([
@@ -166,12 +164,12 @@ describe('ResultTranslator', () => {
         'member',
         1,
         'extra',
-      ]);
+      ] );
       assert.strictEqual(result3, null);
     });
 
-    it('should handle Buffer GlideString inputs', () => {
-      const glideResult = [
+    test('should handle Buffer GlideString inputs', async () => {
+      const glideResult: [GlideString, GlideString, number] = [
         Buffer.from('buffer_key'),
         Buffer.from('buffer_member'),
         42.7,
@@ -182,8 +180,8 @@ describe('ResultTranslator', () => {
       assert.deepStrictEqual(result, ['buffer_key', 'buffer_member', '42.7']);
     });
 
-    it('should handle zero and negative scores', () => {
-      const glideResult = [
+    test('should handle zero and negative scores', async () => {
+      const glideResult: [GlideString, GlideString, number] = [
         'key',
         'member',
         0,
@@ -191,7 +189,7 @@ describe('ResultTranslator', () => {
       const result1 = ResultTranslator.formatBlockingPopResult(glideResult);
       assert.deepStrictEqual(result1, ['key', 'member', '0']);
 
-      const negativeResult = [
+      const negativeResult: [GlideString, GlideString, number] = [
         'key',
         'member',
         -3.14,
@@ -202,7 +200,7 @@ describe('ResultTranslator', () => {
   });
 
   describe('convertStringArray', () => {
-    it('should convert valid GlideString array', () => {
+    test('should convert valid GlideString array', async () => {
       const glideResult = ['string1', 'string2', 'string3'];
 
       const result = ResultTranslator.convertStringArray(glideResult);
@@ -210,17 +208,17 @@ describe('ResultTranslator', () => {
       assert.deepStrictEqual(result, ['string1', 'string2', 'string3']);
     });
 
-    it('should handle empty array', () => {
+    test('should handle empty array', async () => {
       const result = ResultTranslator.convertStringArray([]);
       assert.deepStrictEqual(result, []);
     });
 
-    it('should handle non-array input', () => {
-      const result = ResultTranslator.convertStringArray('not-an-array');
+    test('should handle non-array input', async () => {
+      const result = ResultTranslator.convertStringArray('not-an-array' );
       assert.deepStrictEqual(result, []);
     });
 
-    it('should handle Buffer GlideString elements', () => {
+    test('should handle Buffer GlideString elements', async () => {
       const glideResult = [
         Buffer.from('buffer1'),
         'regular_string',
@@ -232,11 +230,11 @@ describe('ResultTranslator', () => {
       assert.deepStrictEqual(result, ['buffer1', 'regular_string', 'buffer2']);
     });
 
-    it('should handle null elements gracefully', () => {
+    test('should handle null elements gracefully', async () => {
       const glideResult = [
         'valid',
-        null,
-        undefined,
+        null ,
+        undefined ,
         'another_valid',
       ];
 
@@ -245,7 +243,7 @@ describe('ResultTranslator', () => {
       assert.deepStrictEqual(result, ['valid', '', '', 'another_valid']);
     });
 
-    it('should handle mixed string and Buffer array', () => {
+    test('should handle mixed string and Buffer array', async () => {
       const glideResult = [
         'string',
         Buffer.from('binary_data', 'utf8'),
@@ -260,10 +258,10 @@ describe('ResultTranslator', () => {
   });
 
   describe('formatRangeResult', () => {
-    it('should format SortedSetDataType when withScores is true', () => {
+    test('should format SortedSetDataType when withScores is true', async () => {
       const glideResult = [
-        { element: 'member1', score: 1 },
-        { element: 'member2', score: 2 },
+        { element: 'member1', score: 1.0 },
+        { element: 'member2', score: 2.0 },
       ];
 
       const result = ResultTranslator.formatRangeResult(glideResult, true);
@@ -271,7 +269,7 @@ describe('ResultTranslator', () => {
       assert.deepStrictEqual(result, ['member1', '1', 'member2', '2']);
     });
 
-    it('should format string array when withScores is false', () => {
+    test('should format string array when withScores is false', async () => {
       const glideResult = ['member1', 'member2', 'member3'];
 
       const result = ResultTranslator.formatRangeResult(glideResult, false);
@@ -279,18 +277,18 @@ describe('ResultTranslator', () => {
       assert.deepStrictEqual(result, ['member1', 'member2', 'member3']);
     });
 
-    it('should handle non-array input', () => {
-      const result1 = ResultTranslator.formatRangeResult(null, true);
+    test('should handle non-array input', async () => {
+      const result1 = ResultTranslator.formatRangeResult(null , true);
       assert.deepStrictEqual(result1, []);
 
       const result2 = ResultTranslator.formatRangeResult(
-        undefined,
+        undefined ,
         false
       );
       assert.deepStrictEqual(result2, []);
     });
 
-    it('should handle empty arrays', () => {
+    test('should handle empty arrays', async () => {
       const result1 = ResultTranslator.formatRangeResult([], true);
       assert.deepStrictEqual(result1, []);
 
@@ -298,7 +296,7 @@ describe('ResultTranslator', () => {
       assert.deepStrictEqual(result2, []);
     });
 
-    it('should handle Buffer elements when withScores is false', () => {
+    test('should handle Buffer elements when withScores is false', async () => {
       const glideResult = [
         Buffer.from('binary1'),
         'string1',
@@ -310,9 +308,9 @@ describe('ResultTranslator', () => {
       assert.deepStrictEqual(result, ['binary1', 'string1', 'binary2']);
     });
 
-    it('should handle SortedSetDataType with Buffer elements when withScores is true', () => {
+    test('should handle SortedSetDataType with Buffer elements when withScores is true', async () => {
       const glideResult = [
-        { element: Buffer.from('buffer_member'), score: 1.5 },
+        { element.from('buffer_member'), score: 1.5 },
         { element: 'string_member', score: 2.5 },
       ];
 
@@ -323,24 +321,29 @@ describe('ResultTranslator', () => {
   });
 
   describe('formatFloatResult', () => {
-    it('should format integer values', () => {
-      assert.strictEqual(ResultTranslator.formatFloatResult(42), '42');
-      assert.strictEqual(ResultTranslator.formatFloatResult(0), '0');
-      assert.strictEqual(ResultTranslator.formatFloatResult(-15), '-15');
+    test('should format integer values', async () => {
+      assert.ok(ResultTranslator.formatFloatResult(42)).toBe('42');
+      assert.ok(ResultTranslator.formatFloatResult(0)).toBe('0');
+      assert.ok(ResultTranslator.formatFloatResult(-15)).toBe('-15');
     });
 
-    it('should format decimal values', () => {
-      assert.strictEqual(ResultTranslator.formatFloatResult(3.14159), '3.14159');
-      assert.strictEqual(ResultTranslator.formatFloatResult(0.5), '0.5');
-      assert.strictEqual(ResultTranslator.formatFloatResult(-2.75), '-2.75');
+    test('should format decimal values', async () => {
+      assert.ok(ResultTranslator.formatFloatResult(3.14159)).toBe('3.14159');
+      assert.ok(ResultTranslator.formatFloatResult(0.5)).toBe('0.5');
+      assert.ok(ResultTranslator.formatFloatResult(-2.75)).toBe('-2.75');
     });
 
-    it('should handle floating point precision issues', () => {
+    test('should handle floating point precision issues', async () => {
       // JavaScript floating point arithmetic can be imprecise
       const result1 = ResultTranslator.formatFloatResult(0.1 + 0.2);
-      assert.ok(Math.abs(parseFloat(result1) - 0.3) < 1e-10);
-      
-      assert.strictEqual(ResultTranslator.formatFloatResult(0.000000000000001), 
+      assert.ok(Math.abs(parseFloat(result1) - 0.3) < Math.pow(10, -10));
+
+      const result2 = ResultTranslator.formatFloatResult(1.1 * 1.1);
+      assert.ok(Math.abs(parseFloat(result2) - 1.21) < Math.pow(10, -10));
+    });
+
+    test('should handle very small numbers', async () => {
+      assert.ok(ResultTranslator.formatFloatResult(0.000000000000001)).toBe(
         '1e-15'
       );
       // Number.MIN_VALUE may be rounded to 0 due to precision handling
@@ -350,30 +353,30 @@ describe('ResultTranslator', () => {
       assert.strictEqual(minValueResult === '5e-324' || minValueResult === '0', true);
     });
 
-    it('should handle very large numbers', () => {
-      assert.strictEqual(ResultTranslator.formatFloatResult(Number.MAX_SAFE_INTEGER), 
+    test('should handle very large numbers', async () => {
+      assert.ok(ResultTranslator.formatFloatResult(Number.MAX_SAFE_INTEGER)).toBe(
         '9007199254740991'
       );
-      assert.strictEqual(ResultTranslator.formatFloatResult(1e20), 
+      assert.ok(ResultTranslator.formatFloatResult(1e20)).toBe(
         '100000000000000000000'
       );
     });
 
-    it('should handle special float values', () => {
-      assert.strictEqual(ResultTranslator.formatFloatResult(Infinity), 'Infinity');
-      assert.strictEqual(ResultTranslator.formatFloatResult(-Infinity), '-Infinity');
-      assert.strictEqual(ResultTranslator.formatFloatResult(NaN), 'NaN');
+    test('should handle special float values', async () => {
+      assert.ok(ResultTranslator.formatFloatResult(Infinity)).toBe('Infinity');
+      assert.ok(ResultTranslator.formatFloatResult(-Infinity)).toBe('-Infinity');
+      assert.ok(ResultTranslator.formatFloatResult(NaN)).toBe('NaN');
     });
 
-    it('should handle rounding edge cases', () => {
+    test('should handle rounding edge cases', async () => {
       // Test numbers that require proper rounding
-      assert.strictEqual(ResultTranslator.formatFloatResult(1.9999999999999998), '2');
-      assert.strictEqual(ResultTranslator.formatFloatResult(0.9999999999999999), '1');
+      assert.ok(ResultTranslator.formatFloatResult(1.9999999999999998)).toBe('2');
+      assert.ok(ResultTranslator.formatFloatResult(0.9999999999999999)).toBe('1');
     });
   });
 
   describe('translateError', () => {
-    it('should pass through Error instances unchanged', () => {
+    test('should pass through Error instances unchanged', async () => {
       const originalError = new Error('Test error message');
       const result = ResultTranslator.translateError(originalError);
 
@@ -381,7 +384,7 @@ describe('ResultTranslator', () => {
       assert.strictEqual(result.message, 'Test error message');
     });
 
-    it('should convert error-like objects to Error instances', () => {
+    test('should convert error-like objects to Error instances', async () => {
       const errorLike = { message: 'Custom error message' };
       const result = ResultTranslator.translateError(errorLike);
 
@@ -389,28 +392,28 @@ describe('ResultTranslator', () => {
       assert.strictEqual(result.message, 'Custom error message');
     });
 
-    it('should handle null error input', () => {
+    test('should handle null error input', async () => {
       const result = ResultTranslator.translateError(null);
 
       assert.ok(result instanceof Error);
       assert.strictEqual(result.message, 'Unknown GLIDE error');
     });
 
-    it('should handle undefined error input', () => {
+    test('should handle undefined error input', async () => {
       const result = ResultTranslator.translateError(undefined);
 
       assert.ok(result instanceof Error);
       assert.strictEqual(result.message, 'Unknown GLIDE error');
     });
 
-    it('should handle string error input', () => {
+    test('should handle string error input', async () => {
       const result = ResultTranslator.translateError('String error');
 
       assert.ok(result instanceof Error);
       assert.strictEqual(result.message, 'Unknown GLIDE error');
     });
 
-    it('should handle object without message property', () => {
+    test('should handle object without message property', async () => {
       const errorObject = { code: 'ERR_CODE', details: 'Some details' };
       const result = ResultTranslator.translateError(errorObject);
 
@@ -418,15 +421,14 @@ describe('ResultTranslator', () => {
       assert.strictEqual(result.message, 'Unknown GLIDE error');
     });
 
-    it('should preserve Error subclass types', () => {
+    test('should preserve Error subclass types', async () => {
       class CustomError extends Error {
         constructor(
           message,
-          code
+          public code
         ) {
           super(message);
           this.name = 'CustomError';
-          this.code = code;
         }
       }
 
@@ -436,10 +438,10 @@ describe('ResultTranslator', () => {
       assert.strictEqual(result, customError);
       assert.ok(result instanceof CustomError);
       assert.strictEqual(result.message, 'Custom message');
-      assert.strictEqual(result.code, 'CUSTOM_CODE');
+      assert.ok((result as CustomError).code).toBe('CUSTOM_CODE');
     });
 
-    it('should handle TypeError and other Error types', () => {
+    test('should handle TypeError and other Error types', async () => {
       const typeError = new TypeError('Type error message');
       const result = ResultTranslator.translateError(typeError);
 

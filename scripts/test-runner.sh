@@ -28,7 +28,7 @@ cleanup() {
     if [ "$INFRA_STARTED" = true ]; then
         echo -e "${YELLOW}Stopping test infrastructure...${NC}"
         if [ "$ENABLE_CLUSTER_TESTS" = "true" ]; then
-            docker compose -f docker-compose.test.yml down >/dev/null 2>&1 || true
+            docker compose -f docker-compose.cluster.yml down >/dev/null 2>&1 || true
         else
             docker stop test-valkey-standalone >/dev/null 2>&1 || true
         fi
@@ -61,34 +61,36 @@ check_valkey() {
     fi
 }
 
+# Skip infrastructure management if parent script is handling it
+if [ "$SKIP_INFRA_MANAGEMENT" = "true" ]; then
+    echo -e "${YELLOW}Infrastructure managed by parent script${NC}"
+    echo -e "${YELLOW}Using Valkey at ${VALKEY_HOST}:${VALKEY_PORT}${NC}"
 # Check if we're in cluster mode
-if [ "$ENABLE_CLUSTER_TESTS" = "true" ]; then
+elif [ "$ENABLE_CLUSTER_TESTS" = "true" ]; then
     echo -e "${YELLOW}Cluster mode detected - checking cluster infrastructure...${NC}"
     CLUSTER_NODES=${VALKEY_CLUSTER_NODES:-"localhost:17000,localhost:17001,localhost:17002"}
+    export VALKEY_CLUSTER_NODES="$CLUSTER_NODES"
     
-    # Check if cluster is running
-    FIRST_NODE=$(echo $CLUSTER_NODES | cut -d',' -f1)
-    CLUSTER_HOST=$(echo $FIRST_NODE | cut -d':' -f1)
-    CLUSTER_PORT=$(echo $FIRST_NODE | cut -d':' -f2)
-    
-    if ! docker ps | grep -q test-valkey-cluster; then
+    # Check if simplified cluster is running
+    if ! docker ps | grep -q test-valkey-cluster-all; then
         echo -e "${YELLOW}Starting cluster infrastructure...${NC}"
-        docker compose -f docker-compose.test.yml up -d test-valkey-cluster-1 test-valkey-cluster-2 test-valkey-cluster-3 test-valkey-cluster-4 test-valkey-cluster-5 test-valkey-cluster-6 >/dev/null 2>&1
+        docker compose -f docker-compose.cluster.yml up -d valkey-cluster-all >/dev/null 2>&1
         
-        # Wait for cluster to be ready
+        # Wait for cluster to be ready (self-initializes)
         for i in {1..30}; do
-            if docker exec test-valkey-cluster-1 valkey-cli ping 2>/dev/null | grep -q PONG; then
+            if nc -z localhost 17000 2>/dev/null && nc -z localhost 17001 2>/dev/null && nc -z localhost 17002 2>/dev/null; then
                 break
             fi
             sleep 1
         done
         
-        # Initialize cluster if needed
-        docker compose -f docker-compose.test.yml --profile cluster up -d cluster-init >/dev/null 2>&1
-        sleep 5
+        # Extra wait for cluster formation
+        sleep 3
         
         INFRA_STARTED=true
         echo -e "${GREEN}✓ Cluster infrastructure ready${NC}"
+    else
+        echo -e "${GREEN}✓ Cluster infrastructure is already running${NC}"
     fi
     
     echo -e "${YELLOW}Using Valkey Cluster at ${CLUSTER_NODES}${NC}"
@@ -239,7 +241,7 @@ fi
 if [ "$INFRA_STARTED" = true ] && [ "$KEEP_INFRA" != "1" ]; then
   echo -e "${YELLOW}Stopping test infrastructure...${NC}"
   if [ "$ENABLE_CLUSTER_TESTS" = "true" ]; then
-    docker compose -f docker-compose.test.yml down >/dev/null 2>&1 || true
+    docker compose -f docker-compose.cluster.yml down >/dev/null 2>&1 || true
   else
     docker stop test-valkey-standalone >/dev/null 2>&1 || true
   fi

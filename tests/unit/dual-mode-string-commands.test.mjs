@@ -14,7 +14,7 @@ const { Redis, Cluster } = pkg;
 function getStandaloneConfig() {
   return {
     host: process.env.VALKEY_HOST || 'localhost',
-    port: parseInt(process.env.VALKEY_PORT || '6379'),
+    port: parseInt(process.env.VALKEY_PORT || '6383'),
     lazyConnect: true,
   };
 }
@@ -60,7 +60,7 @@ testModes.forEach(({ name: mode, createClient }) => {
       });
 
     it('should set and get string values', async () => {
-      const key = `test:string:${mode}:${Date.now()}`;
+      const key = `test:${mode}:${Date.now()}`;
       const value = `hello-${mode}`;
       
       await redis.set(key, value);

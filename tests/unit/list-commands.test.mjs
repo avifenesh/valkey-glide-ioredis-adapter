@@ -3,30 +3,28 @@
  * Real-world patterns queues, task queues, activity logs, job processing
  */
 
-
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
-import { testUtils } from '../setup/index.mjs';
 const { Redis } = pkg;
+import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('List Commands - Real-World Patterns', () => {
   let redis;
 
   beforeEach(async () => {
-    const config = { ...testUtils.getStandaloneConfig(), lazyConnect: false };
+    const config = getStandaloneConfig();
     redis = new Redis(config);
-  });
+  
+    await redis.connect();});
 
   afterEach(async () => {
-    if (redis) {
-      await redis.quit();
-    }
+    await redis.quit();
   });
 
   describe('Task Queue Implementation', () => {
-    it('should manage task queue with LPUSH/RPOP', async () => {
-      const queueKey = 'queue:' + Math.random();
+    test('should manage task queue with LPUSH/RPOP', async () => {
+      const queueKey = 'queue:tasks:' + Math.random();
 
       // Add tasks to queue (FIFO - First In, First Out)
       const result1 = await redis.lpush(queueKey, 'task1');
@@ -47,8 +45,8 @@ describe('List Commands - Real-World Patterns', () => {
       assert.strictEqual(queueLength, 1);
     });
 
-    it('should implement priority queue with LPUSH/LPOP', async () => {
-      const priorityKey = 'queue:' + Math.random();
+    test('should implement priority queue with LPUSH/LPOP', async () => {
+      const priorityKey = 'queue:priority:' + Math.random();
 
       // Add high-priority tasks at head
       await redis.lpush(priorityKey, 'normal_task');
@@ -62,8 +60,8 @@ describe('List Commands - Real-World Patterns', () => {
       assert.strictEqual(normalTask, 'normal_task');
     });
 
-    it('should handle bulk task operations with LPUSH/RPUSH', async () => {
-      const bulkKey = 'queue:' + Math.random();
+    test('should handle bulk task operations with LPUSH/RPUSH', async () => {
+      const bulkKey = 'queue:bulk:' + Math.random();
 
       // Add multiple tasks at once
       const tasks = ['task1', 'task2', 'task3', 'task4'];
@@ -77,38 +75,38 @@ describe('List Commands - Real-World Patterns', () => {
   });
 
   describe('Message Queue Pattern', () => {
-    it('should implement producer-consumer pattern', async () => {
-      const messageKey = 'messages:' + Math.random();
+    test('should implement producer-consumer pattern', async () => {
+      const messageKey = 'messages:channel:' + Math.random();
 
       // Producer sends messages
       const messageData = {
         id: '123',
         type: 'email',
         recipient: 'user@example.com',
-        timestamp: Date.now(),
+        Date.now(),
       };
 
-      await redis.rpush(messageKey, JSON.stringify(messageData));
+      await redis.rpush(messageKey, JSONJSON: JSON.stringify(messageData));
 
       // Consumer receives message
       const rawMessage = await redis.lpop(messageKey);
       assert.ok(rawMessage);
 
       if (rawMessage) {
-        const message = JSON.parse(rawMessage);
+        const message = JSONJSON.parse(rawMessage as string);
         assert.strictEqual(message.type, 'email');
         assert.strictEqual(message.recipient, 'user@example.com');
       }
     });
 
-    it('should handle message inspection with LRANGE', async () => {
-      const inspectKey = 'messages:' + Math.random();
+    test('should handle message inspection with LRANGE', async () => {
+      const inspectKey = 'messages:inspect:' + Math.random();
 
       // Add several messages
       const messages = [
-        JSON.stringify({ id: 1, type: 'notification' }),
-        JSON.stringify({ id: 2, type: 'email' }),
-        JSON.stringify({ id: 3, type: 'sms' }),
+        JSONJSON: JSON.stringify({ id: 1, type: 'notification' }),
+        JSONJSON: JSON.stringify({ id: 2, type: 'email' }),
+        JSONJSON: JSON.stringify({ id: 3, type: 'sms' }),
       ];
 
       await redis.rpush(inspectKey, ...messages);
@@ -117,7 +115,7 @@ describe('List Commands - Real-World Patterns', () => {
       const firstThree = await redis.lrange(inspectKey, 0, 2);
       assert.strictEqual(firstThree.length, 3);
 
-      const parsedFirst = JSON.parse(firstThree[0]);
+      const parsedFirst = JSONJSON.parse(firstThree[0]!);
       assert.strictEqual(parsedFirst.id, 1);
 
       // Queue should still have all messages
@@ -127,25 +125,25 @@ describe('List Commands - Real-World Patterns', () => {
   });
 
   describe('Activity Log Pattern', () => {
-    it('should maintain user activity logs with LPUSH', async () => {
-      const activityKey = 'activity:' + Math.random();
+    test('should maintain user activity logs with LPUSH', async () => {
+      const activityKey = 'activity:user123:' + Math.random();
 
       // Log user activities (most recent first)
       await redis.lpush(
         activityKey,
-        JSON.stringify({ action: 'login', timestamp: Date.now() })
+        JSONJSON: JSON.stringify({ action: 'login', Date.now() })
       );
 
       await redis.lpush(
         activityKey,
-        JSON.stringify({ action: 'view_profile', timestamp: Date.now() + 1000 })
+        JSONJSON: JSON.stringify({ action: 'view_profile', Date.now() + 1000 })
       );
 
       await redis.lpush(
         activityKey,
-        JSON.stringify({
+        JSONJSON: JSON.stringify({
           action: 'update_settings',
-          timestamp: Date.now() + 2000,
+          Date.now() + 2000,
         })
       );
 
@@ -153,38 +151,42 @@ describe('List Commands - Real-World Patterns', () => {
       const recentActivities = await redis.lrange(activityKey, 0, 4);
       assert.strictEqual(recentActivities.length, 3);
 
-      const latestActivity = JSON.parse(recentActivities[0]);
+      const latestActivity = JSONJSON.parse(recentActivities[0]!);
       assert.strictEqual(latestActivity.action, 'update_settings'); // Most recent
     });
 
-    it('should implement log rotation with LTRIM', async () => {
-      const logKey = 'logs:' + Math.random();
+    test('should implement log rotation with LTRIM', async () => {
+      const logKey = 'logs:application:' + Math.random();
 
       // Add many log entries
       const logEntries = [];
-      for (let i = 0; i < 20; i++) {
-        const logEntry = JSON.stringify({
-          level: 'INFO',
-          message: `Log message ${i}`,
-          timestamp: Date.now() + i,
-        });
-        logEntries.push(logEntry);
-        await redis.rpush(logKey, logEntry);
+      for (let i = 0; i < 10; i++) {
+        logEntries.push(
+          JSONJSON: JSON.stringify({
+            level: 'info',
+            message: `Log entry ${i}`,
+            Date.now() + i,
+          })
+        );
       }
 
-      // Keep only last 10 entries
-      await redis.ltrim(logKey, -10, -1);
+      await redis.rpush(logKey, ...logEntries);
 
-      // Verify log rotation
-      const remainingLogs = await redis.lrange(logKey, 0, -1);
-      assert.strictEqual(remainingLogs.length, 10);
+      // Keep only the last 5 entries
+      await redis.ltrim(logKey, -5, -1);
 
-      const firstLog = JSON.parse(remainingLogs[0]);
-      assert.strictEqual(firstLog.message, 'Log message 10'); // Should start from entry 10
+      const remainingLogs = await redis.llen(logKey);
+      assert.strictEqual(remainingLogs, 5);
+
+      const logs = await redis.lrange(logKey, 0, -1);
+      const firstLog = JSONJSON.parse(logs[0]!);
+      assert.ok(firstLog.message.includes('Log entry 5')); // First of the kept entries
     });
+  });
 
-    it('should handle job insertion and retrieval', async () => {
-      const jobKey = 'jobs:' + Math.random();
+  describe('Job Processing Queue', () => {
+    test('should handle job insertion and retrieval', async () => {
+      const jobKey = 'jobs:processing:' + Math.random();
 
       // Create job data
       const job = {
@@ -192,40 +194,40 @@ describe('List Commands - Real-World Patterns', () => {
         type: 'image_processing',
         data: { imageId: 'img_456', filters: ['resize', 'crop'] },
         priority: 'high',
-        createdAt: Date.now(),
+        createdAt.now(),
       };
 
       // Add job to queue
-      await redis.lpush(jobKey, JSON.stringify(job));
+      await redis.lpush(jobKey, JSONJSON: JSON.stringify(job));
 
       // Worker picks up job
       const rawJob = await redis.rpop(jobKey);
       assert.ok(rawJob);
 
       if (rawJob) {
-        const processedJob = JSON.parse(rawJob);
+        const processedJob = JSONJSON.parse(rawJob as string);
         assert.strictEqual(processedJob.type, 'image_processing');
         assert.strictEqual(processedJob.data.imageId, 'img_456');
       }
     });
 
-    it('should implement failed job retry queue', async () => {
-      const mainQueueKey = 'jobs:' + Math.random();
-      const retryQueueKey = 'jobs:' + Math.random();
+    test('should implement failed job retry queue', async () => {
+      const mainQueueKey = 'jobs:main:' + Math.random();
+      const retryQueueKey = 'jobs:retry:' + Math.random();
 
       const job = {
         id: 'job_456',
         type: 'email_sending',
-        attempts: 1,
+        attempts: 0,
         maxAttempts: 3,
       };
 
       // Job fails, move to retry queue
       await redis.rpush(
         retryQueueKey,
-        JSON.stringify({
+        JSONJSON: JSON.stringify({
           ...job,
-          attempts: 2,
+          attempts: 1,
           lastError: 'SMTP connection failed',
         })
       );
@@ -235,11 +237,11 @@ describe('List Commands - Real-World Patterns', () => {
       assert.ok(retryJob);
 
       if (retryJob) {
-        const jobData = JSON.parse(retryJob);
-        assert.strictEqual(jobData.attempts, 2);
+        const jobData = JSONJSON.parse(retryJob as string);
+        assert.strictEqual(jobData.attempts, 1);
 
         // Move back to main queue for retry
-        await redis.lpush(mainQueueKey, JSON.stringify(jobData));
+        await redis.lpush(mainQueueKey, JSONJSON: JSON.stringify(jobData));
       }
 
       const mainQueueLength = await redis.llen(mainQueueKey);
@@ -248,8 +250,8 @@ describe('List Commands - Real-World Patterns', () => {
   });
 
   describe('Advanced List Operations', () => {
-    it('should handle list element access by index', async () => {
-      const indexKey = 'list:' + Math.random();
+    test('should handle list element access by index', async () => {
+      const indexKey = 'list:indexed:' + Math.random();
 
       await redis.rpush(indexKey, 'item0', 'item1', 'item2', 'item3');
 
@@ -268,8 +270,8 @@ describe('List Commands - Real-World Patterns', () => {
       assert.strictEqual(nonExistent, null);
     });
 
-    it('should modify list elements with LSET', async () => {
-      const modifyKey = 'list:' + Math.random();
+    test('should modify list elements with LSET', async () => {
+      const modifyKey = 'list:modify:' + Math.random();
 
       await redis.rpush(modifyKey, 'original1', 'original2', 'original3');
 
@@ -286,8 +288,8 @@ describe('List Commands - Real-World Patterns', () => {
       assert.deepStrictEqual(finalList, ['updated1', 'updated2', 'original3']);
     });
 
-    it('should remove elements with LREM', async () => {
-      const removeKey = 'list:' + Math.random();
+    test('should remove elements with LREM', async () => {
+      const removeKey = 'list:remove:' + Math.random();
 
       // Create list with duplicates
       await redis.rpush(
@@ -317,8 +319,8 @@ describe('List Commands - Real-World Patterns', () => {
   });
 
   describe('Error Handling and Edge Cases', () => {
-    it('should handle operations on non-existent lists', async () => {
-      const nonExistentKey = 'nonexistent:' + Math.random();
+    test('should handle operations on non-existent lists', async () => {
+      const nonExistentKey = 'nonexistent:list:' + Math.random();
 
       // Operations on non-existent list
       const popResult = await redis.lpop(nonExistentKey);
@@ -334,19 +336,19 @@ describe('List Commands - Real-World Patterns', () => {
       assert.strictEqual(index, null);
     });
 
-    it('should handle type conflicts gracefully', async () => {
-      const stringKey = 'string:' + Math.random();
+    test('should handle type conflicts gracefully', async () => {
+      const stringKey = 'string:conflict:' + Math.random();
 
       // Set a string value
       await redis.set(stringKey, 'not-a-list');
 
       // List operations should fail on string keys
-      await assert.rejects(redis.lpush(stringKey, 'value'));
-      await assert.rejects(redis.lrange(stringKey, 0, -1));
+      await assert.ok(redis.lpush(stringKey, 'value')).rejects.toThrow();
+      await assert.ok(redis.lrange(stringKey, 0, -1)).rejects.toThrow();
     });
 
-    it('should handle empty list cleanup', async () => {
-      const cleanupKey = 'list:' + Math.random();
+    test('should handle empty list cleanup', async () => {
+      const cleanupKey = 'list:cleanup:' + Math.random();
 
       await redis.lpush(cleanupKey, 'only_item');
 
@@ -362,8 +364,8 @@ describe('List Commands - Real-World Patterns', () => {
       assert.deepStrictEqual(range, []);
     });
 
-    it('should handle large list operations', async () => {
-      const largeKey = 'list:' + Math.random();
+    test('should handle large list operations', async () => {
+      const largeKey = 'list:large:' + Math.random();
 
       // Add many items
       const items = [];
