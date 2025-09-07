@@ -61,6 +61,14 @@ describe('Caching, Analytics & E-commerce Integration', () => {
     redisClient = new Redis(config);
 
     await redisClient.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redisClient.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
 
     // Clean up any existing test data at the start
     try {

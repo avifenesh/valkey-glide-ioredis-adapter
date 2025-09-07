@@ -25,6 +25,14 @@ describe('Error Handling and Edge Cases', () => {
     redis = new Redis(config);
 
     await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
   });
 
   afterEach(async () => {
@@ -45,6 +53,14 @@ describe('Error Handling and Edge Cases', () => {
       const config = getStandaloneConfig();
       redis = new Redis(config);
       await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
       const reconnectedValue = await redis.get('test:disconnect');
       assert.strictEqual(reconnectedValue, 'value');
     });

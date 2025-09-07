@@ -35,7 +35,15 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
     const config = await getValkeyBundleTestConfig();
     redis = new Redis(config);
 
-    await redis.connect(); // Wait for valkey-bundle to be ready and check modules
+    await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    } // Wait for valkey-bundle to be ready and check modules
     const isReady = await waitForValkeyBundle(redis);
     if (!isReady) {
       throw new Error(

@@ -33,7 +33,15 @@ describe('Real-World ioredis Usage Patterns', () => {
     };
     redis = new Redis(config);
 
-    await redis.connect(); // Wait for connection
+    await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    } // Wait for connection
     await redis.ping();
   });
 
@@ -54,7 +62,15 @@ describe('Real-World ioredis Usage Patterns', () => {
     test('should handle basic Redis constructor pattern from GitHub examples', async () => {
       // Pattern: const redis = new Redis({ port, host, password })
 
-      await redis.connect(); // Found in GitHub repositories
+      await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    } // Found in GitHub repositories
       assert.ok(redis !== undefined);
       assert.strictEqual(typeof redis.ping, 'function');
 

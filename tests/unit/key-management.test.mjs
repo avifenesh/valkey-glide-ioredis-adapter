@@ -35,6 +35,14 @@ describe('Key Management - TTL & Persistence Patterns', () => {
     redis = new Redis(config);
 
     await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
   });
 
   afterEach(async () => {

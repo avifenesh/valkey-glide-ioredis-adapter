@@ -51,6 +51,14 @@ describe('Connection Management (ioredis compatibility)', () => {
       const config = getStandaloneConfig();
       redis = new Redis(config);
       await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
 
       // Basic connectivity test
       const result = await redis.ping();
@@ -67,6 +75,14 @@ describe('Connection Management (ioredis compatibility)', () => {
       const config = getStandaloneConfig();
       redis = new Redis(config.port, config.host);
       await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
 
       const result = await redis.ping();
       assert.strictEqual(result, 'PONG');
@@ -87,6 +103,14 @@ describe('Connection Management (ioredis compatibility)', () => {
         maxRetriesPerRequest: 3,
       });
       await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
 
       const result = await redis.ping();
       assert.strictEqual(result, 'PONG');
@@ -102,6 +126,14 @@ describe('Connection Management (ioredis compatibility)', () => {
       const config = getStandaloneConfig();
       redis = new Redis(`redis://${config.host}:${config.port}/0`);
       await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
 
       const result = await redis.ping();
       assert.strictEqual(result, 'PONG');
@@ -117,6 +149,14 @@ describe('Connection Management (ioredis compatibility)', () => {
       const config = getStandaloneConfig();
       redis = new Redis({ port: config.port, host: config.host, db: 1 });
       await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
 
       // Test that we're using the correct database
       await redis.set('dbtest', 'value');
@@ -135,11 +175,27 @@ describe('Connection Management (ioredis compatibility)', () => {
       const config = getStandaloneConfig();
       redis = new Redis(config);
       await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
       const readyPromise = new Promise(resolve => {
         redis.on('ready', resolve);
       });
 
       await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
       await readyPromise;
 
       assert.strictEqual(redis.status, 'ready');
@@ -155,11 +211,27 @@ describe('Connection Management (ioredis compatibility)', () => {
       const config = getStandaloneConfig();
       redis = new Redis(config);
       await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
       const connectPromise = new Promise(resolve => {
         redis.on('connect', resolve);
       });
 
       await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
       await connectPromise;
     });
 
@@ -173,6 +245,14 @@ describe('Connection Management (ioredis compatibility)', () => {
       const config = getStandaloneConfig();
       redis = new Redis(config);
       await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
 
       const endPromise = new Promise(resolve => {
         redis.on('end', resolve);
@@ -194,6 +274,14 @@ describe('Connection Management (ioredis compatibility)', () => {
       const config = getStandaloneConfig();
       redis = new Redis({ ...config, retryDelayOnFailover: 10 });
       await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
 
       // Simulate connection loss and recovery
       const reconnectPromise = new Promise(resolve => {
@@ -203,6 +291,14 @@ describe('Connection Management (ioredis compatibility)', () => {
       // Force reconnection simulation
       redis.disconnect();
       await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
       await reconnectPromise;
     });
   });
@@ -210,7 +306,15 @@ describe('Connection Management (ioredis compatibility)', () => {
   describe('Error handling', () => {
     test('should emit error events', async () => {
       redis = new Redis({ port: 9999 });
-      await redis.connect(); // Non-existent port
+      await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    } // Non-existent port
 
       const errorPromise = new Promise(resolve => {
         redis.on('error', resolve);
@@ -218,6 +322,14 @@ describe('Connection Management (ioredis compatibility)', () => {
 
       try {
         await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
       } catch (error) {
         // Expected to fail
       }
@@ -236,6 +348,14 @@ describe('Connection Management (ioredis compatibility)', () => {
       const config = getStandaloneConfig();
       redis = new Redis(config);
       await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
 
       // Try to increment a non-numeric value
       await redis.set('text', 'not_a_number');
@@ -271,6 +391,14 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     const config = getStandaloneConfig();
     redis = new Redis(config);
     await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
 
     // Clean up any existing test data
     try {
