@@ -425,9 +425,9 @@ export abstract class BaseClient extends EventEmitter {
     const { lua, numberOfKeys = 0 } = options;
 
     const commandHandler = async (...args: any[]): Promise<any> => {
-      // Ensure we have a connected client
+      // Auto-connect if not connected (ioredis behavior)
       if (!this.glideClient) {
-        throw new Error('Client not connected');
+        await this.connect();
       }
       const numkeys = Number(numberOfKeys) || 0;
 
