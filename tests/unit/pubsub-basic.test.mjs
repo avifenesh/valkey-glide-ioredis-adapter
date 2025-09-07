@@ -3,11 +3,23 @@
  * Tests current pub/sub implementation and validates incremental improvements
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
-import { getStandaloneConfig, checkTestServers, delay } from '../utils/test-config.mjs';
+import {
+  getStandaloneConfig,
+  checkTestServers,
+  delay,
+} from '../utils/test-config.mjs';
 
 describe('Basic Pub/Sub Functionality', () => {
   let publisher;
@@ -165,9 +177,7 @@ describe('Basic Pub/Sub Functionality', () => {
         assert.strictEqual(receivedChannel, 'test.news');
         assert.strictEqual(receivedMessage, 'breaking news');
       } else {
-        console.log(
-          '📝 Current limitation message reception not implemented'
-        );
+        console.log('📝 Current limitation message reception not implemented');
         assert.strictEqual(patternMessageReceived, false);
       }
     });

@@ -1,4 +1,12 @@
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import {
   GlideClient,
@@ -14,14 +22,24 @@ describe('GLIDE Pub/Sub Polling Approach', () => {
   before(async () => {
     // Create a regular client for publishing
     publishClient = await GlideClient.createClient({
-      addresses: [{ host: 'localhost', port: parseInt(process.env.VALKEY_PORT || "6383") }],
-      protocol.RESP3,
+      addresses: [
+        {
+          host: 'localhost',
+          port: parseInt(process.env.VALKEY_PORT || '6383'),
+        },
+      ],
+      // "RESP3",
     });
 
     // Create a pub/sub client for subscribing (using polling pattern)
     const subscribeConfig = {
-      addresses: [{ host: 'localhost', port: parseInt(process.env.VALKEY_PORT || "6383") }],
-      protocol.RESP3,
+      addresses: [
+        {
+          host: 'localhost',
+          port: parseInt(process.env.VALKEY_PORT || '6383'),
+        },
+      ],
+      // "RESP3",
       pubsubSubscriptions: {
         channelsAndPatterns: {
           [GlideClientConfiguration.PubSubChannelModes.Exact]: new Set([
@@ -53,12 +71,11 @@ describe('GLIDE Pub/Sub Polling Approach', () => {
     const pollingPromise = (async () => {
       try {
         while (!messageReceived) {
-          const message | null =
-            await subscribeClient.getPubSubMessage();
+          const message = await subscribeClient.getPubSubMessage();
           if (message) {
             console.log('📨 Polling received message:', {
-              channel(message.channel),
-              message(message.message),
+              channel: message.channel,
+              message: message.message,
               pattern: message.pattern ? String(message.pattern) : undefined,
             });
 

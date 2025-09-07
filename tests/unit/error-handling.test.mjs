@@ -3,7 +3,15 @@
  * Real-world patterns resilience, command failures, recovery scenarios
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -15,8 +23,9 @@ describe('Error Handling and Edge Cases', () => {
   beforeEach(async () => {
     const config = getStandaloneConfig();
     redis = new Redis(config);
-  
-    await redis.connect();});
+
+    await redis.connect();
+  });
 
   afterEach(async () => {
     await redis.quit();
@@ -35,8 +44,8 @@ describe('Error Handling and Edge Cases', () => {
       // Should be able to reconnect
       const config = getStandaloneConfig();
       redis = new Redis(config);
-    await redis.connect();
-    const reconnectedValue = await redis.get('test:disconnect');
+      await redis.connect();
+      const reconnectedValue = await redis.get('test:disconnect');
       assert.strictEqual(reconnectedValue, 'value');
     });
 
@@ -44,7 +53,7 @@ describe('Error Handling and Edge Cases', () => {
       // Test with various invalid configs that should not crash
       assert.ok(() => {
         new Redis({ host: '', port: 0 });
-      }).not.toThrow();
+      });
     });
   });
 
@@ -52,7 +61,7 @@ describe('Error Handling and Edge Cases', () => {
     test('should handle type conflicts gracefully', async () => {
       const key = 'type:conflict:' + Math.random();
 
-      // Set as string
+      // Set
       await redis.set(key, 'string_value');
 
       // Try to use as list - should throw appropriate error
@@ -93,7 +102,7 @@ describe('Error Handling and Edge Cases', () => {
         assert.strictEqual(retrieved, largeValue);
       } catch (error) {
         // If memory is limited, should get appropriate error
-        assert.ok((error as Error).message).toMatch(/memory|space|limit/i);
+        assert.ok(error.message.match(/memory|space|limit/i));
       }
 
       // Clean up
@@ -179,26 +188,26 @@ describe('Error Handling and Edge Cases', () => {
 
       // Empty list operations
       const listKey = baseKey + ':list';
-      assert.ok(await redis.llen(listKey)).toBe(0);
-      assert.ok(await redis.lpop(listKey)).toBeNull();
-      assert.ok(await redis.lrange(listKey, 0, -1)).toEqual([]);
+      assert.strictEqual(await redis.llen(listKey), 0);
+      assert.strictEqual(await redis.lpop(listKey), null);
+      assert.deepStrictEqual(await redis.lrange(listKey, 0, -1), []);
 
       // Empty set operations
       const setKey = baseKey + ':set';
-      assert.ok(await redis.scard(setKey)).toBe(0);
-      assert.ok(await redis.spop(setKey)).toBeNull();
-      assert.ok(await redis.smembers(setKey)).toEqual([]);
+      assert.strictEqual(await redis.scard(setKey), 0);
+      assert.strictEqual(await redis.spop(setKey), null);
+      assert.deepStrictEqual(await redis.smembers(setKey), []);
 
       // Empty hash operations
       const hashKey = baseKey + ':hash';
-      assert.ok(await redis.hlen(hashKey)).toBe(0);
-      assert.ok(await redis.hkeys(hashKey)).toEqual([]);
-      assert.ok(await redis.hgetall(hashKey)).toEqual({});
+      assert.strictEqual(await redis.hlen(hashKey), 0);
+      assert.deepStrictEqual(await redis.hkeys(hashKey), []);
+      assert.deepStrictEqual(await redis.hgetall(hashKey), {});
 
       // Empty zset operations
       const zsetKey = baseKey + ':zset';
-      assert.ok(await redis.zcard(zsetKey)).toBe(0);
-      assert.ok(await redis.zrange(zsetKey, 0, -1)).toEqual([]);
+      assert.strictEqual(await redis.zcard(zsetKey), 0);
+      assert.deepStrictEqual(await redis.zrange(zsetKey, 0, -1), []);
     });
 
     test('should handle boundary value operations', async () => {
@@ -239,7 +248,7 @@ describe('Error Handling and Edge Cases', () => {
       const floatKey = key + ':float';
       await redis.set(floatKey, '0.0');
       const floatIncr = await redis.incrbyfloat(floatKey, 0.1);
-      assert.ok(parseFloat(floatIncr.toString())).toBeCloseTo(0.1, 10);
+      assert.ok(parseFloat(floatIncr.toString()))(0.1, 10);
     });
   });
 
@@ -264,13 +273,13 @@ describe('Error Handling and Edge Cases', () => {
 
       // Final value should be 10
       const finalValue = await redis.get(key);
-      assert.strictEqual(parseInt(finalValue!), 10);
+      assert.strictEqual(parseInt(finalValue), 10);
     });
 
     test('should handle concurrent pipeline executions', async () => {
       const baseKey = 'pipe_concurrent:' + Math.random();
 
-      const createPipeline = (suffix) => {
+      const createPipeline = suffix => {
         const pipeline = redis.pipeline();
         pipeline.set(baseKey + ':' + suffix, suffix);
         pipeline.get(baseKey + ':' + suffix);
@@ -328,10 +337,10 @@ describe('Error Handling and Edge Cases', () => {
       await redis.rpush(baseKey + ':list', 'item1', 'item2');
 
       // Verify they exist
-      assert.ok(await redis.hlen(baseKey + ':hash')).toBeGreaterThan(0);
-      assert.ok(await redis.scard(baseKey + ':set')).toBeGreaterThan(0);
-      assert.ok(await redis.zcard(baseKey + ':zset')).toBeGreaterThan(0);
-      assert.ok(await redis.llen(baseKey + ':list')).toBeGreaterThan(0);
+      assert.ok((await redis.hlen(baseKey + ':hash')) > 0);
+      assert.ok((await redis.scard(baseKey + ':set')) > 0);
+      assert.ok((await redis.zcard(baseKey + ':zset')) > 0);
+      assert.ok((await redis.llen(baseKey + ':list')) > 0);
 
       // Cleanup all at once
       const deleted = await redis.del(
@@ -344,10 +353,10 @@ describe('Error Handling and Edge Cases', () => {
       assert.strictEqual(deleted, 4);
 
       // Verify cleanup
-      assert.ok(await redis.hlen(baseKey + ':hash')).toBe(0);
-      assert.ok(await redis.scard(baseKey + ':set')).toBe(0);
-      assert.ok(await redis.zcard(baseKey + ':zset')).toBe(0);
-      assert.ok(await redis.llen(baseKey + ':list')).toBe(0);
+      assert.strictEqual(await redis.hlen(baseKey + ':hash'), 0);
+      assert.strictEqual(await redis.scard(baseKey + ':set'), 0);
+      assert.strictEqual(await redis.zcard(baseKey + ':zset'), 0);
+      assert.strictEqual(await redis.llen(baseKey + ':list'), 0);
     });
   });
 

@@ -10,7 +10,15 @@
  * - Netflix's A/B testing assignment with stateful Lua scripts
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -22,8 +30,9 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
   beforeEach(async () => {
     const config = getStandaloneConfig();
     redis = new Redis(config);
-  
-    await redis.connect();});
+
+    await redis.connect();
+  });
 
   afterEach(async () => {
     await redis.quit();
@@ -470,11 +479,11 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
 
       // Verify counter types and values - use unique events to avoid interference
       const counterMap = new Map(result1);
-      assert.ok(counterMap.get('daily')).toBeGreaterThanOrEqual(1);
-      assert.ok(counterMap.get('hourly')).toBeGreaterThanOrEqual(1);
-      assert.ok(counterMap.get('user')).toBeGreaterThanOrEqual(1);
-      assert.ok(counterMap.get('global')).toBeGreaterThanOrEqual(1);
-      assert.ok(counterMap.get('unique_users')).toBeGreaterThanOrEqual(1);
+      assert.ok(counterMap.get('daily') >= 1);
+      assert.ok(counterMap.get('hourly') >= 1);
+      assert.ok(counterMap.get('user') >= 1);
+      assert.ok(counterMap.get('global') >= 1);
+      assert.ok(counterMap.get('unique_users') >= 1);
 
       // Record another event for same user - unique users should not increase
       const result2 = await redis.eval(
@@ -486,10 +495,9 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       );
 
       const counterMap2 = new Map(result2);
-      assert.ok(counterMap2.get('daily')).toBeGreaterThan(
-        counterMap.get('daily') as number
-      );
-      assert.ok(counterMap2.get('unique_users')).toBe(
+      assert.ok(counterMap2.get('daily') > counterMap.get('daily'));
+      assert.strictEqual(
+        counterMap2.get('unique_users'),
         counterMap.get('unique_users')
       ); // Same user, so no change
 
@@ -503,8 +511,8 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       );
 
       const counterMap3 = new Map(result3);
-      assert.ok(counterMap3.get('unique_users')).toBeGreaterThan(
-        counterMap.get('unique_users') as number
+      assert.ok(
+        counterMap3.get('unique_users') > counterMap.get('unique_users')
       ); // More unique users
     });
   });
@@ -520,11 +528,8 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       assert.strictEqual(result1, 'Hello from cached script');
 
       // Calculate script SHA1 (simple approach - in production use crypto)
-      const crypto = require('crypto');
-      const scriptSha1 = crypto
-        .createHash('sha1')
-        .update(simpleScript)
-        .digest('hex');
+      const { createHash } = await import('crypto');
+      const scriptSha1 = createHash('sha1').update(simpleScript).digest('hex');
 
       // Execute with EVALSHA - script should be cached
       try {
@@ -576,7 +581,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
 
       const result = await redis.eval(simpleScript, 0);
       assert.strictEqual(typeof result, 'string');
-      assert.ok(parseInt(result)).toBeGreaterThan(1600000000); // After 2020
+      assert.ok(parseInt(result) > 1600000000); // After 2020
     });
 
     test('should handle scripts with many keys and arguments', async () => {
@@ -633,7 +638,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       } catch (error) {
         assert.ok(error !== undefined);
         // Valkey returns "Unknown command" while Redis returns "Unknown Redis command"
-        assert.ok(String(error)).toMatch(/Unknown (Redis )?command/);
+        assert.ok(String(error))(/Unknown (Redis )?command/);
       }
     });
   });

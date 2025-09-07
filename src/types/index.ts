@@ -1,6 +1,6 @@
 /**
  * Type definitions for Valkey GLIDE ioredis adapter.
- * 
+ *
  * Provides comprehensive TypeScript types for complete ioredis API compatibility
  * with enhanced type safety for production use.
  */
@@ -25,7 +25,7 @@ export interface ScanOptions {
   type?: string;
 }
 
-// ZSET range options  
+// ZSET range options
 export interface ZRangeOptions {
   withScores?: boolean;
   limit?: { offset: number; count: number };
@@ -69,55 +69,55 @@ export interface RedisOptions {
   maxLoadingTimeout?: number;
   keyPrefix?: string;
   lazyConnect?: boolean;
-  
+
   // ========== GLIDE-SPECIFIC PERFORMANCE FEATURES ==========
-  
+
   /**
    * Read routing strategy (GLIDE optimization)
    * - 'primary': Always read from primary (default)
    * - 'preferReplica': Try replica first, fallback to primary
    * - 'AZAffinity': Prefer replicas in same AZ (requires clientAz)
    * - 'AZAffinityReplicasAndPrimary': Round robin within AZ including primary
-   * 
+   *
    * @example
    * readFrom: 'preferReplica' // Distribute reads to replicas
    * readFrom: 'AZAffinity' // Prefer same-AZ replicas for reduced latency
    */
   readFrom?: ReadFrom;
-  
+
   /**
    * Availability Zone for AZ-affinity routing (GLIDE optimization)
    * Reduces cross-AZ latency by preferring replicas in same AZ.
    * Works with ReadFrom.AzAffinity for ~40% latency reduction in multi-AZ deployments.
-   * 
+   *
    * Requires Valkey 8.0+ with AZ-aware cluster configuration.
-   * 
+   *
    * @example
    * clientAz: 'us-east-1a' // Specify client's AZ for affinity routing
    */
   clientAz?: string;
-  
+
   /**
    * Enable binary-compatible pub/sub via TCP (adapter enhancement)
    * - false (default): High-performance GLIDE native callbacks (text only, 30% faster)
    * - true: Socket.IO/binary compatible with TCP overhead (required for binary messages)
-   * 
+   *
    * Enable this only if you need binary message support (e.g., Socket.IO adapter).
-   * 
+   *
    * @example
    * enableEventBasedPubSub: true // For Socket.IO binary compatibility
    */
   enableEventBasedPubSub?: boolean;
-  
+
   /**
    * Maximum concurrent inflight requests (GLIDE-specific)
    * Controls request queuing and memory usage.
    * Higher values allow more parallelism but use more memory.
-   * 
+   *
    * Default: 1000 (balanced for most workloads)
    * High-throughput: 2000-5000
    * Memory-constrained: 100-500
-   * 
+   *
    * @example
    * inflightRequestsLimit: 2000 // High-throughput configuration
    */
@@ -369,25 +369,25 @@ export interface ClusterNode {
  */
 export interface ClusterOptions {
   enableReadyCheck?: boolean;
-  
+
   /**
    * Options applied to each cluster node.
    * Can include GLIDE-specific optimizations like readFrom and clientAz.
    */
   redisOptions?: RedisOptions;
-  
+
   /**
    * Maximum cluster redirections to follow (default: 16).
    * Higher values handle cluster reconfiguration better but may increase latency.
    */
   maxRedirections?: number;
-  
+
   /**
    * Retry delay during failover in milliseconds (default: 100).
    * Maps to GLIDE's connection backoff jitter percentage.
    */
   retryDelayOnFailover?: number;
-  
+
   retryDelayOnClusterDown?: number;
   retryDelayOnTimeout?: number;
   slotsRefreshTimeout?: number;
@@ -398,26 +398,26 @@ export interface ClusterOptions {
   port?: number;
   username?: string;
   password?: string;
-  
+
   /**
    * Enable reading from replica nodes (GLIDE optimization).
    * Maps to GLIDE's ReadFrom.PreferReplica for automatic load distribution.
-   * 
+   *
    * @example
    * enableReadFromReplicas: true // Distributes reads across replicas
    */
   enableReadFromReplicas?: boolean;
-  
+
   /**
    * Read scaling strategy for cluster operations.
    * - 'master': Read from primary only (default)
    * - 'slave'/'replica': Read from replicas only
    * - 'all': Read from any available node
-   * 
+   *
    * Note: GLIDE's readFrom in redisOptions provides more granular control.
    */
   scaleReads?: string;
-  
+
   enableOfflineQueue?: boolean;
   readOnly?: boolean;
   maxRetriesPerRequest?: number | null;

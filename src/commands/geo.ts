@@ -38,7 +38,11 @@ export async function geoadd(
   const options: any = {};
   if (updateMode) options.updateMode = updateMode;
   if (changed) options.changed = true;
-  const result = await (client as any).glideClient.geoadd(normalizedKey, map, options);
+  const result = await (client as any).glideClient.geoadd(
+    normalizedKey,
+    map,
+    options
+  );
   return Number(result) || 0;
 }
 
@@ -131,13 +135,13 @@ export async function geosearch(
     shape,
     resultOptions
   );
-  
+
   // Format results to match ioredis expectations
   return res.map((row: any) => {
     // If result has additional data (coordinates, distance, hash)
     if (Array.isArray(row) && row.length === 2) {
       const [member, data] = row;
-      
+
       // Handle multiple options (e.g., WITHDIST + WITHCOORD)
       if (Array.isArray(data) && data.length > 1) {
         // Multiple options requested - flatten the result
@@ -155,26 +159,30 @@ export async function geosearch(
         }
         return result;
       }
-      
+
       // Fix single data format
       if (Array.isArray(data) && data.length === 1) {
         const value = data[0];
-        
+
         // Coordinates: [[lon, lat]] -> [lon, lat]
-        if (Array.isArray(value) && value.length === 2 && typeof value[0] === 'number') {
+        if (
+          Array.isArray(value) &&
+          value.length === 2 &&
+          typeof value[0] === 'number'
+        ) {
           return [member, value];
         }
-        
+
         // Distance or Hash: [value] -> "value" (as string)
         if (typeof value === 'number' || typeof value === 'string') {
           return [member, String(value)];
         }
       }
-      
+
       // Keep other formats as-is
       return row;
     }
-    
+
     return row;
   });
 }

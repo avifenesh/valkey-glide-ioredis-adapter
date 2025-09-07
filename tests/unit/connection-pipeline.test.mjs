@@ -3,11 +3,23 @@
  * These tests are adapted from ioredis patterns to ensure compatibility
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
-import { getStandaloneConfig, checkTestServers, delay } from '../utils/test-config.mjs';
+import {
+  getStandaloneConfig,
+  checkTestServers,
+  delay,
+} from '../utils/test-config.mjs';
 
 describe('Connection Management (ioredis compatibility)', () => {
   let redis;
@@ -36,9 +48,9 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = await getStandaloneConfig();
+      const config = getStandaloneConfig();
       redis = new Redis(config);
-    await redis.connect();
+      await redis.connect();
 
       // Basic connectivity test
       const result = await redis.ping();
@@ -52,9 +64,9 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = await getStandaloneConfig();
+      const config = getStandaloneConfig();
       redis = new Redis(config.port, config.host);
-    await redis.connect();
+      await redis.connect();
 
       const result = await redis.ping();
       assert.strictEqual(result, 'PONG');
@@ -67,14 +79,14 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = await getStandaloneConfig();
+      const config = getStandaloneConfig();
       redis = new Redis({
         port: config.port,
         host: config.host,
         retryDelayOnFailover: 100,
         maxRetriesPerRequest: 3,
       });
-    await redis.connect();
+      await redis.connect();
 
       const result = await redis.ping();
       assert.strictEqual(result, 'PONG');
@@ -87,9 +99,9 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = await getStandaloneConfig();
+      const config = getStandaloneConfig();
       redis = new Redis(`redis://${config.host}:${config.port}/0`);
-    await redis.connect();
+      await redis.connect();
 
       const result = await redis.ping();
       assert.strictEqual(result, 'PONG');
@@ -102,13 +114,13 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = await getStandaloneConfig();
+      const config = getStandaloneConfig();
       redis = new Redis({ port: config.port, host: config.host, db: 1 });
-    await redis.connect();
+      await redis.connect();
 
       // Test that we're using the correct database
       await redis.set('dbtest', 'value');
-      assert.ok(await redis.get('dbtest')).toBe('value');
+      assert.strictEqual(await redis.get('dbtest'), 'value');
     });
   });
 
@@ -120,10 +132,10 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = await getStandaloneConfig();
+      const config = getStandaloneConfig();
       redis = new Redis(config);
-    await redis.connect();
-    const readyPromise = new Promise<void>(resolve => {
+      await redis.connect();
+      const readyPromise = new Promise(resolve => {
         redis.on('ready', resolve);
       });
 
@@ -140,10 +152,10 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = await getStandaloneConfig();
+      const config = getStandaloneConfig();
       redis = new Redis(config);
-    await redis.connect();
-    const connectPromise = new Promise<void>(resolve => {
+      await redis.connect();
+      const connectPromise = new Promise(resolve => {
         redis.on('connect', resolve);
       });
 
@@ -158,11 +170,11 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = await getStandaloneConfig();
+      const config = getStandaloneConfig();
       redis = new Redis(config);
-    await redis.connect();
+      await redis.connect();
 
-      const endPromise = new Promise<void>(resolve => {
+      const endPromise = new Promise(resolve => {
         redis.on('end', resolve);
       });
 
@@ -179,12 +191,12 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = await getStandaloneConfig();
+      const config = getStandaloneConfig();
       redis = new Redis({ ...config, retryDelayOnFailover: 10 });
-    await redis.connect();
+      await redis.connect();
 
       // Simulate connection loss and recovery
-      const reconnectPromise = new Promise<void>(resolve => {
+      const reconnectPromise = new Promise(resolve => {
         redis.on('ready', resolve);
       });
 
@@ -197,10 +209,10 @@ describe('Connection Management (ioredis compatibility)', () => {
 
   describe('Error handling', () => {
     test('should emit error events', async () => {
-      redis = new Redis({ port: 9999 }); 
-    await redis.connect();// Non-existent port
+      redis = new Redis({ port: 9999 });
+      await redis.connect(); // Non-existent port
 
-      const errorPromise = new Promise<Error>(resolve => {
+      const errorPromise = new Promise(resolve => {
         redis.on('error', resolve);
       });
 
@@ -221,16 +233,16 @@ describe('Connection Management (ioredis compatibility)', () => {
         return;
       }
 
-      const config = await getStandaloneConfig();
+      const config = getStandaloneConfig();
       redis = new Redis(config);
-    await redis.connect();
+      await redis.connect();
 
       // Try to increment a non-numeric value
       await redis.set('text', 'not_a_number');
-      await assert.ok(redis.incr('text')).rejects.toThrow();
+      await assert.rejects(redis.incr('text'));
 
       // Connection should still be usable
-      assert.ok(await redis.ping()).toBe('PONG');
+      assert.strictEqual(await redis.ping(), 'PONG');
     });
   });
 });
@@ -256,7 +268,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     }
 
     // Use test server configuration
-    const config = await getStandaloneConfig();
+    const config = getStandaloneConfig();
     redis = new Redis(config);
     await redis.connect();
 
@@ -380,7 +392,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       assert.strictEqual(results.length, 100);
       assert.ok(
         results.every(([error, result]) => error === null && result === 'OK')
-      ).strictEqual(true);
+      );
 
       // Pipeline should be faster than individual commands
       // This is a rough performance check
@@ -431,7 +443,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       assert.strictEqual(results?.[1]?.[1], 'OK');
 
       // Second command should have executed successfully
-      assert.ok(await redis.exists('should_not_be_set')).toBe(1);
+      assert.strictEqual(await redis.exists('should_not_be_set'), 1);
     });
 
     test('should support WATCH for optimistic locking', async () => {
@@ -441,7 +453,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       await redis.watch('watched_key');
 
       // Simulate concurrent modification
-      const config = await getStandaloneConfig();
+      const config = getStandaloneConfig();
       const otherClient = new Redis(config);
       await otherClient.connect();
       await otherClient.set('watched_key', '20');
@@ -455,7 +467,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       assert.strictEqual(results, null); // Transaction aborted
 
       // Verify original value from other client
-      assert.ok(await redis.get('watched_key')).toBe('20');
+      assert.strictEqual(await redis.get('watched_key'), '20');
     });
   });
 
@@ -495,8 +507,8 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       assert.deepStrictEqual(results, []); // No commands executed
 
       // Verify no keys were set
-      assert.ok(await redis.exists('key1')).toBe(0);
-      assert.ok(await redis.exists('key2')).toBe(0);
+      assert.strictEqual(await redis.exists('key1'), 0);
+      assert.strictEqual(await redis.exists('key2'), 0);
     });
   });
 
@@ -513,7 +525,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       assert.strictEqual(results.length, commandCount);
       assert.ok(
         results.every(([error, result]) => error === null && result === 'OK')
-      ).strictEqual(true);
+      );
     });
 
     test('should handle commands with large payloads', async () => {

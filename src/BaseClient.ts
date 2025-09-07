@@ -1,8 +1,8 @@
 /**
  * BaseClient - Core database client implementation
- * 
- * Base class providing comprehensive database operations for both standalone 
- * and cluster clients. Maintains complete ioredis API compatibility while 
+ *
+ * Base class providing comprehensive database operations for both standalone
+ * and cluster clients. Maintains complete ioredis API compatibility while
  * leveraging Valkey GLIDE's high-performance core.
  */
 
@@ -174,7 +174,10 @@ export abstract class BaseClient extends EventEmitter {
   // Connection method for ioredis compatibility - idempotent and safe
   async connect(): Promise<void> {
     // If a prior shutdown completed, allow reconnection by clearing closing flag
-    if (this.connectionStatus === 'end' || this.connectionStatus === 'disconnected') {
+    if (
+      this.connectionStatus === 'end' ||
+      this.connectionStatus === 'disconnected'
+    ) {
       this.isClosing = false;
     }
     // If already connected, return immediately
@@ -1859,14 +1862,21 @@ export abstract class BaseClient extends EventEmitter {
         commandCount++;
         return adapter;
       },
-      zremrangebyscore: (key: RedisKey, min: string | number, max: string | number) => {
+      zremrangebyscore: (
+        key: RedisKey,
+        min: string | number,
+        max: string | number
+      ) => {
         const normalizedKey = this.normalizeKey(key);
-        
+
         // Parse min boundary
         let minBoundary: any;
         if (typeof min === 'string') {
           if (min.startsWith('(')) {
-            minBoundary = { value: parseFloat(min.slice(1)), isInclusive: false };
+            minBoundary = {
+              value: parseFloat(min.slice(1)),
+              isInclusive: false,
+            };
           } else if (min === '-inf') {
             minBoundary = InfBoundary.NegativeInfinity;
           } else {
@@ -1880,7 +1890,10 @@ export abstract class BaseClient extends EventEmitter {
         let maxBoundary: any;
         if (typeof max === 'string') {
           if (max.startsWith('(')) {
-            maxBoundary = { value: parseFloat(max.slice(1)), isInclusive: false };
+            maxBoundary = {
+              value: parseFloat(max.slice(1)),
+              isInclusive: false,
+            };
           } else if (max === '+inf' || max === 'inf') {
             maxBoundary = InfBoundary.PositiveInfinity;
           } else {
@@ -2092,7 +2105,10 @@ export abstract class BaseClient extends EventEmitter {
       const groups = await streamCommands.xinfoGroups(this, key);
       // ioredis returns each group as an array of [field, value]
       return (groups || []).map((g: any) => {
-        const obj: any = { name: g.name || g.groupName || g.id || g.GroupName || 'group', ...g };
+        const obj: any = {
+          name: g.name || g.groupName || g.id || g.GroupName || 'group',
+          ...g,
+        };
         const arr: any[] = [];
         for (const [k, v] of Object.entries(obj)) arr.push(k, v as any);
         return arr;
@@ -3178,7 +3194,7 @@ export abstract class BaseClient extends EventEmitter {
     // Parse ioredis-style options from variadic arguments
     let justId = false;
     let options: any = {};
-    
+
     for (const arg of args) {
       const upperArg = String(arg).toUpperCase();
       if (upperArg === 'JUSTID') {
@@ -3205,7 +3221,7 @@ export abstract class BaseClient extends EventEmitter {
         }
       }
     }
-    
+
     if (justId) {
       return await streamCommands.xclaimJustId(
         this,
@@ -3217,7 +3233,7 @@ export abstract class BaseClient extends EventEmitter {
         Object.keys(options).length > 0 ? options : undefined
       );
     }
-    
+
     return await streamCommands.xclaim(
       this,
       key,
@@ -3265,7 +3281,10 @@ export abstract class BaseClient extends EventEmitter {
     const upper = rest.map(a => (typeof a === 'string' ? a.toUpperCase() : a));
     if (upper.includes('JUSTID')) {
       const countIdx = upper.findIndex(a => a === 'COUNT');
-      const count = countIdx !== -1 && countIdx + 1 < rest.length ? Number(rest[countIdx + 1]) : undefined;
+      const count =
+        countIdx !== -1 && countIdx + 1 < rest.length
+          ? Number(rest[countIdx + 1])
+          : undefined;
       return await streamCommands.xautoclaimJustId(
         this,
         key,
@@ -3277,7 +3296,10 @@ export abstract class BaseClient extends EventEmitter {
       );
     }
     const countIdx = upper.findIndex(a => a === 'COUNT');
-    const count = countIdx !== -1 && countIdx + 1 < rest.length ? Number(rest[countIdx + 1]) : undefined;
+    const count =
+      countIdx !== -1 && countIdx + 1 < rest.length
+        ? Number(rest[countIdx + 1])
+        : undefined;
     return await streamCommands.xautoclaim(
       this,
       key,
@@ -3358,14 +3380,13 @@ export abstract class BaseClient extends EventEmitter {
     return await geoCommands.geohash(this, key, ...members);
   }
 
-  async geosearch(
-    key: RedisKey,
-    ...args: any[]
-  ): Promise<any[]> {
+  async geosearch(key: RedisKey, ...args: any[]): Promise<any[]> {
     // Overload to support both token-based Redis syntax and structured options
     if (typeof args[0] === 'string') {
       // Token-based: FROMMEMBER <member> | FROMLONLAT <lon> <lat>, BYRADIUS r unit | BYBOX w h unit, [WITHCOORD] [WITHDIST] [WITHHASH] [COUNT n [ANY]] [ASC|DESC]
-      const upper = args.map(a => (typeof a === 'string' ? a.toUpperCase() : a));
+      const upper = args.map(a =>
+        typeof a === 'string' ? a.toUpperCase() : a
+      );
       let idx = 0;
       const fromToken = upper[idx++];
       let from: any = {};
@@ -3419,7 +3440,9 @@ export abstract class BaseClient extends EventEmitter {
           break;
         }
       }
-      const fromObj = from.member ? { member: from.member } : { longitude: from.longitude, latitude: from.latitude };
+      const fromObj = from.member
+        ? { member: from.member }
+        : { longitude: from.longitude, latitude: from.latitude };
       return await geoCommands.geosearch(this, key, fromObj, by, options);
     }
 
@@ -3435,7 +3458,9 @@ export abstract class BaseClient extends EventEmitter {
   ): Promise<number> {
     if (typeof args[0] === 'string') {
       // Token-based
-      const upper = args.map(a => (typeof a === 'string' ? a.toUpperCase() : a));
+      const upper = args.map(a =>
+        typeof a === 'string' ? a.toUpperCase() : a
+      );
       let idx = 0;
       const fromToken = upper[idx++];
       let from: any = {};
@@ -3479,11 +3504,27 @@ export abstract class BaseClient extends EventEmitter {
           idx++;
         }
       }
-      const fromObj = from.member ? { member: from.member } : { longitude: from.longitude, latitude: from.latitude };
-      return await geoCommands.geosearchstore(this, destination, source, fromObj, by, options);
+      const fromObj = from.member
+        ? { member: from.member }
+        : { longitude: from.longitude, latitude: from.latitude };
+      return await geoCommands.geosearchstore(
+        this,
+        destination,
+        source,
+        fromObj,
+        by,
+        options
+      );
     }
     const [from, by, options] = args;
-    return await geoCommands.geosearchstore(this, destination, source, from, by, options);
+    return await geoCommands.geosearchstore(
+      this,
+      destination,
+      source,
+      from,
+      by,
+      options
+    );
   }
 
   // Redis-compat GEORADIUS mapped to GEOSEARCH
@@ -3512,7 +3553,9 @@ export abstract class BaseClient extends EventEmitter {
     if (upper.includes('DESC')) options.order = 'DESC';
 
     if (storeIdx !== -1 || storeDistIdx !== -1) {
-      const dest = String(rest[(storeIdx !== -1 ? storeIdx : storeDistIdx) + 1]);
+      const dest = String(
+        rest[(storeIdx !== -1 ? storeIdx : storeDistIdx) + 1]
+      );
       const storeOptions = { ...options, storeDist: storeDistIdx !== -1 };
       return await this.geosearchstore(
         dest,
@@ -3524,7 +3567,13 @@ export abstract class BaseClient extends EventEmitter {
         radius,
         unit,
         ...(storeOptions.order ? [storeOptions.order] : []),
-        ...(storeOptions.count ? ['COUNT', storeOptions.count, storeOptions.any ? 'ANY' : undefined].filter(Boolean) as any[] : []),
+        ...(storeOptions.count
+          ? ([
+              'COUNT',
+              storeOptions.count,
+              storeOptions.any ? 'ANY' : undefined,
+            ].filter(Boolean) as any[])
+          : []),
         storeOptions.storeDist ? 'STOREDIST' : undefined
       );
     }
@@ -3540,7 +3589,11 @@ export abstract class BaseClient extends EventEmitter {
       ...(options.withDist ? ['WITHDIST'] : []),
       ...(options.withCoord ? ['WITHCOORD'] : []),
       ...(options.withHash ? ['WITHHASH'] : []),
-      ...(options.count ? ['COUNT', options.count, options.any ? 'ANY' : undefined].filter(Boolean) as any[] : []),
+      ...(options.count
+        ? (['COUNT', options.count, options.any ? 'ANY' : undefined].filter(
+            Boolean
+          ) as any[])
+        : []),
       options.order ? options.order : undefined
     );
   }
@@ -3561,13 +3614,16 @@ export abstract class BaseClient extends EventEmitter {
     if (upper.includes('WITHDIST')) options.withDist = true;
     if (upper.includes('WITHHASH')) options.withHash = true;
     const countIdx = upper.indexOf('COUNT');
-    if (countIdx !== -1 && countIdx + 1 < rest.length) options.count = Number(rest[countIdx + 1]);
+    if (countIdx !== -1 && countIdx + 1 < rest.length)
+      options.count = Number(rest[countIdx + 1]);
     if (upper.includes('ANY')) options.any = true;
     if (upper.includes('ASC')) options.order = 'ASC';
     if (upper.includes('DESC')) options.order = 'DESC';
 
     if (storeIdx !== -1 || storeDistIdx !== -1) {
-      const dest = String(rest[(storeIdx !== -1 ? storeIdx : storeDistIdx) + 1]);
+      const dest = String(
+        rest[(storeIdx !== -1 ? storeIdx : storeDistIdx) + 1]
+      );
       const storeOptions = { ...options, storeDist: storeDistIdx !== -1 };
       return await this.geosearchstore(
         dest,
@@ -3578,7 +3634,13 @@ export abstract class BaseClient extends EventEmitter {
         radius,
         unit,
         ...(storeOptions.order ? [storeOptions.order] : []),
-        ...(storeOptions.count ? ['COUNT', storeOptions.count, storeOptions.any ? 'ANY' : undefined].filter(Boolean) as any[] : []),
+        ...(storeOptions.count
+          ? ([
+              'COUNT',
+              storeOptions.count,
+              storeOptions.any ? 'ANY' : undefined,
+            ].filter(Boolean) as any[])
+          : []),
         storeOptions.storeDist ? 'STOREDIST' : undefined
       );
     }
@@ -3593,7 +3655,11 @@ export abstract class BaseClient extends EventEmitter {
       ...(options.withDist ? ['WITHDIST'] : []),
       ...(options.withCoord ? ['WITHCOORD'] : []),
       ...(options.withHash ? ['WITHHASH'] : []),
-      ...(options.count ? ['COUNT', options.count, options.any ? 'ANY' : undefined].filter(Boolean) as any[] : []),
+      ...(options.count
+        ? (['COUNT', options.count, options.any ? 'ANY' : undefined].filter(
+            Boolean
+          ) as any[])
+        : []),
       options.order ? options.order : undefined
     );
   }

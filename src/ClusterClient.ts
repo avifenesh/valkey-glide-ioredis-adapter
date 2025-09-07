@@ -103,7 +103,10 @@ export class ClusterClient extends BaseClient {
           }
 
           const glideClient = this.client.glideClient as GlideClusterClient;
-          const result = await glideClient.scan(this.clusterCursor, scanOptions);
+          const result = await glideClient.scan(
+            this.clusterCursor,
+            scanOptions
+          );
 
           if (!Array.isArray(result) || result.length !== 2) {
             throw new Error('Invalid cluster SCAN response format');
@@ -116,8 +119,8 @@ export class ClusterClient extends BaseClient {
           this.finished = this.clusterCursor.isFinished();
 
           if (keys.length > 0) {
-            const converted = keys.map((k: any) =>
-              ParameterTranslator.convertGlideString(k) || ''
+            const converted = keys.map(
+              (k: any) => ParameterTranslator.convertGlideString(k) || ''
             );
             this.push(converted);
           }
@@ -166,14 +169,11 @@ export class ClusterClient extends BaseClient {
       (scanOptions as any).allowNonCoveredSlots = true;
     }
 
-    const [nextCursor, keys] = await (this.glideClient as GlideClusterClient).scan(
-      clusterCursor,
-      scanOptions
-    );
+    const [nextCursor, keys] = await (
+      this.glideClient as GlideClusterClient
+    ).scan(clusterCursor, scanOptions);
 
-    const cursorToken = nextCursor.isFinished()
-      ? '0'
-      : nextCursor.getCursor();
+    const cursorToken = nextCursor.isFinished() ? '0' : nextCursor.getCursor();
     const keyArray = Array.isArray(keys)
       ? keys.map(k => ParameterTranslator.convertGlideString(k) || '')
       : [];
@@ -229,7 +229,7 @@ export class ClusterClient extends BaseClient {
     sharded?: boolean
   ): Promise<number> {
     await this.ensureConnection();
-    
+
     // Handle binary data encoding for UTF-8 safety
     let publishMessage: string;
     if (message instanceof Buffer || message instanceof Uint8Array) {

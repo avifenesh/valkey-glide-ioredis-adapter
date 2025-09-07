@@ -1,6 +1,6 @@
 /**
  * Parameter Translation Utilities
- * 
+ *
  * Translates between ioredis parameter formats and Valkey GLIDE parameter formats,
  * ensuring seamless API compatibility while leveraging GLIDE's native performance.
  */
@@ -123,7 +123,7 @@ export class ParameterTranslator {
     }
 
     const result = Object.keys(options).length > 0 ? options : undefined;
-    
+
     // Cache the result for future use
     if (this.setOptionsCache.size >= this.MAX_CACHE_SIZE) {
       // Clear cache if it gets too large (simple LRU-like behavior)
@@ -133,7 +133,7 @@ export class ParameterTranslator {
       }
     }
     this.setOptionsCache.set(cacheKey, result === undefined ? null : result);
-    
+
     return result;
   }
 

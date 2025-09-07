@@ -17,21 +17,32 @@ export async function xadd(
   while (i < argsIn.length) {
     const token = String(argsIn[i]).toUpperCase();
     if (token === 'NOMKSTREAM') {
-      addOptions.makeStream = false; i++; continue;
+      addOptions.makeStream = false;
+      i++;
+      continue;
     }
     if (token === 'MAXLEN' || token === 'MINID') {
       const method = token === 'MAXLEN' ? 'maxlen' : 'minid';
       i++;
       let exact = true; // Default to exact trimming when no modifier specified
       if (i < argsIn.length && (argsIn[i] === '=' || argsIn[i] === '~')) {
-        exact = argsIn[i] === '='; i++;
+        exact = argsIn[i] === '=';
+        i++;
       }
       const threshold = argsIn[i++];
       let limit: number | undefined;
-      if (i + 1 < argsIn.length && String(argsIn[i]).toUpperCase() === 'LIMIT') {
-        limit = Number(argsIn[i + 1]); i += 2;
+      if (
+        i + 1 < argsIn.length &&
+        String(argsIn[i]).toUpperCase() === 'LIMIT'
+      ) {
+        limit = Number(argsIn[i + 1]);
+        i += 2;
       }
-      trimOptions = { method, exact, threshold: method === 'maxlen' ? Number(threshold) : String(threshold) };
+      trimOptions = {
+        method,
+        exact,
+        threshold: method === 'maxlen' ? Number(threshold) : String(threshold),
+      };
       if (limit !== undefined) trimOptions.limit = limit;
       continue;
     }
@@ -39,13 +50,15 @@ export async function xadd(
   }
 
   // ID
-  if (i >= argsIn.length) throw new Error('XADD requires an ID and field/value pairs');
+  if (i >= argsIn.length)
+    throw new Error('XADD requires an ID and field/value pairs');
   const id = String(argsIn[i++]);
   if (id !== '*') addOptions.id = id;
 
   // Field-value pairs
   const remaining = argsIn.slice(i);
-  if (remaining.length % 2 !== 0) throw new Error('XADD requires field/value pairs');
+  if (remaining.length % 2 !== 0)
+    throw new Error('XADD requires field/value pairs');
   const values: [string, string][] = [];
   for (let j = 0; j < remaining.length; j += 2) {
     values.push([String(remaining[j]), String(remaining[j + 1])]);
@@ -53,7 +66,11 @@ export async function xadd(
   if (trimOptions) addOptions.trim = trimOptions;
 
   try {
-    const result = await (client as any).glideClient.xadd(normalizedKey, values, addOptions);
+    const result = await (client as any).glideClient.xadd(
+      normalizedKey,
+      values,
+      addOptions
+    );
     return result == null ? null : String(result);
   } catch (err: any) {
     // Some servers may reject certain trim+id combinations (e.g., MINID with auto-id)
@@ -67,7 +84,11 @@ export async function xadd(
         if (addOptions.id !== undefined) {
           fallbackOptions.id = addOptions.id;
         }
-        const result = await (client as any).glideClient.xadd(normalizedKey, values, fallbackOptions);
+        const result = await (client as any).glideClient.xadd(
+          normalizedKey,
+          values,
+          fallbackOptions
+        );
         return result == null ? null : String(result);
       } catch {
         throw err;
@@ -88,7 +109,9 @@ export async function xread(
   ...args: any[]
 ): Promise<any[] | null> {
   await (client as any).ensureConnection();
-  const upperArgs = args.map(a => (typeof a === 'string' ? a.toUpperCase() : a));
+  const upperArgs = args.map(a =>
+    typeof a === 'string' ? a.toUpperCase() : a
+  );
   const streamsIndex = upperArgs.indexOf('STREAMS');
   const options: any = {};
   const optsEnd = streamsIndex === -1 ? args.length : streamsIndex;
@@ -131,7 +154,10 @@ export async function xread(
     let entries: any[] = [];
     for (const [id, pairs] of Object.entries(val as Record<string, any>)) {
       const flat: any[] = Array.isArray(pairs)
-        ? (pairs as any[]).flatMap((kv: any[]) => [String(kv[0]), String(kv[1])])
+        ? (pairs as any[]).flatMap((kv: any[]) => [
+            String(kv[0]),
+            String(kv[1]),
+          ])
         : [];
       entries.push([String(id), flat]);
     }
@@ -144,7 +170,12 @@ export async function xread(
   };
   if (Array.isArray(result)) {
     for (const item of result as any[]) {
-      if (item && typeof item === 'object' && 'key' in item && 'value' in item) {
+      if (
+        item &&
+        typeof item === 'object' &&
+        'key' in item &&
+        'value' in item
+      ) {
         pushStream(String(item.key), item.value || {});
       }
     }
@@ -176,11 +207,11 @@ export async function xrange(
   // or objects with value and isInclusive for specific bounds
   const startBoundary =
     start === '-'
-      ? '-'  // InfBoundary.NegativeInfinity
+      ? '-' // InfBoundary.NegativeInfinity
       : { value: toId(start, true), isInclusive: true };
   const endBoundary =
     end === '+'
-      ? '+'  // InfBoundary.PositiveInfinity
+      ? '+' // InfBoundary.PositiveInfinity
       : { value: toId(end, false), isInclusive: true };
   const options = count !== undefined ? { count } : undefined;
   const result = await (client as any).glideClient.xrange(
@@ -190,7 +221,7 @@ export async function xrange(
     options
   );
   if (!result) return [];
-  
+
   // GLIDE returns an object/dictionary: { id: [[field, value], ...], ... }
   // Convert to ioredis format: [[id, [field, value, ...]], ...]
   const entries: any[] = [];
@@ -231,11 +262,11 @@ export async function xrevrange(
   // GLIDE expects InfBoundary enum values ('+' and '-') directly for infinite bounds
   const startBoundary =
     start === '+'
-      ? '+'  // InfBoundary.PositiveInfinity
+      ? '+' // InfBoundary.PositiveInfinity
       : { value: toId(start, true), isInclusive: true };
   const endBoundary =
     end === '-'
-      ? '-'  // InfBoundary.NegativeInfinity
+      ? '-' // InfBoundary.NegativeInfinity
       : { value: toId(end, false), isInclusive: true };
   const options = count !== undefined ? { count } : undefined;
   try {
@@ -246,14 +277,17 @@ export async function xrevrange(
       options
     );
     if (!result) return [];
-    
+
     // GLIDE returns an object/dictionary: { id: [[field, value], ...], ... }
     // Convert to ioredis format: [[id, [field, value, ...]], ...]
     const entries: any[] = [];
     if (typeof result === 'object' && !Array.isArray(result)) {
       for (const [id, fieldValuePairs] of Object.entries(result)) {
         const pairs = Array.isArray(fieldValuePairs) ? fieldValuePairs : [];
-        const flat = pairs.flatMap((kv: any[]) => [String(kv[0]), String(kv[1])]);
+        const flat = pairs.flatMap((kv: any[]) => [
+          String(kv[0]),
+          String(kv[1]),
+        ]);
         entries.push([String(id), flat]);
       }
     } else if (Array.isArray(result)) {
@@ -261,7 +295,10 @@ export async function xrevrange(
       return (result as any[]).map((entry: any) => {
         const id = String(entry[0]);
         const pairs = Array.isArray(entry[1]) ? entry[1] : [];
-        const flat = pairs.flatMap((kv: any[]) => [String(kv[0]), String(kv[1])]);
+        const flat = pairs.flatMap((kv: any[]) => [
+          String(kv[0]),
+          String(kv[1]),
+        ]);
         return [id, flat];
       });
     }
@@ -355,7 +392,10 @@ export async function xgroup(
       options
     );
   } else if (act === 'DESTROY') {
-    const ok: boolean = await (client as any).glideClient.xgroupDestroy(normalizedKey, group);
+    const ok: boolean = await (client as any).glideClient.xgroupDestroy(
+      normalizedKey,
+      group
+    );
     return ok ? 1 : 0;
   } else if (act === 'CREATECONSUMER') {
     const consumer = String(args[0]);
@@ -450,11 +490,21 @@ export async function xreadgroup(
   if (options.block !== undefined) {
     const blockMs = Math.max(0, Number(options.block));
     result = await Promise.race([
-      (client as any).glideClient.xreadgroup(group, consumer, keysAndIds, options),
+      (client as any).glideClient.xreadgroup(
+        group,
+        consumer,
+        keysAndIds,
+        options
+      ),
       new Promise(resolve => setTimeout(() => resolve(null), blockMs + 50)),
     ]);
   } else {
-    result = await (client as any).glideClient.xreadgroup(group, consumer, keysAndIds, options);
+    result = await (client as any).glideClient.xreadgroup(
+      group,
+      consumer,
+      keysAndIds,
+      options
+    );
   }
   if (result == null) return null;
   const out: any[] = [];
@@ -464,7 +514,10 @@ export async function xreadgroup(
       if (pairs === null) {
         entries.push([String(id), null]);
       } else if (Array.isArray(pairs)) {
-        const flat = (pairs as any[]).flatMap((kv: any[]) => [String(kv[0]), String(kv[1])]);
+        const flat = (pairs as any[]).flatMap((kv: any[]) => [
+          String(kv[0]),
+          String(kv[1]),
+        ]);
         entries.push([String(id), flat]);
       }
     }
@@ -476,7 +529,12 @@ export async function xreadgroup(
   };
   if (Array.isArray(result)) {
     for (const item of result as any[]) {
-      if (item && typeof item === 'object' && 'key' in item && 'value' in item) {
+      if (
+        item &&
+        typeof item === 'object' &&
+        'key' in item &&
+        'value' in item
+      ) {
         pushStream(String(item.key), item.value || {});
       }
     }
@@ -524,7 +582,7 @@ export async function xclaim(
     idList,
     options
   );
-  
+
   // Convert GLIDE object format to ioredis array format
   // GLIDE returns: { id: [[field, value], ...], ... }
   // ioredis expects: [[id, [field, value, ...]], ...]
@@ -537,7 +595,7 @@ export async function xclaim(
     }
     return entries;
   }
-  
+
   return result;
 }
 
@@ -589,24 +647,31 @@ export async function xautoclaim(
     String(start),
     options
   );
-  
+
   // Convert GLIDE format to ioredis format
   // GLIDE returns: [nextId, {id: [[field, value], ...], ...}, deletedIds]
   // ioredis expects: [nextId, [[id, [field, value, ...]], ...]]
   if (Array.isArray(result) && result.length >= 2) {
     const [nextId, claimedMessages] = result;
-    
-    if (claimedMessages && typeof claimedMessages === 'object' && !Array.isArray(claimedMessages)) {
+
+    if (
+      claimedMessages &&
+      typeof claimedMessages === 'object' &&
+      !Array.isArray(claimedMessages)
+    ) {
       const entries: any[] = [];
       for (const [id, fieldValuePairs] of Object.entries(claimedMessages)) {
         const pairs = Array.isArray(fieldValuePairs) ? fieldValuePairs : [];
-        const flat = pairs.flatMap((kv: any[]) => [String(kv[0]), String(kv[1])]);
+        const flat = pairs.flatMap((kv: any[]) => [
+          String(kv[0]),
+          String(kv[1]),
+        ]);
         entries.push([String(id), flat]);
       }
       return [nextId, entries];
     }
   }
-  
+
   return result;
 }
 

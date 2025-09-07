@@ -1,6 +1,6 @@
 /**
  * Cluster - Valkey Cluster client (External API)
- * 
+ *
  * Drop-in replacement for ioredis Cluster class.
  * Wraps internal ClusterClient with ioredis-compatible naming.
  */
@@ -59,7 +59,6 @@ export class Cluster extends ClusterClient {
 
     return duplicated;
   }
-
 }
 
 export default Cluster;

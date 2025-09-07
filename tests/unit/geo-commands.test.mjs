@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import pkg from "../../dist/index.js";
+import pkg from '../../dist/index.js';
 const { Redis } = pkg;
 
 describe('GEO Commands', () => {
@@ -30,15 +30,24 @@ describe('GEO Commands', () => {
 
   describe('GEOADD', () => {
     it('should add single location', async () => {
-      const result = await client.geoadd(testKey, 13.361389, 38.115556, 'Palermo');
+      const result = await client.geoadd(
+        testKey,
+        13.361389,
+        38.115556,
+        'Palermo'
+      );
       assert.strictEqual(result, 1);
     });
 
     it('should add multiple locations', async () => {
       const result = await client.geoadd(
         testKey,
-        13.361389, 38.115556, 'Palermo',
-        15.087269, 37.502669, 'Catania'
+        13.361389,
+        38.115556,
+        'Palermo',
+        15.087269,
+        37.502669,
+        'Catania'
       );
       assert.strictEqual(result, 2);
     });
@@ -48,7 +57,7 @@ describe('GEO Commands', () => {
         [13.361389, 38.115556, 'Palermo'],
         [15.087269, 37.502669, 'Catania'],
       ];
-      
+
       // Flatten array for geoadd
       const args = locations.flat();
       const result = await client.geoadd(testKey, ...args);
@@ -57,18 +66,35 @@ describe('GEO Commands', () => {
 
     it('should update existing location', async () => {
       await client.geoadd(testKey, 13.361389, 38.115556, 'Palermo');
-      const result = await client.geoadd(testKey, 13.361390, 38.115557, 'Palermo');
+      const result = await client.geoadd(
+        testKey,
+        13.36139,
+        38.115557,
+        'Palermo'
+      );
       assert.strictEqual(result, 0); // 0 because it's an update, not a new addition
     });
 
     it('should handle NX option (only add new elements)', async () => {
       await client.geoadd(testKey, 13.361389, 38.115556, 'Palermo');
-      const result = await client.geoadd(testKey, 'NX', 13.361390, 38.115557, 'Palermo');
+      const result = await client.geoadd(
+        testKey,
+        'NX',
+        13.36139,
+        38.115557,
+        'Palermo'
+      );
       assert.strictEqual(result, 0); // Should not update existing
     });
 
     it('should handle XX option (only update existing)', async () => {
-      const result = await client.geoadd(testKey, 'XX', 13.361389, 38.115556, 'Palermo');
+      const result = await client.geoadd(
+        testKey,
+        'XX',
+        13.361389,
+        38.115556,
+        'Palermo'
+      );
       assert.strictEqual(result, 0); // Should not add new
     });
 
@@ -76,7 +102,13 @@ describe('GEO Commands', () => {
       await client.geoadd(testKey, 13.361389, 38.115556, 'Palermo');
       // Use a larger coordinate change that will be detected by the 52-bit geohash
       // Minimum detectable change is about 0.00001 degrees
-      const result = await client.geoadd(testKey, 'CH', 13.361400, 38.115570, 'Palermo');
+      const result = await client.geoadd(
+        testKey,
+        'CH',
+        13.3614,
+        38.11557,
+        'Palermo'
+      );
       assert.strictEqual(result, 1); // 1 element changed
     });
   });
@@ -85,8 +117,12 @@ describe('GEO Commands', () => {
     beforeEach(async () => {
       await client.geoadd(
         testKey,
-        13.361389, 38.115556, 'Palermo',
-        15.087269, 37.502669, 'Catania'
+        13.361389,
+        38.115556,
+        'Palermo',
+        15.087269,
+        37.502669,
+        'Catania'
       );
     });
 
@@ -114,7 +150,12 @@ describe('GEO Commands', () => {
     });
 
     it('should handle mixed existing and non-existing members', async () => {
-      const positions = await client.geopos(testKey, 'Palermo', 'NonExistent', 'Catania');
+      const positions = await client.geopos(
+        testKey,
+        'Palermo',
+        'NonExistent',
+        'Catania'
+      );
       assert.strictEqual(positions.length, 3);
       assert.ok(Array.isArray(positions[0]));
       assert.strictEqual(positions[1], null);
@@ -126,8 +167,12 @@ describe('GEO Commands', () => {
     beforeEach(async () => {
       await client.geoadd(
         testKey,
-        13.361389, 38.115556, 'Palermo',
-        15.087269, 37.502669, 'Catania'
+        13.361389,
+        38.115556,
+        'Palermo',
+        15.087269,
+        37.502669,
+        'Catania'
       );
     });
 
@@ -139,21 +184,36 @@ describe('GEO Commands', () => {
     });
 
     it('should calculate distance in kilometers', async () => {
-      const distance = await client.geodist(testKey, 'Palermo', 'Catania', 'km');
+      const distance = await client.geodist(
+        testKey,
+        'Palermo',
+        'Catania',
+        'km'
+      );
       assert.ok(distance);
       const dist = parseFloat(distance);
       assert.ok(dist > 166 && dist < 167);
     });
 
     it('should calculate distance in miles', async () => {
-      const distance = await client.geodist(testKey, 'Palermo', 'Catania', 'mi');
+      const distance = await client.geodist(
+        testKey,
+        'Palermo',
+        'Catania',
+        'mi'
+      );
       assert.ok(distance);
       const dist = parseFloat(distance);
       assert.ok(dist > 103 && dist < 104); // ~103.3 miles
     });
 
     it('should calculate distance in feet', async () => {
-      const distance = await client.geodist(testKey, 'Palermo', 'Catania', 'ft');
+      const distance = await client.geodist(
+        testKey,
+        'Palermo',
+        'Catania',
+        'ft'
+      );
       assert.ok(distance);
       const dist = parseFloat(distance);
       assert.ok(dist > 545000 && dist < 546000); // ~545,500 feet
@@ -169,9 +229,15 @@ describe('GEO Commands', () => {
     beforeEach(async () => {
       await client.geoadd(
         testKey,
-        13.361389, 38.115556, 'Palermo',
-        15.087269, 37.502669, 'Catania',
-        13.583333, 37.316667, 'Agrigento'
+        13.361389,
+        38.115556,
+        'Palermo',
+        15.087269,
+        37.502669,
+        'Catania',
+        13.583333,
+        37.316667,
+        'Agrigento'
       );
     });
 
@@ -183,9 +249,16 @@ describe('GEO Commands', () => {
     });
 
     it('should return with coordinates', async () => {
-      const members = await client.georadius(testKey, 15, 37, 200, 'km', 'WITHCOORD');
+      const members = await client.georadius(
+        testKey,
+        15,
+        37,
+        200,
+        'km',
+        'WITHCOORD'
+      );
       assert.ok(Array.isArray(members));
-      
+
       const catania = members.find(m => Array.isArray(m) && m[0] === 'Catania');
       assert.ok(catania);
       assert.strictEqual(catania[0], 'Catania');
@@ -194,9 +267,16 @@ describe('GEO Commands', () => {
     });
 
     it('should return with distance', async () => {
-      const members = await client.georadius(testKey, 15, 37, 200, 'km', 'WITHDIST');
+      const members = await client.georadius(
+        testKey,
+        15,
+        37,
+        200,
+        'km',
+        'WITHDIST'
+      );
       assert.ok(Array.isArray(members));
-      
+
       const catania = members.find(m => Array.isArray(m) && m[0] === 'Catania');
       assert.ok(catania);
       assert.strictEqual(catania[0], 'Catania');
@@ -204,9 +284,16 @@ describe('GEO Commands', () => {
     });
 
     it('should return with hash', async () => {
-      const members = await client.georadius(testKey, 15, 37, 200, 'km', 'WITHHASH');
+      const members = await client.georadius(
+        testKey,
+        15,
+        37,
+        200,
+        'km',
+        'WITHHASH'
+      );
       assert.ok(Array.isArray(members));
-      
+
       const catania = members.find(m => Array.isArray(m) && m[0] === 'Catania');
       assert.ok(catania);
       assert.strictEqual(catania[0], 'Catania');
@@ -214,9 +301,17 @@ describe('GEO Commands', () => {
     });
 
     it('should return with distance and coordinates', async () => {
-      const members = await client.georadius(testKey, 15, 37, 200, 'km', 'WITHDIST', 'WITHCOORD');
+      const members = await client.georadius(
+        testKey,
+        15,
+        37,
+        200,
+        'km',
+        'WITHDIST',
+        'WITHCOORD'
+      );
       assert.ok(Array.isArray(members));
-      
+
       const catania = members.find(m => Array.isArray(m) && m[0] === 'Catania');
       assert.ok(catania);
       assert.strictEqual(catania[0], 'Catania');
@@ -225,14 +320,30 @@ describe('GEO Commands', () => {
     });
 
     it('should respect COUNT limit', async () => {
-      const members = await client.georadius(testKey, 15, 37, 200, 'km', 'COUNT', 1);
+      const members = await client.georadius(
+        testKey,
+        15,
+        37,
+        200,
+        'km',
+        'COUNT',
+        1
+      );
       assert.strictEqual(members.length, 1);
     });
 
     it('should respect ASC order', async () => {
-      const members = await client.georadius(testKey, 15, 37, 200, 'km', 'WITHDIST', 'ASC');
+      const members = await client.georadius(
+        testKey,
+        15,
+        37,
+        200,
+        'km',
+        'WITHDIST',
+        'ASC'
+      );
       assert.ok(Array.isArray(members));
-      
+
       if (members.length >= 2) {
         const dist1 = parseFloat(members[0][1]);
         const dist2 = parseFloat(members[1][1]);
@@ -241,9 +352,17 @@ describe('GEO Commands', () => {
     });
 
     it('should respect DESC order', async () => {
-      const members = await client.georadius(testKey, 15, 37, 200, 'km', 'WITHDIST', 'DESC');
+      const members = await client.georadius(
+        testKey,
+        15,
+        37,
+        200,
+        'km',
+        'WITHDIST',
+        'DESC'
+      );
       assert.ok(Array.isArray(members));
-      
+
       if (members.length >= 2) {
         const dist1 = parseFloat(members[0][1]);
         const dist2 = parseFloat(members[1][1]);
@@ -254,7 +373,7 @@ describe('GEO Commands', () => {
     it('should store results', async () => {
       const storeKey = 'test:geo:results';
       await client.georadius(testKey, 15, 37, 200, 'km', 'STORE', storeKey);
-      
+
       const stored = await client.zrange(storeKey, 0, -1);
       assert.ok(Array.isArray(stored));
       assert.ok(stored.length > 0);
@@ -263,7 +382,7 @@ describe('GEO Commands', () => {
     it('should store distances', async () => {
       const storeKey = 'test:geo:distances';
       await client.georadius(testKey, 15, 37, 200, 'km', 'STOREDIST', storeKey);
-      
+
       const stored = await client.zrange(storeKey, 0, -1, 'WITHSCORES');
       assert.ok(Array.isArray(stored));
       assert.ok(stored.length > 0);
@@ -274,39 +393,69 @@ describe('GEO Commands', () => {
     beforeEach(async () => {
       await client.geoadd(
         testKey,
-        13.361389, 38.115556, 'Palermo',
-        15.087269, 37.502669, 'Catania',
-        13.583333, 37.316667, 'Agrigento'
+        13.361389,
+        38.115556,
+        'Palermo',
+        15.087269,
+        37.502669,
+        'Catania',
+        13.583333,
+        37.316667,
+        'Agrigento'
       );
     });
 
     it('should find members within radius of member', async () => {
-      const members = await client.georadiusbymember(testKey, 'Agrigento', 100, 'km');
+      const members = await client.georadiusbymember(
+        testKey,
+        'Agrigento',
+        100,
+        'km'
+      );
       assert.ok(Array.isArray(members));
       assert.ok(members.includes('Agrigento'));
       assert.ok(members.includes('Palermo'));
     });
 
     it('should return with coordinates', async () => {
-      const members = await client.georadiusbymember(testKey, 'Agrigento', 100, 'km', 'WITHCOORD');
+      const members = await client.georadiusbymember(
+        testKey,
+        'Agrigento',
+        100,
+        'km',
+        'WITHCOORD'
+      );
       assert.ok(Array.isArray(members));
-      
+
       const palermo = members.find(m => Array.isArray(m) && m[0] === 'Palermo');
       assert.ok(palermo);
       assert.ok(Array.isArray(palermo[1]));
     });
 
     it('should return with distance', async () => {
-      const members = await client.georadiusbymember(testKey, 'Agrigento', 100, 'km', 'WITHDIST');
+      const members = await client.georadiusbymember(
+        testKey,
+        'Agrigento',
+        100,
+        'km',
+        'WITHDIST'
+      );
       assert.ok(Array.isArray(members));
-      
+
       const palermo = members.find(m => Array.isArray(m) && m[0] === 'Palermo');
       assert.ok(palermo);
       assert.ok(typeof palermo[1] === 'string');
     });
 
     it('should respect COUNT limit', async () => {
-      const members = await client.georadiusbymember(testKey, 'Agrigento', 100, 'km', 'COUNT', 2);
+      const members = await client.georadiusbymember(
+        testKey,
+        'Agrigento',
+        100,
+        'km',
+        'COUNT',
+        2
+      );
       assert.ok(members.length <= 2);
     });
 
@@ -324,8 +473,12 @@ describe('GEO Commands', () => {
     beforeEach(async () => {
       await client.geoadd(
         testKey,
-        13.361389, 38.115556, 'Palermo',
-        15.087269, 37.502669, 'Catania'
+        13.361389,
+        38.115556,
+        'Palermo',
+        15.087269,
+        37.502669,
+        'Catania'
       );
     });
 
@@ -351,7 +504,12 @@ describe('GEO Commands', () => {
     });
 
     it('should handle mixed existing and non-existing members', async () => {
-      const hashes = await client.geohash(testKey, 'Palermo', 'NonExistent', 'Catania');
+      const hashes = await client.geohash(
+        testKey,
+        'Palermo',
+        'NonExistent',
+        'Catania'
+      );
       assert.strictEqual(hashes.length, 3);
       assert.ok(typeof hashes[0] === 'string');
       assert.strictEqual(hashes[1], null);
@@ -363,45 +521,93 @@ describe('GEO Commands', () => {
     beforeEach(async () => {
       await client.geoadd(
         testKey,
-        13.361389, 38.115556, 'Palermo',
-        15.087269, 37.502669, 'Catania',
-        13.583333, 37.316667, 'Agrigento',
-        12.5, 37.5, 'TestPoint'
+        13.361389,
+        38.115556,
+        'Palermo',
+        15.087269,
+        37.502669,
+        'Catania',
+        13.583333,
+        37.316667,
+        'Agrigento',
+        12.5,
+        37.5,
+        'TestPoint'
       );
     });
 
     it('should search by coordinates and radius', async () => {
-      const members = await client.geosearch(testKey, 'FROMLONLAT', 15, 37, 'BYRADIUS', 100, 'km');
+      const members = await client.geosearch(
+        testKey,
+        'FROMLONLAT',
+        15,
+        37,
+        'BYRADIUS',
+        100,
+        'km'
+      );
       assert.ok(Array.isArray(members));
       assert.ok(members.includes('Catania'));
     });
 
     it('should search by member and radius', async () => {
-      const members = await client.geosearch(testKey, 'FROMMEMBER', 'Agrigento', 'BYRADIUS', 100, 'km');
+      const members = await client.geosearch(
+        testKey,
+        'FROMMEMBER',
+        'Agrigento',
+        'BYRADIUS',
+        100,
+        'km'
+      );
       assert.ok(Array.isArray(members));
       assert.ok(members.includes('Agrigento'));
       assert.ok(members.includes('Palermo'));
     });
 
     it('should search by box', async () => {
-      const members = await client.geosearch(testKey, 'FROMLONLAT', 13.5, 37.5, 'BYBOX', 200, 100, 'km');
+      const members = await client.geosearch(
+        testKey,
+        'FROMLONLAT',
+        13.5,
+        37.5,
+        'BYBOX',
+        200,
+        100,
+        'km'
+      );
       assert.ok(Array.isArray(members));
       assert.ok(members.length > 0);
     });
 
     it('should return with distance', async () => {
-      const members = await client.geosearch(testKey, 'FROMMEMBER', 'Agrigento', 'BYRADIUS', 100, 'km', 'WITHDIST');
+      const members = await client.geosearch(
+        testKey,
+        'FROMMEMBER',
+        'Agrigento',
+        'BYRADIUS',
+        100,
+        'km',
+        'WITHDIST'
+      );
       assert.ok(Array.isArray(members));
-      
+
       const palermo = members.find(m => Array.isArray(m) && m[0] === 'Palermo');
       assert.ok(palermo);
       assert.ok(typeof palermo[1] === 'string');
     });
 
     it('should return with coordinates', async () => {
-      const members = await client.geosearch(testKey, 'FROMMEMBER', 'Agrigento', 'BYRADIUS', 100, 'km', 'WITHCOORD');
+      const members = await client.geosearch(
+        testKey,
+        'FROMMEMBER',
+        'Agrigento',
+        'BYRADIUS',
+        100,
+        'km',
+        'WITHCOORD'
+      );
       assert.ok(Array.isArray(members));
-      
+
       const palermo = members.find(m => Array.isArray(m) && m[0] === 'Palermo');
       assert.ok(palermo);
       assert.ok(Array.isArray(palermo[1]));
@@ -409,9 +615,17 @@ describe('GEO Commands', () => {
     });
 
     it('should return with hash', async () => {
-      const members = await client.geosearch(testKey, 'FROMMEMBER', 'Agrigento', 'BYRADIUS', 100, 'km', 'WITHHASH');
+      const members = await client.geosearch(
+        testKey,
+        'FROMMEMBER',
+        'Agrigento',
+        'BYRADIUS',
+        100,
+        'km',
+        'WITHHASH'
+      );
       assert.ok(Array.isArray(members));
-      
+
       const palermo = members.find(m => Array.isArray(m) && m[0] === 'Palermo');
       assert.ok(palermo);
       assert.ok(typeof palermo[1] === 'string');
@@ -419,14 +633,33 @@ describe('GEO Commands', () => {
     });
 
     it('should respect COUNT limit', async () => {
-      const members = await client.geosearch(testKey, 'FROMLONLAT', 13.5, 37.5, 'BYRADIUS', 500, 'km', 'COUNT', 2);
+      const members = await client.geosearch(
+        testKey,
+        'FROMLONLAT',
+        13.5,
+        37.5,
+        'BYRADIUS',
+        500,
+        'km',
+        'COUNT',
+        2
+      );
       assert.ok(members.length <= 2);
     });
 
     it('should respect ASC order', async () => {
-      const members = await client.geosearch(testKey, 'FROMMEMBER', 'Agrigento', 'BYRADIUS', 200, 'km', 'WITHDIST', 'ASC');
+      const members = await client.geosearch(
+        testKey,
+        'FROMMEMBER',
+        'Agrigento',
+        'BYRADIUS',
+        200,
+        'km',
+        'WITHDIST',
+        'ASC'
+      );
       assert.ok(Array.isArray(members));
-      
+
       if (members.length >= 2) {
         const dist1 = parseFloat(members[0][1]);
         const dist2 = parseFloat(members[1][1]);
@@ -435,9 +668,18 @@ describe('GEO Commands', () => {
     });
 
     it('should respect DESC order', async () => {
-      const members = await client.geosearch(testKey, 'FROMMEMBER', 'Agrigento', 'BYRADIUS', 200, 'km', 'WITHDIST', 'DESC');
+      const members = await client.geosearch(
+        testKey,
+        'FROMMEMBER',
+        'Agrigento',
+        'BYRADIUS',
+        200,
+        'km',
+        'WITHDIST',
+        'DESC'
+      );
       assert.ok(Array.isArray(members));
-      
+
       if (members.length >= 2) {
         const dist1 = parseFloat(members[0][1]);
         const dist2 = parseFloat(members[1][1]);
@@ -450,18 +692,32 @@ describe('GEO Commands', () => {
     beforeEach(async () => {
       await client.geoadd(
         testKey,
-        13.361389, 38.115556, 'Palermo',
-        15.087269, 37.502669, 'Catania',
-        13.583333, 37.316667, 'Agrigento'
+        13.361389,
+        38.115556,
+        'Palermo',
+        15.087269,
+        37.502669,
+        'Catania',
+        13.583333,
+        37.316667,
+        'Agrigento'
       );
     });
 
     it('should store search results', async () => {
       const destKey = 'test:geo:search:results';
-      const count = await client.geosearchstore(destKey, testKey, 'FROMMEMBER', 'Agrigento', 'BYRADIUS', 100, 'km');
-      
+      const count = await client.geosearchstore(
+        destKey,
+        testKey,
+        'FROMMEMBER',
+        'Agrigento',
+        'BYRADIUS',
+        100,
+        'km'
+      );
+
       assert.ok(count > 0);
-      
+
       const stored = await client.zrange(destKey, 0, -1);
       assert.ok(Array.isArray(stored));
       assert.ok(stored.includes('Palermo'));
@@ -470,14 +726,23 @@ describe('GEO Commands', () => {
 
     it('should store with distances', async () => {
       const destKey = 'test:geo:search:distances';
-      const count = await client.geosearchstore(destKey, testKey, 'FROMMEMBER', 'Agrigento', 'BYRADIUS', 100, 'km', 'STOREDIST');
-      
+      const count = await client.geosearchstore(
+        destKey,
+        testKey,
+        'FROMMEMBER',
+        'Agrigento',
+        'BYRADIUS',
+        100,
+        'km',
+        'STOREDIST'
+      );
+
       assert.ok(count > 0);
-      
+
       const stored = await client.zrange(destKey, 0, -1, 'WITHSCORES');
       assert.ok(Array.isArray(stored));
       assert.ok(stored.length > 0);
-      
+
       // Check that scores are stored (distances)
       for (let i = 1; i < stored.length; i += 2) {
         assert.ok(typeof stored[i] === 'string');
@@ -520,10 +785,14 @@ describe('GEO Commands', () => {
     it('should handle very large radius', async () => {
       await client.geoadd(
         testKey,
-        -122.4194, 37.7749, 'SanFrancisco',
-        139.6917, 35.6895, 'Tokyo'
+        -122.4194,
+        37.7749,
+        'SanFrancisco',
+        139.6917,
+        35.6895,
+        'Tokyo'
       );
-      
+
       const members = await client.georadius(testKey, 0, 0, 50000, 'km'); // Larger than Earth's circumference
       assert.ok(Array.isArray(members));
       assert.strictEqual(members.length, 2);

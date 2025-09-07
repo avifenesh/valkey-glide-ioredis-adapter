@@ -10,7 +10,15 @@
  * - GitHub's repository metadata scanning
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -21,12 +29,13 @@ describe('Scan Operations - Production Iteration Patterns', () => {
   beforeEach(async () => {
     const config = {
       host: 'localhost',
-      port: parseInt(process.env.VALKEY_PORT || "6383"),
+      port: parseInt(process.env.VALKEY_PORT || '6383'),
       lazyConnect: true,
     };
     redis = new Redis(config);
-  
-    await redis.connect();});
+
+    await redis.connect();
+  });
 
   afterEach(async () => {
     if (redis) {
@@ -61,7 +70,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         for (let category of ['action', 'comedy', 'drama', 'horror']) {
           await redis.set(
             `${prefix}rec:${userId}:${category}`,
-            JSONJSON: JSON.stringify({
+            JSON.stringify({
               userId,
               category,
               movies: [`movie${userId}_1`, `movie${userId}_2`],
@@ -72,7 +81,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
 
       // Scan for specific user recommendations
       let cursor = '0';
-      let userRecs[] = [];
+      let userRecs = [];
       let totalScanned = 0;
 
       do {
@@ -90,7 +99,10 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       } while (cursor !== '0');
 
       assert.strictEqual(userRecs.length, 50); // 50 users with action recommendations
-      assert.ok(userRecs.every(key => key.includes(':action'))).strictEqual(true);
+      assert.strictEqual(
+        userRecs.every(key => key.includes(':action')),
+        true
+      );
     });
 
     test('should implement key expiration scanning for cleanup', async () => {
@@ -101,17 +113,17 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         await redis.setex(
           `${prefix}session:${i}`,
           300,
-          JSONJSON: JSON.stringify({
+          JSON.stringify({
             userId: i,
-            loginTime.now(),
-            lastActivity.now(),
+            loginTime: Date.now(),
+            lastActivity: Date.now(),
           })
         );
       }
 
       // Scan for session keys
       let cursor = '0';
-      let sessionKeys[] = [];
+      let sessionKeys = [];
 
       do {
         const result = await redis.scan(cursor, 'MATCH', `${prefix}session:*`);
@@ -173,12 +185,12 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         // Convert array to key-value pairs
         for (let i = 0; i < fields.length; i += 2) {
           if (fields[i] && fields[i + 1]) {
-            skills[fields[i]!] = fields[i + 1]!;
+            skills[fields[i]] = fields[i + 1];
           }
         }
       } while (cursor !== '0');
 
-      assert.ok(Object.keys(skills)).toHaveLength(4);
+      assert.strictEqual(Object.keys(skills).length, 4);
       assert.strictEqual(skills['skill_javascript'], 'Expert');
       assert.strictEqual(skills['skill_python'], 'Advanced');
     });
@@ -195,10 +207,8 @@ describe('Scan Operations - Production Iteration Patterns', () => {
           inventory[`${category}_product_${i}_stock`] = Math.floor(
             Math.random() * 100
           );
-          inventory[`${category}_product_${i}_price`] = (
-            Math.random() * 200 +
-            10
-          ).toFixed(2);
+          inventory[`${category}_product_${i}_price`] =
+            Math.random() * 200 + 10;
           inventory[`${category}_product_${i}_views`] = Math.floor(
             Math.random() * 1000
           );
@@ -225,15 +235,15 @@ describe('Scan Operations - Production Iteration Patterns', () => {
 
         for (let i = 0; i < fields.length; i += 2) {
           if (fields[i] && fields[i + 1]) {
-            electronicsStock[fields[i]!] = fields[i + 1]!;
+            electronicsStock[fields[i]] = fields[i + 1];
           }
         }
       } while (cursor !== '0');
 
-      assert.ok(Object.keys(electronicsStock)).toHaveLength(15);
+      assert.strictEqual(Object.keys(electronicsStock).length, 15);
       assert.ok(
         Object.values(electronicsStock).every(val => !isNaN(parseInt(val)))
-      ).strictEqual(true);
+      );
     });
 
     test('should handle configuration scanning for system monitoring', async () => {
@@ -273,12 +283,12 @@ describe('Scan Operations - Production Iteration Patterns', () => {
 
         for (let i = 0; i < fields.length; i += 2) {
           if (fields[i] && fields[i + 1]) {
-            featureFlags[fields[i]!] = fields[i + 1]!;
+            featureFlags[fields[i]] = fields[i + 1];
           }
         }
       } while (cursor !== '0');
 
-      assert.ok(Object.keys(featureFlags)).toHaveLength(3);
+      assert.strictEqual(Object.keys(featureFlags).length, 3);
       assert.strictEqual(featureFlags['feature_flag_payments'], 'enabled');
     });
   });
@@ -299,7 +309,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
 
       // Scan for verified users
       let cursor = '0';
-      let verifiedFollowers[] = [];
+      let verifiedFollowers = [];
 
       do {
         const result = await redis.sscan(
@@ -315,9 +325,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       } while (cursor !== '0');
 
       assert.strictEqual(verifiedFollowers.length, 30);
-      assert.ok(
-        verifiedFollowers.every(user => user.startsWith('verified_'))
-      ).strictEqual(true);
+      assert.ok(verifiedFollowers.every(user => user.startsWith('verified_')));
     });
 
     test('should scan active user sessions for monitoring', async () => {
@@ -335,7 +343,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
 
       // Scan for mobile sessions
       let cursor = '0';
-      let mobileSessions[] = [];
+      let mobileSessions = [];
 
       do {
         const result = await redis.sscan(
@@ -351,9 +359,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       } while (cursor !== '0');
 
       assert.strictEqual(mobileSessions.length, 20);
-      assert.ok(
-        mobileSessions.every(session => session.startsWith('mobile_'))
-      ).strictEqual(true);
+      assert.ok(mobileSessions.every(session => session.startsWith('mobile_')));
     });
 
     test('should scan tags and categories for content management', async () => {
@@ -380,7 +386,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
 
       // Scan for tech tags
       let cursor = '0';
-      let techTags[] = [];
+      let techTags = [];
 
       do {
         const result = await redis.sscan(tagsKey, cursor, 'MATCH', 'tech_*');
@@ -389,7 +395,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       } while (cursor !== '0');
 
       assert.strictEqual(techTags.length, 4);
-      assert.ok(techTags.sort()).toEqual([
+      assert.deepStrictEqual(techTags.sort(), [
         'tech_javascript',
         'tech_nodejs',
         'tech_python',
@@ -419,7 +425,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
 
       // Scan for pro players
       let cursor = '0';
-      let proPlayers[] = [];
+      let proPlayers = [];
 
       do {
         const result = await redis.zscan(
@@ -436,13 +442,16 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         // Extract member names (every other item, skipping scores)
         for (let i = 0; i < members.length; i += 2) {
           if (members[i]) {
-            proPlayers.push(members[i]!);
+            proPlayers.push(members[i]);
           }
         }
       } while (cursor !== '0');
 
       assert.strictEqual(proPlayers.length, 10);
-      assert.ok(proPlayers.every(player => player.startsWith('pro_'))).strictEqual(true);
+      assert.strictEqual(
+        proPlayers.every(player => player.startsWith('pro_')),
+        true
+      );
     });
 
     test('should scan time-based rankings like trending topics', async () => {
@@ -464,12 +473,12 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       ];
 
       for (let i = 0; i < topics.length; i++) {
-        await redis.zadd(trendingKey, baseTime - i * 1000, topics[i]!);
+        await redis.zadd(trendingKey, baseTime - i * 1000, topics[i]);
       }
 
       // Scan for tech topics
       let cursor = '0';
-      let techTopics: { member; score }[] = [];
+      let techTopics = [];
 
       do {
         const result = await redis.zscan(
@@ -485,18 +494,20 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         for (let i = 0; i < data.length; i += 2) {
           if (data[i] && data[i + 1]) {
             techTopics.push({
-              member: data[i]!,
-              score: data[i + 1]!,
+              member: data[i],
+              score: data[i + 1],
             });
           }
         }
       } while (cursor !== '0');
 
       assert.strictEqual(techTopics.length, 3);
-      assert.ok(techTopics.every(topic => topic.member.startsWith('tech_'))).toBe(
+      assert.strictEqual(
+        techTopics.every(topic => topic.member.startsWith('tech_')),
         true
       );
-      assert.ok(techTopics.every(topic => !isNaN(parseFloat(topic.score)))).toBe(
+      assert.strictEqual(
+        techTopics.every(topic => !isNaN(parseFloat(topic.score))),
         true
       );
     });
@@ -509,14 +520,15 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         let userType = userId <= 10 ? 'premium' : 'free';
         let score =
           userType === 'premium'
-            ? Math.random() * 1000 + 500.random() * 500;
+            ? Math.random() * 1000 + 500
+            : Math.random() * 500;
 
         await redis.zadd(activityKey, score, `${userType}_user_${userId}`);
       }
 
       // Scan for premium users
       let cursor = '0';
-      let premiumUsers: { user; activity }[] = [];
+      let premiumUsers = [];
 
       do {
         const result = await redis.zscan(
@@ -533,15 +545,18 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         for (let i = 0; i < data.length; i += 2) {
           if (data[i] && data[i + 1]) {
             premiumUsers.push({
-              user: data[i]!,
-              activity: parseFloat(data[i + 1]!),
+              user: data[i],
+              activity: parseFloat(data[i + 1]),
             });
           }
         }
       } while (cursor !== '0');
 
       assert.strictEqual(premiumUsers.length, 10);
-      assert.ok(premiumUsers.every(u => u.user.startsWith('premium_'))).strictEqual(true);
+      assert.strictEqual(
+        premiumUsers.every(u => u.user.startsWith('premium_')),
+        true
+      );
       assert.ok(premiumUsers.every(u => u.activity >= 500));
     });
   });

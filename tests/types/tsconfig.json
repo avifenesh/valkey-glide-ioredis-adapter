@@ -8,7 +8,6 @@
       "valkey-glide-ioredis-adapter": ["dist"]
     }
   },
-  "include": [
-    "usage.ts"
-  ]
+  "include": ["*.ts"],
+  "exclude": ["../../node_modules", "../../dist"]
 }

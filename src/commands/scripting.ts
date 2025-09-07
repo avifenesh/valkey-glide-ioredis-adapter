@@ -57,7 +57,7 @@ export async function evalsha(
   ...keysAndArgs: any[]
 ): Promise<any> {
   await (client as any).ensureConnection();
-  
+
   const keys = keysAndArgs
     .slice(0, numKeys)
     .map((k: RedisKey) => (client as any).normalizeKey(k));
@@ -92,7 +92,10 @@ export async function evalsha(
     return result;
   } catch (err: any) {
     // If NOSCRIPT error, we already tried cache, so throw
-    if (err.message && (err.message.includes('NOSCRIPT') || err.message.includes('NoScript'))) {
+    if (
+      err.message &&
+      (err.message.includes('NOSCRIPT') || err.message.includes('NoScript'))
+    ) {
       throw new Error('NOSCRIPT No matching script. Please use EVAL.');
     }
     throw err;
@@ -107,17 +110,17 @@ export async function scriptLoad(
   const { Script } = require('@valkey/valkey-glide');
   const id = sha1(script);
   const glideScript = new Script(script);
-  
+
   // Actually load the script to the server
   const result = await (client as any).glideClient.customCommand([
     'SCRIPT',
     'LOAD',
     script,
   ]);
-  
+
   // Cache it locally as well
   getCache(client).set(id, { script: glideScript, source: script });
-  
+
   // Return the SHA1 hash
   return String(result) || id;
 }
@@ -127,14 +130,14 @@ export async function scriptExists(
   ...sha1s: string[]
 ): Promise<number[]> {
   await (client as any).ensureConnection();
-  
+
   // Use customCommand to ensure consistent behavior
   const result = await (client as any).glideClient.customCommand([
     'SCRIPT',
     'EXISTS',
     ...sha1s,
   ]);
-  
+
   // Convert boolean or numeric results to numbers (1 or 0)
   if (Array.isArray(result)) {
     return result.map((val: any) => {
@@ -143,7 +146,7 @@ export async function scriptExists(
       return Number(val) || 0;
     });
   }
-  
+
   return [];
 }
 
@@ -190,7 +193,7 @@ export async function script(
     subcommand,
     ...args.map(String),
   ]);
-  
+
   // Convert boolean results to 1/0 for EXISTS subcommand
   if (subcommand.toUpperCase() === 'EXISTS' && Array.isArray(result)) {
     return result.map((val: any) => {
@@ -198,7 +201,6 @@ export async function script(
       return val;
     });
   }
-  
+
   return result;
 }
-

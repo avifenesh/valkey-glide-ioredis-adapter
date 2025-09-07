@@ -4,9 +4,18 @@
  */
 
 // Use Jest globals
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
-import { Cluster } from '../../../../src';
+import pkg from '../../../../dist/index.js';
+const { Cluster } = pkg;
 
 // Mock Bull Queue for testing
 class MockBullQueue {
@@ -62,7 +71,7 @@ describe('Bull Integration with Cluster', () => {
 
   describe('Bull createClient Pattern', () => {
     it('should work with Bull createClient factory', async () => {
-      const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
+      const createClient = type => {
         return Cluster.createClient(type, {
           ...clusterConfig,
           lazyConnect: true,
@@ -75,13 +84,13 @@ describe('Bull Integration with Cluster', () => {
       assert.ok(queue.subscriber instanceof Cluster);
       assert.ok(queue.bclient instanceof Cluster);
 
-      assert.strictEqual(queue.client .clientType, 'client');
-      assert.strictEqual(queue.subscriber .clientType, 'subscriber');
-      assert.strictEqual(queue.bclient .clientType, 'bclient');
+      assert.strictEqual(queue.client.clientType, 'client');
+      assert.strictEqual(queue.subscriber.clientType, 'subscriber');
+      assert.strictEqual(queue.bclient.clientType, 'bclient');
     });
 
     it('should enable blocking operations for bclient', async () => {
-      const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
+      const createClient = type => {
         return Cluster.createClient(type, {
           ...clusterConfig,
           lazyConnect: true,
@@ -90,13 +99,13 @@ describe('Bull Integration with Cluster', () => {
 
       const queue = new MockBullQueue('test-queue', { createClient });
 
-      assert.ok((queue.bclient ).enableBlockingOps).strictEqual(true);
-      assert.ok((queue.client ).enableBlockingOps).not.strictEqual(true);
-      assert.ok((queue.subscriber ).enableBlockingOps).not.strictEqual(true);
+      assert.strictEqual(queue.bclient.enableBlockingOps, true);
+      assert.ok(queue.client.enableBlockingOps !== true);
+      assert.ok(queue.subscriber.enableBlockingOps !== true);
     });
 
     it('should create separate client instances', async () => {
-      const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
+      const createClient = type => {
         return Cluster.createClient(type, {
           ...clusterConfig,
           lazyConnect: true,
@@ -120,12 +129,12 @@ describe('Bull Integration with Cluster', () => {
           { host: '127.0.0.1', port: 7002 },
         ],
         enableReadFromReplicas: true,
-        scaleReads: 'all' as const,
+        scaleReads: 'all',
         maxRedirections: 32,
         retryDelayOnFailover: 200,
       };
 
-      const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
+      const createClient = type => {
         return Cluster.createClient(type, {
           ...clusterOptions,
           lazyConnect: true,
@@ -134,10 +143,10 @@ describe('Bull Integration with Cluster', () => {
 
       const queue = new MockBullQueue('test-queue', { createClient });
 
-      assert.ok((queue.client ).options.enableReadFromReplicas).strictEqual(true);
-      assert.ok((queue.client ).options.scaleReads).toBe('all');
-      assert.ok((queue.client ).options.maxRedirections).toBe(32);
-      assert.ok((queue.client ).options.retryDelayOnFailover).toBe(200);
+      assert.strictEqual(queue.client.options.enableReadFromReplicas, true);
+      assert.strictEqual(queue.client.options.scaleReads, 'all');
+      assert.strictEqual(queue.client.options.maxRedirections, 32);
+      assert.strictEqual(queue.client.options.retryDelayOnFailover, 200);
     });
 
     it('should support single node cluster configuration', async () => {
@@ -145,7 +154,7 @@ describe('Bull Integration with Cluster', () => {
         nodes: [{ host: '127.0.0.1', port: 7000 }],
       };
 
-      const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
+      const createClient = type => {
         return Cluster.createClient(type, {
           ...singleNodeConfig,
           lazyConnect: true,
@@ -155,7 +164,7 @@ describe('Bull Integration with Cluster', () => {
       const queue = new MockBullQueue('test-queue', { createClient });
 
       assert.ok(queue.client instanceof Cluster);
-      assert.ok((queue.client ).options.nodes).toHaveLength(1);
+      assert.strictEqual(queue.client.options.nodes.length, 1);
     });
   });
 
@@ -163,7 +172,7 @@ describe('Bull Integration with Cluster', () => {
     let queue;
 
     beforeEach(() => {
-      const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
+      const createClient = type => {
         return Cluster.createClient(type, {
           ...clusterConfig,
           lazyConnect: true,
@@ -276,7 +285,7 @@ describe('Bull Integration with Cluster', () => {
         lua: addJobScript,
       });
 
-      assert.ok((client ).addJob).toBeInstanceOf(Function);
+      assert.ok(client.addJob instanceof Function);
     });
 
     it('should support BullMQ-style array arguments', async () => {
@@ -289,7 +298,7 @@ describe('Bull Integration with Cluster', () => {
         lua: testScript,
       });
 
-      assert.ok((client ).testArrayArgs).toBeInstanceOf(Function);
+      assert.ok(client.testArrayArgs instanceof Function);
     });
 
     it('should handle empty Lua script results', async () => {
@@ -302,13 +311,13 @@ describe('Bull Integration with Cluster', () => {
         lua: emptyScript,
       });
 
-      assert.ok((client ).emptyResult).toBeInstanceOf(Function);
+      assert.ok(client.emptyResult instanceof Function);
     });
   });
 
   describe('Connection Management', () => {
     it('should handle connection lifecycle', async () => {
-      const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
+      const createClient = type => {
         return Cluster.createClient(type, {
           ...clusterConfig,
           lazyConnect: true,
@@ -333,7 +342,7 @@ describe('Bull Integration with Cluster', () => {
         db: 0,
       };
 
-      const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
+      const createClient = type => {
         return Cluster.createClient(type, {
           ...optionsConfig,
           lazyConnect: true,
@@ -342,9 +351,9 @@ describe('Bull Integration with Cluster', () => {
 
       const queue = new MockBullQueue('test-queue', { createClient });
 
-      assert.ok((queue.client ).options.username).toBe('testuser');
-      assert.ok((queue.client ).options.password).toBe('testpass');
-      assert.ok((queue.client ).options.db).toBe(0);
+      assert.strictEqual(queue.client.options.username, 'testuser');
+      assert.strictEqual(queue.client.options.password, 'testpass');
+      assert.strictEqual(queue.client.options.db, 0);
     });
   });
 
@@ -417,7 +426,7 @@ describe('Bull Integration with Cluster', () => {
         ],
       };
 
-      const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
+      const createClient = type => {
         return Cluster.createClient(type, {
           ...invalidConfig,
           lazyConnect: true,
@@ -427,7 +436,7 @@ describe('Bull Integration with Cluster', () => {
       const queue = new MockBullQueue('test-queue', { createClient });
 
       // Should handle errors gracefully
-      queue.client.on('error', (_err) => {
+      queue.client.on('error', _err => {
         assert.ok(_err instanceof Error);
       });
 
@@ -448,13 +457,13 @@ describe('Bull Integration with Cluster', () => {
       });
 
       assert.ok(client instanceof Cluster);
-      assert.ok((client ).options.nodes).toHaveLength(2);
+      assert.strictEqual(client.options.nodes.length, 2);
     });
   });
 
   describe('Performance Considerations', () => {
     it('should support connection pooling', async () => {
-      const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
+      const createClient = type => {
         return Cluster.createClient(type, {
           ...clusterConfig,
           lazyConnect: true,
@@ -474,7 +483,7 @@ describe('Bull Integration with Cluster', () => {
       const scalingConfig = {
         ...clusterConfig,
         enableReadFromReplicas: true,
-        scaleReads: 'all' as const,
+        scaleReads: 'all',
       };
 
       const client = Cluster.createClient('client', {
@@ -482,8 +491,8 @@ describe('Bull Integration with Cluster', () => {
         lazyConnect: true,
       });
 
-      assert.ok((client ).options.enableReadFromReplicas).strictEqual(true);
-      assert.ok((client ).options.scaleReads).toBe('all');
+      assert.strictEqual(client.options.enableReadFromReplicas, true);
+      assert.strictEqual(client.options.scaleReads, 'all');
     });
   });
 });

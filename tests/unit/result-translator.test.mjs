@@ -3,7 +3,15 @@
  * Testing all result translation methods for GLIDE to ioredis compatibility
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import { ResultTranslator } from '../../src/utils/ResultTranslator';
 import { SortedSetDataType, GlideString } from '@valkey/valkey-glide';
@@ -36,19 +44,24 @@ describe('ResultTranslator', () => {
     });
 
     test('should handle non-array input', async () => {
-      const result = ResultTranslator.flattenSortedSetData(null );
+      const result = ResultTranslator.flattenSortedSetData(null);
       assert.deepStrictEqual(result, []);
     });
 
     test('should handle SortedSetDataType with Buffer elements', async () => {
       const glideResult = [
-        { element.from('binary_member'), score: 1.0 },
+        { element: Buffer.from('binary_member'), score: 1.0 },
         { element: 'string_member', score: 2.0 },
       ];
 
       const result = ResultTranslator.flattenSortedSetData(glideResult);
 
-      assert.deepStrictEqual(result, ['binary_member', '1', 'string_member', '2']);
+      assert.deepStrictEqual(result, [
+        'binary_member',
+        '1',
+        'string_member',
+        '2',
+      ]);
     });
 
     test('should handle SortedSetDataType with negative scores', async () => {
@@ -72,9 +85,9 @@ describe('ResultTranslator', () => {
 
     test('should handle very large and small scores', async () => {
       const glideResult = [
-        { element: 'large', score.MAX_SAFE_INTEGER },
-        { element: 'small', score.MIN_SAFE_INTEGER },
-        { element: 'infinity', score },
+        { element: 'large', score: Number.MAX_SAFE_INTEGER },
+        { element: 'small', score: Number.MIN_SAFE_INTEGER },
+        { element: 'infinity', score: Infinity },
         { element: 'negative_infinity', score: -Infinity },
       ];
 
@@ -94,7 +107,7 @@ describe('ResultTranslator', () => {
     });
 
     test('should handle non-array input', async () => {
-      const result = ResultTranslator.formatStreamEntries(null );
+      const result = ResultTranslator.formatStreamEntries(null);
       assert.deepStrictEqual(result, []);
     });
 
@@ -121,11 +134,7 @@ describe('ResultTranslator', () => {
 
   describe('formatBlockingPopResult', () => {
     test('should format valid blocking pop result', async () => {
-      const glideResult: [GlideString, GlideString, number] = [
-        'key1',
-        'member1',
-        5.5,
-      ];
+      const glideResult = ['key1', 'member1', 5.5];
 
       const result = ResultTranslator.formatBlockingPopResult(glideResult);
 
@@ -138,25 +147,23 @@ describe('ResultTranslator', () => {
     });
 
     test('should handle undefined input', async () => {
-      const result = ResultTranslator.formatBlockingPopResult(undefined );
+      const result = ResultTranslator.formatBlockingPopResult(undefined);
       assert.strictEqual(result, null);
     });
 
     test('should handle non-array input', async () => {
-      const result = ResultTranslator.formatBlockingPopResult(
-        'not-an-array' 
-      );
+      const result = ResultTranslator.formatBlockingPopResult('not-an-array');
       assert.strictEqual(result, null);
     });
 
     test('should handle array with wrong length', async () => {
-      const result1 = ResultTranslator.formatBlockingPopResult(['key'] );
+      const result1 = ResultTranslator.formatBlockingPopResult(['key']);
       assert.strictEqual(result1, null);
 
       const result2 = ResultTranslator.formatBlockingPopResult([
         'key',
         'member',
-      ] );
+      ]);
       assert.strictEqual(result2, null);
 
       const result3 = ResultTranslator.formatBlockingPopResult([
@@ -164,12 +171,12 @@ describe('ResultTranslator', () => {
         'member',
         1,
         'extra',
-      ] );
+      ]);
       assert.strictEqual(result3, null);
     });
 
     test('should handle Buffer GlideString inputs', async () => {
-      const glideResult: [GlideString, GlideString, number] = [
+      const glideResult = [
         Buffer.from('buffer_key'),
         Buffer.from('buffer_member'),
         42.7,
@@ -181,19 +188,11 @@ describe('ResultTranslator', () => {
     });
 
     test('should handle zero and negative scores', async () => {
-      const glideResult: [GlideString, GlideString, number] = [
-        'key',
-        'member',
-        0,
-      ];
+      const glideResult = ['key', 'member', 0];
       const result1 = ResultTranslator.formatBlockingPopResult(glideResult);
       assert.deepStrictEqual(result1, ['key', 'member', '0']);
 
-      const negativeResult: [GlideString, GlideString, number] = [
-        'key',
-        'member',
-        -3.14,
-      ];
+      const negativeResult = ['key', 'member', -3.14];
       const result2 = ResultTranslator.formatBlockingPopResult(negativeResult);
       assert.deepStrictEqual(result2, ['key', 'member', '-3.14']);
     });
@@ -214,7 +213,7 @@ describe('ResultTranslator', () => {
     });
 
     test('should handle non-array input', async () => {
-      const result = ResultTranslator.convertStringArray('not-an-array' );
+      const result = ResultTranslator.convertStringArray('not-an-array');
       assert.deepStrictEqual(result, []);
     });
 
@@ -231,12 +230,7 @@ describe('ResultTranslator', () => {
     });
 
     test('should handle null elements gracefully', async () => {
-      const glideResult = [
-        'valid',
-        null ,
-        undefined ,
-        'another_valid',
-      ];
+      const glideResult = ['valid', null, undefined, 'another_valid'];
 
       const result = ResultTranslator.convertStringArray(glideResult);
 
@@ -253,7 +247,12 @@ describe('ResultTranslator', () => {
 
       const result = ResultTranslator.convertStringArray(glideResult);
 
-      assert.deepStrictEqual(result, ['string', 'binary_data', '', 'more_binary']);
+      assert.deepStrictEqual(result, [
+        'string',
+        'binary_data',
+        '',
+        'more_binary',
+      ]);
     });
   });
 
@@ -278,13 +277,10 @@ describe('ResultTranslator', () => {
     });
 
     test('should handle non-array input', async () => {
-      const result1 = ResultTranslator.formatRangeResult(null , true);
+      const result1 = ResultTranslator.formatRangeResult(null, true);
       assert.deepStrictEqual(result1, []);
 
-      const result2 = ResultTranslator.formatRangeResult(
-        undefined ,
-        false
-      );
+      const result2 = ResultTranslator.formatRangeResult(undefined, false);
       assert.deepStrictEqual(result2, []);
     });
 
@@ -310,27 +306,35 @@ describe('ResultTranslator', () => {
 
     test('should handle SortedSetDataType with Buffer elements when withScores is true', async () => {
       const glideResult = [
-        { element.from('buffer_member'), score: 1.5 },
+        { element: Buffer.from('buffer_member'), score: 1.5 },
         { element: 'string_member', score: 2.5 },
       ];
 
       const result = ResultTranslator.formatRangeResult(glideResult, true);
 
-      assert.deepStrictEqual(result, ['buffer_member', '1.5', 'string_member', '2.5']);
+      assert.deepStrictEqual(result, [
+        'buffer_member',
+        '1.5',
+        'string_member',
+        '2.5',
+      ]);
     });
   });
 
   describe('formatFloatResult', () => {
     test('should format integer values', async () => {
-      assert.ok(ResultTranslator.formatFloatResult(42)).toBe('42');
-      assert.ok(ResultTranslator.formatFloatResult(0)).toBe('0');
-      assert.ok(ResultTranslator.formatFloatResult(-15)).toBe('-15');
+      assert.strictEqual(ResultTranslator.formatFloatResult(42), '42');
+      assert.strictEqual(ResultTranslator.formatFloatResult(0), '0');
+      assert.strictEqual(ResultTranslator.formatFloatResult(-15), '-15');
     });
 
     test('should format decimal values', async () => {
-      assert.ok(ResultTranslator.formatFloatResult(3.14159)).toBe('3.14159');
-      assert.ok(ResultTranslator.formatFloatResult(0.5)).toBe('0.5');
-      assert.ok(ResultTranslator.formatFloatResult(-2.75)).toBe('-2.75');
+      assert.strictEqual(
+        ResultTranslator.formatFloatResult(3.14159),
+        '3.14159'
+      );
+      assert.strictEqual(ResultTranslator.formatFloatResult(0.5), '0.5');
+      assert.strictEqual(ResultTranslator.formatFloatResult(-2.75), '-2.75');
     });
 
     test('should handle floating point precision issues', async () => {
@@ -343,35 +347,53 @@ describe('ResultTranslator', () => {
     });
 
     test('should handle very small numbers', async () => {
-      assert.ok(ResultTranslator.formatFloatResult(0.000000000000001)).toBe(
+      assert.strictEqual(
+        ResultTranslator.formatFloatResult(0.000000000000001),
         '1e-15'
       );
       // Number.MIN_VALUE may be rounded to 0 due to precision handling
       const minValueResult = ResultTranslator.formatFloatResult(
         Number.MIN_VALUE
       );
-      assert.strictEqual(minValueResult === '5e-324' || minValueResult === '0', true);
+      assert.strictEqual(
+        minValueResult === '5e-324' || minValueResult === '0',
+        true
+      );
     });
 
     test('should handle very large numbers', async () => {
-      assert.ok(ResultTranslator.formatFloatResult(Number.MAX_SAFE_INTEGER)).toBe(
+      assert.strictEqual(
+        ResultTranslator.formatFloatResult(Number.MAX_SAFE_INTEGER),
         '9007199254740991'
       );
-      assert.ok(ResultTranslator.formatFloatResult(1e20)).toBe(
+      assert.strictEqual(
+        ResultTranslator.formatFloatResult(1e20),
         '100000000000000000000'
       );
     });
 
     test('should handle special float values', async () => {
-      assert.ok(ResultTranslator.formatFloatResult(Infinity)).toBe('Infinity');
-      assert.ok(ResultTranslator.formatFloatResult(-Infinity)).toBe('-Infinity');
-      assert.ok(ResultTranslator.formatFloatResult(NaN)).toBe('NaN');
+      assert.strictEqual(
+        ResultTranslator.formatFloatResult(Infinity),
+        'Infinity'
+      );
+      assert.strictEqual(
+        ResultTranslator.formatFloatResult(-Infinity),
+        '-Infinity'
+      );
+      assert.strictEqual(ResultTranslator.formatFloatResult(NaN), 'NaN');
     });
 
     test('should handle rounding edge cases', async () => {
       // Test numbers that require proper rounding
-      assert.ok(ResultTranslator.formatFloatResult(1.9999999999999998)).toBe('2');
-      assert.ok(ResultTranslator.formatFloatResult(0.9999999999999999)).toBe('1');
+      assert.strictEqual(
+        ResultTranslator.formatFloatResult(1.9999999999999998),
+        '2'
+      );
+      assert.strictEqual(
+        ResultTranslator.formatFloatResult(0.9999999999999999),
+        '1'
+      );
     });
   });
 
@@ -423,12 +445,10 @@ describe('ResultTranslator', () => {
 
     test('should preserve Error subclass types', async () => {
       class CustomError extends Error {
-        constructor(
-          message,
-          public code
-        ) {
+        constructor(message, code) {
           super(message);
           this.name = 'CustomError';
+          this.code = code;
         }
       }
 
@@ -438,7 +458,7 @@ describe('ResultTranslator', () => {
       assert.strictEqual(result, customError);
       assert.ok(result instanceof CustomError);
       assert.strictEqual(result.message, 'Custom message');
-      assert.ok((result as CustomError).code).toBe('CUSTOM_CODE');
+      assert.strictEqual(result.code, 'CUSTOM_CODE');
     });
 
     test('should handle TypeError and other Error types', async () => {

@@ -4,7 +4,15 @@
  * Based on Kafka-style streaming, Discord message delivery, Slack real-time updates
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -16,8 +24,9 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
   beforeEach(async () => {
     const config = getStandaloneConfig();
     redis = new Redis(config);
-  
-    await redis.connect();});
+
+    await redis.connect();
+  });
 
   afterEach(async () => {
     await redis.quit();
@@ -204,7 +213,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         created: false,
       };
 
-      for (const [, eventData] of accountEvents) {
+      for (const [eventData] of accountEvents) {
         const eventFields = {};
         for (let i = 0; i < eventData.length; i += 2) {
           eventFields[eventData[i]] = eventData[i + 1];
@@ -467,7 +476,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       let failedCount = 0;
       let compensationCount = 0;
 
-      for (const [, eventData] of sagaEvents[0][1]) {
+      for (const [eventData] of sagaEvents[0][1]) {
         const action = eventData[eventData.indexOf('action') + 1];
         if (action === 'success') successCount++;
         if (action === 'failed') failedCount++;
@@ -494,7 +503,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'mentioned_by',
         'john_doe',
         'content',
-        'Hey @user, check this out!',
+        'Hey @user, check this out',
         'post_id',
         'POST-123',
         'priority',
@@ -511,7 +520,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'from_user',
         'jane_smith',
         'message',
-        "Hi! Let's connect",
+        "Hi Let's connect",
         'priority',
         'low'
       );
@@ -567,7 +576,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       for (const [notificationId, notificationData] of notificationList) {
         const priority =
           notificationData[notificationData.indexOf('priority') + 1];
-        (prioritizedNotifications )[priority].push({
+        prioritizedNotifications[priority].push({
           id: notificationId,
           data: notificationData,
         });
@@ -676,7 +685,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       let errors = 0;
       let totalResponseTime = 0;
 
-      for (const [, metricData] of metricEvents) {
+      for (const [metricData] of metricEvents) {
         const metricType = metricData[metricData.indexOf('metric_type') + 1];
 
         if (metricType === 'api_request') {
@@ -746,7 +755,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         pagesVisited: new Set(),
       };
 
-      for (const [, activityData] of userActions) {
+      for (const [activityData] of userActions) {
         const action = activityData[activityData.indexOf('action') + 1];
 
         switch (action) {
@@ -846,8 +855,8 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       // Query range of events
       const middleEvents = await redis.xrange(
         streamKey,
-        eventIds[1]!,
-        eventIds[3]!
+        eventIds[1],
+        eventIds[3]
       );
       assert.strictEqual(middleEvents.length, 3); // step_1, step_2, step_3
 
@@ -934,12 +943,10 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Consumer 2 may get empty results if Consumer 1 got all messages
-      assert.ok(
-        consumer2Messages === null || Array.isArray(consumer2Messages)
-      ).strictEqual(true);
+      assert.ok(consumer2Messages === null || Array.isArray(consumer2Messages));
 
       // Check pending messages
-      const pendingInfo = await redis.xthis.skip(streamKey, groupName);
+      const pendingInfo = await redis.xpending(streamKey, groupName);
       assert.ok(pendingInfo !== undefined);
 
       // Get delivered messages for consumer 1 if any were delivered
@@ -950,7 +957,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         consumer1Messages[0][1] &&
         consumer1Messages[0][1].length > 0
       ) {
-        const messageIds = consumer1Messages[0][1].map((msg) => msg[0]);
+        const messageIds = consumer1Messages[0][1].map(msg => msg[0]);
 
         // Acknowledge processed messages
         if (messageIds.length > 0) {
@@ -980,7 +987,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const eventIds = [];
 
       for (let i = 0; i < 15; i++) {
-        const eventType = eventTypes[i % eventTypes.length]!;
+        const eventType = eventTypes[i % eventTypes.length];
         const eventId = await redis.xadd(
           streamKey,
           '*',
@@ -993,7 +1000,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
           'session_id',
           `SESS-${i}`,
           'metadata',
-          JSONJSON: JSON.stringify({ batch.floor(i / 5) })
+          JSON.stringify({ batch: Math.floor(i / 5) })
         );
         eventIds.push(eventId);
       }
@@ -1041,7 +1048,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       assert.strictEqual(streamLength, 15);
 
       // Check group info
-      const pendingMessages = await redis.xthis.skip(streamKey, groupName);
+      const pendingMessages = await redis.xpending(streamKey, groupName);
       assert.ok(pendingMessages !== undefined);
     });
 
@@ -1142,7 +1149,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       assert.ok(dlqLength >= 0);
 
       // Check pending messages in main stream
-      const pendingInfo = await redis.xthis.skip(mainStreamKey, groupName);
+      const pendingInfo = await redis.xpending(mainStreamKey, groupName);
       assert.ok(pendingInfo !== undefined);
     });
 
@@ -1184,7 +1191,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       // Worker 1: processes 5 tasks
       const worker1Messages = await redis.xreadgroup(
         groupName,
-        consumers[0]!,
+        consumers[0],
         'COUNT',
         '5',
         'STREAMS',
@@ -1192,14 +1199,14 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         '>'
       );
       consumerWorkloads.push({
-        consumer: consumers[0]!,
+        consumer: consumers[0],
         messages: worker1Messages,
       });
 
       // Worker 2: processes 3 tasks
       const worker2Messages = await redis.xreadgroup(
         groupName,
-        consumers[1]!,
+        consumers[1],
         'COUNT',
         '3',
         'STREAMS',
@@ -1207,14 +1214,14 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         '>'
       );
       consumerWorkloads.push({
-        consumer: consumers[1]!,
+        consumer: consumers[1],
         messages: worker2Messages,
       });
 
       // Worker 3: processes remaining tasks
       const worker3Messages = await redis.xreadgroup(
         groupName,
-        consumers[2]!,
+        consumers[2],
         'STREAMS',
         streamKey,
         '>'
@@ -1238,7 +1245,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
           // Simulate some workers completing tasks, others still processing
           if (workload.consumer === consumers[0]) {
             // Worker 1 completes all tasks
-            const messageIds = streamMessages.map((msg) => msg[0]);
+            const messageIds = streamMessages.map(msg => msg[0]);
             if (messageIds.length > 0) {
               await redis.xack(streamKey, groupName, ...messageIds);
             }
@@ -1248,7 +1255,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       }
 
       // Check overall pending state
-      const pendingInfo = await redis.xthis.skip(streamKey, groupName);
+      const pendingInfo = await redis.xpending(streamKey, groupName);
       assert.ok(pendingInfo !== undefined);
 
       // Verify task distribution worked - at least some tasks should be processed
@@ -1327,7 +1334,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       // Simulate consumer failure - messages remain unacknowledged
 
       // Recovery consumer checks for unprocessed messages
-      const pendingMessages = await redis.xthis.skip(streamKey, groupName);
+      const pendingMessages = await redis.xpending(streamKey, groupName);
       assert.ok(pendingMessages !== undefined);
 
       if (
@@ -1359,7 +1366,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         ) {
           const recoveredMessages = recoveryMessages[0][1];
           if (recoveredMessages.length > 0) {
-            const messageIds = recoveredMessages.map((msg) => msg[0]);
+            const messageIds = recoveredMessages.map(msg => msg[0]);
             await redis.xack(streamKey, groupName, ...messageIds);
           }
         }
@@ -1456,14 +1463,14 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
           const messages = tenantMessages[0][1];
 
           // Verify all messages belong to correct tenant
-          for (const [, messageData] of messages) {
+          for (const [messageId, messageData] of messages) {
             const messageTenantId =
               messageData[messageData.indexOf('tenant_id') + 1];
             assert.strictEqual(messageTenantId, tenant);
           }
 
           // Process and acknowledge tenant messages
-          const messageIds = messages.map((msg) => msg[0]);
+          const messageIds = messages.map(msg => msg[0]);
           if (messageIds.length > 0) {
             const ackCount = await redis.xack(
               streamKey,

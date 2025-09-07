@@ -3,17 +3,45 @@
  * Tests that our ioredis adapter works with BullMQ for job queue processing
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import { Queue, Worker, Job } from 'bullmq';
-import { Redis } from '../../../src';
-import { testUtils } from '../../setup';
+import pkg from '../../../dist/index.js';
+const { Redis } = pkg;
+import { getStandaloneConfig } from '../../utils/test-config.mjs';
 
+async function checkTestServers() {
+  try {
+    const baseConfig = getStandaloneConfig();
+    const config = {
+      ...baseConfig,
+      maxRetriesPerRequest: null, // Required by BullMQ for blocking operations
+    };
+    const testClient = new Redis(config);
+    await testClient.connect();
+    await testClient.ping();
+    await testClient.quit();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 describe('BullMQ Integration - Basic Queue Operations', () => {
   let redisAdapter;
   let queue;
   let worker;
-  let processedJobs[] = [];
+  let processedJobs = [];
   let testQueueName;
   let serversAvailable = false;
 
@@ -21,7 +49,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
     serversAvailable = await checkTestServers();
     if (!serversAvailable) {
       throw new Error(
-        'Redis server not available on localhost:6379. Please start Redis server before running tests.'
+        'Redis server not available on localhost:6383. Please start Redis server before running tests.'
       );
     }
   });
@@ -36,12 +64,16 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
     // Generate unique queue name for test isolation
     testQueueName = `test-queue-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-    // Use dynamic test server configuration with discovery
-    const config = await getStandaloneConfig();
+    // Use dynamic test server configuration with BullMQ compatibility
+    const baseConfig = getStandaloneConfig();
+    const config = {
+      ...baseConfig,
+      maxRetriesPerRequest: null, // Required by BullMQ for blocking operations
+    };
     redisAdapter = new Redis(config);
 
     // Establish connection with timeout
-    const connectionTimeout = new Promise<never>((_, reject) =>
+    const connectionTimeout = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Connection timeout')), 5000)
     );
 
@@ -49,7 +81,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       await Promise.race([redisAdapter.connect(), connectionTimeout]);
     } catch (error) {
       const errorMessage =
-        error instanceof Error ? error.message || String(error);
+        error instanceof Error ? error.message : String(error);
       throw new Error(`Failed to connect to Redis: ${errorMessage}`);
     }
 
@@ -61,7 +93,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
 
     // BullMQ expects an ioredis-compatible client
     queue = new Queue(testQueueName, {
-      connection: redisAdapter ,
+      connection: redisAdapter,
       defaultJobOptions: {
         removeOnComplete: 10,
         removeOnFail: 10,
@@ -71,22 +103,22 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
     processedJobs = [];
     worker = new Worker(
       testQueueName,
-      async (job) => {
+      async job => {
         processedJobs.push({
           id: job.id,
           data: job.data,
           name: job.name,
         });
-        return { processed: true, Date.now() };
+        return { processed: true, timestamp: Date.now() };
       },
       {
-        connection: redisAdapter ,
+        connection: redisAdapter,
         concurrency: 1,
       }
     );
 
     // Wait for worker to be ready with timeout
-    const workerTimeout = new Promise<never>((_, reject) =>
+    const workerTimeout = new Promise((_, reject) =>
       setTimeout(() => reject(new Error('Worker ready timeout')), 10000)
     );
 
@@ -94,7 +126,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       await Promise.race([worker.waitUntilReady(), workerTimeout]);
     } catch (error) {
       const errorMessage =
-        error instanceof Error ? error.message || String(error);
+        error instanceof Error ? error.message : String(error);
       throw new Error(`Worker failed to initialize: ${errorMessage}`);
     }
 
@@ -157,7 +189,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
         }
       } catch (error) {
         const errorMessage =
-          error instanceof Error ? error.message || String(error);
+          error instanceof Error ? error.message : String(error);
         throw new Error(`Redis cleanup error: ${errorMessage}`);
       }
 
@@ -165,7 +197,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
         await redisAdapter.disconnect();
       } catch (error) {
         const errorMessage =
-          error instanceof Error ? error.message || String(error);
+          error instanceof Error ? error.message : String(error);
         throw new Error(`Redis disconnect error: ${errorMessage}`);
       }
     }
@@ -177,7 +209,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
 
   describe('Basic Job Processing', () => {
     it('should add and process a simple job', async () => {
-      const jobData = { message: 'Hello BullMQ!', Date.now() };
+      const jobData = { message: 'Hello BullMQ', timestamp: Date.now() };
 
       // Add job to queue
       const job = await queue.add('simple-job', jobData);
@@ -209,7 +241,10 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
 
       // Verify all jobs were processed
       assert.strictEqual(processedJobs.length, 3);
-      assert.ok(processedJobs.map(j => j.data.value)).toEqual([1, 2, 3]);
+      assert.deepStrictEqual(
+        processedJobs.map(j => j.data.value),
+        [1, 2, 3]
+      );
     });
 
     it('should handle job with priority', async () => {
@@ -251,8 +286,8 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       await delay(1000);
 
       // After processing should be completed
-      const freshJob = await Job.fromId(queue, job.id!);
-      jobState = await freshJob!.getState();
+      const freshJob = await Job.fromId(queue, job.id);
+      jobState = await freshJob.getState();
       assert.ok(['completed', 'active'].includes(jobState));
     });
 
@@ -310,14 +345,14 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       // Create a worker that fails using the same unique queue name
       const failWorker = new Worker(
         testQueueName,
-        async (job) => {
+        async job => {
           if (job.data.shouldFail) {
             throw new Error('Intentional test failure');
           }
           return { success: true };
         },
         {
-          connection: redisAdapter ,
+          connection: redisAdapter,
           maxStalledCount: 1, // Prevent infinite retries in tests
         }
       );
@@ -333,10 +368,10 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
         await delay(1000);
 
         // Check job state
-        const freshJob = await Job.fromId(queue, job.id!);
+        const freshJob = await Job.fromId(queue, job.id);
         assert.ok(freshJob);
 
-        const state = await freshJob!.getState();
+        const state = await freshJob.getState();
         assert.ok(['failed', 'stalled', 'completed'].includes(state));
       } finally {
         await failWorker.close();
@@ -345,7 +380,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
 
     it('should handle connection recovery scenarios', async () => {
       // Test that the system can recover from temporary connection issues
-      const jobData = { message: 'Recovery test', Date.now() };
+      const jobData = { message: 'Recovery test', timestamp: Date.now() };
 
       // Add job before simulated connection issue
       const job = await queue.add('recovery-job', jobData);
@@ -368,7 +403,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       try {
         // Attempt to create queue with invalid configuration
         const invalidQueue = new Queue('invalid-test-queue', {
-          connection: { host: 'nonexistent-host', port: 9999 } ,
+          connection: { host: 'nonexistent-host', port: 9999 },
         });
 
         // This should not reach here if Redis validation is working
@@ -377,20 +412,20 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
         // Expect meaningful error context
         assert.ok(error !== undefined);
         const errorMessage =
-          error instanceof Error ? error.message || String(error);
+          error instanceof Error ? error.message : String(error);
         assert.strictEqual(typeof errorMessage, 'string');
         assert.ok(errorMessage.length > 0);
       }
     });
 
     it('should handle worker initialization errors gracefully', async () => {
-      let testWorker | null = null;
+      let testWorker = null;
 
       try {
         // Create worker with potentially problematic setup using unique queue name
         testWorker = new Worker(
           testQueueName,
-          async (job) => {
+          async job => {
             // Simulate processing error
             if (job.data.causeWorkerError) {
               throw new Error('Worker processing error');
@@ -398,7 +433,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
             return { processed: true };
           },
           {
-            connection: redisAdapter ,
+            connection: redisAdapter,
             concurrency: 1,
           }
         );
@@ -415,8 +450,8 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
         await delay(1000);
 
         // Verify error was handled gracefully
-        const freshJob = await Job.fromId(queue, errorJob.id!);
-        const state = await freshJob!.getState();
+        const freshJob = await Job.fromId(queue, errorJob.id);
+        const state = await freshJob.getState();
         assert.ok(['failed', 'stalled', 'completed'].includes(state));
       } finally {
         if (testWorker) {

@@ -3,7 +3,15 @@
  * Real-world patterns algorithm, mutex, critical sections, resource coordination
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -15,8 +23,9 @@ describe('Distributed Locking Patterns', () => {
   beforeEach(async () => {
     const config = getStandaloneConfig();
     redis = new Redis(config);
-  
-    await redis.connect();});
+
+    await redis.connect();
+  });
 
   afterEach(async () => {
     await redis.quit();
@@ -112,7 +121,7 @@ describe('Distributed Locking Patterns', () => {
       await redis.set(counterKey, '0');
 
       // Simulate critical section with lock
-      const protectedIncrement = async (clientId) => {
+      const protectedIncrement = async clientId => {
         const lockAcquired = await redis.setnx(lockKey, clientId);
 
         if (lockAcquired) {
@@ -158,18 +167,14 @@ describe('Distributed Locking Patterns', () => {
       // Initialize shared resource
       await redis.set(
         resourceKey,
-        JSONJSON: JSON.stringify({
+        JSON.stringify({
           value: 0,
           lastModifier: null,
-          Date.now(),
+          timestamp: Date.now(),
         })
       );
 
-      const accessResource = async (
-        clientId,
-        operation: 'read' | 'write',
-        newValue?
-      ) => {
+      const accessResource = async (clientId, operation, newValue) => {
         // Try to acquire lock with timeout
         const lockValue = `${clientId}_${Date.now()}`;
         const lockAcquired = await redis.setnx(lockKey, lockValue);
@@ -183,7 +188,7 @@ describe('Distributed Locking Patterns', () => {
 
           // Access resource
           const currentData = await redis.get(resourceKey);
-          const resource = JSONJSON.parse(currentData || '{}');
+          const resource = JSON.parse(currentData || '{}');
 
           if (operation === 'read') {
             return { success: true, data: resource };
@@ -193,7 +198,7 @@ describe('Distributed Locking Patterns', () => {
             resource.lastModifier = clientId;
             resource.timestamp = Date.now();
 
-            await redis.set(resourceKey, JSONJSON: JSON.stringify(resource));
+            await redis.set(resourceKey, JSON.stringify(resource));
             return { success: true, data: resource };
           }
         } finally {
@@ -234,7 +239,7 @@ describe('Distributed Locking Patterns', () => {
         data: { imageUrl: 'https://example.com/image.jpg' },
       };
 
-      const processJob = async (workerId) => {
+      const processJob = async workerId => {
         const lockValue = `worker_${workerId}_${Date.now()}`;
         const lockAcquired = await redis.setnx(processingLockKey, lockValue);
 
@@ -249,14 +254,14 @@ describe('Distributed Locking Patterns', () => {
           // Simulate job processing
           jobData.status = 'processing';
           const jobKey = `job:${jobId}:data`;
-          await redis.set(jobKey, JSONJSON: JSON.stringify(jobData));
+          await redis.set(jobKey, JSON.stringify(jobData));
 
           // Simulate work
           await new Promise(resolve => setTimeout(resolve, 50));
 
           // Complete job
           jobData.status = 'completed';
-          await redis.set(jobKey, JSONJSON: JSON.stringify(jobData));
+          await redis.set(jobKey, JSON.stringify(jobData));
 
           return { success: true, jobData };
         } finally {
@@ -289,7 +294,7 @@ describe('Distributed Locking Patterns', () => {
       const jobs = ['job1', 'job2', 'job3'];
       await redis.rpush(queueKey, ...jobs);
 
-      const processNextJob = async (workerId) => {
+      const processNextJob = async workerId => {
         // Atomic job dequeue with processing marker
         const dequeueScript = `
           local job = redis.call("LPOP", KEYS[1])
@@ -347,16 +352,13 @@ describe('Distributed Locking Patterns', () => {
       const lockKey = 'lock:reentrant:' + Math.random();
       const clientId = 'client_' + Math.random();
 
-      const acquireReentrantLock = async (
-        clientId,
-        lockKey
-      ) => {
+      const acquireReentrantLock = async (clientId, lockKey) => {
         const lockData = await redis.get(lockKey);
 
         if (!lockData) {
           // No lock exists, acquire it
           const lockInfo = { owner: clientId, count: 1 };
-          const acquired = await redis.setnx(lockKey, JSONJSON: JSON.stringify(lockInfo));
+          const acquired = await redis.setnx(lockKey, JSON.stringify(lockInfo));
           if (acquired) {
             await redis.expire(lockKey, 30);
             return true;
@@ -365,11 +367,11 @@ describe('Distributed Locking Patterns', () => {
         }
 
         // Lock exists, check if we own it
-        const lockInfo = JSONJSON.parse(lockData);
+        const lockInfo = JSON.parse(lockData);
         if (lockInfo.owner === clientId) {
           // Reentrant acquisition
           lockInfo.count++;
-          await redis.set(lockKey, JSONJSON: JSON.stringify(lockInfo));
+          await redis.set(lockKey, JSON.stringify(lockInfo));
           await redis.expire(lockKey, 30); // Extend expiry
           return true;
         }
@@ -377,21 +379,18 @@ describe('Distributed Locking Patterns', () => {
         return false; // Owned by different client
       };
 
-      const releaseReentrantLock = async (
-        clientId,
-        lockKey
-      ) => {
+      const releaseReentrantLock = async (clientId, lockKey) => {
         const lockData = await redis.get(lockKey);
         if (!lockData) return false;
 
-        const lockInfo = JSONJSON.parse(lockData);
+        const lockInfo = JSON.parse(lockData);
         if (lockInfo.owner !== clientId) return false;
 
         lockInfo.count--;
         if (lockInfo.count <= 0) {
           await redis.del(lockKey);
         } else {
-          await redis.set(lockKey, JSONJSON: JSON.stringify(lockInfo));
+          await redis.set(lockKey, JSON.stringify(lockInfo));
         }
 
         return true;
@@ -406,7 +405,7 @@ describe('Distributed Locking Patterns', () => {
 
       // Check lock count
       const lockData = await redis.get(lockKey);
-      const lockInfo = JSONJSON.parse(lockData!);
+      const lockInfo = JSON.parse(lockData);
       assert.strictEqual(lockInfo.count, 2);
 
       // Release once (should still be locked)
@@ -424,7 +423,7 @@ describe('Distributed Locking Patterns', () => {
       const lockKey = 'lock:fair:' + Math.random();
       const queueKey = `${lockKey}:queue`;
 
-      const requestLock = async (clientId) => {
+      const requestLock = async clientId => {
         // Add client to queue
         await redis.rpush(queueKey, clientId);
 
@@ -452,7 +451,7 @@ describe('Distributed Locking Patterns', () => {
         return false;
       };
 
-      const releaseLock = async (clientId) => {
+      const releaseLock = async clientId => {
         const releaseScript = `
           if redis.call("GET", KEYS[1]) == ARGV[1] then
             return redis.call("DEL", KEYS[1])
@@ -482,7 +481,7 @@ describe('Distributed Locking Patterns', () => {
       const semaphoreKey = 'semaphore:' + Math.random();
       const maxPermits = 3;
 
-      const acquirePermit = async (clientId) => {
+      const acquirePermit = async clientId => {
         const permitKey = `${semaphoreKey}:permits`;
         const holderKey = `${semaphoreKey}:holders`;
 
@@ -516,7 +515,7 @@ describe('Distributed Locking Patterns', () => {
         return acquired === 1;
       };
 
-      const releasePermit = async (clientId) => {
+      const releasePermit = async clientId => {
         const permitKey = `${semaphoreKey}:permits`;
         const holderKey = `${semaphoreKey}:holders`;
 
@@ -554,7 +553,7 @@ describe('Distributed Locking Patterns', () => {
 
       // Check current permit count
       const permitCount = await redis.get(`${semaphoreKey}:permits`);
-      assert.strictEqual(parseInt(permitCount!), 3);
+      assert.strictEqual(parseInt(permitCount), 3);
 
       // Release one permit
       const released = await releasePermit('client1');
@@ -639,7 +638,7 @@ describe('Distributed Locking Patterns', () => {
     test('should handle concurrent lock acquisition attempts', async () => {
       const lockKey = 'lock:concurrent:' + Math.random();
 
-      const attemptLock = async (clientId) => {
+      const attemptLock = async clientId => {
         try {
           const acquired = await redis.setnx(lockKey, clientId);
           if (acquired) {
@@ -648,7 +647,7 @@ describe('Distributed Locking Patterns', () => {
           }
           return { success: false, clientId };
         } catch (error) {
-          return { success: false, clientId, error: (error as Error).message };
+          return { success: false, clientId, error: error.message };
         }
       };
 

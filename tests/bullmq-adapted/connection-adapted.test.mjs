@@ -6,7 +6,15 @@
  */
 
 // Using Jest expect instead of chai to match our test framework
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -51,7 +59,7 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
       assert.strictEqual(typeof redis.testScript, 'function');
 
       // Test execution
-      const result = await (redis ).testScript('test:key', 'hello');
+      const result = await redis.testScript('test:key', 'hello');
       assert.strictEqual(result, 'hello');
     });
 
@@ -70,10 +78,7 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
       });
 
       // Test with array-style arguments (BullMQ pattern)
-      const result = await (redis ).arrayTest([
-        'test:array',
-        'array-value',
-      ]);
+      const result = await redis.arrayTest(['test:array', 'array-value']);
       assert.strictEqual(result, 'array-value');
     });
   });
@@ -90,7 +95,7 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
         numberOfKeys: 0,
       });
 
-      const result = await (redis ).emptyReturn();
+      const result = await redis.emptyReturn();
       assert.deepStrictEqual(result, []);
     });
 
@@ -118,7 +123,7 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
       const jobId = 'job:1';
       const jobData = '{"message": "test job"}';
 
-      const result = await (redis ).addJob('test:queue', jobId, jobData);
+      const result = await redis.addJob('test:queue', jobId, jobData);
       assert.strictEqual(result, jobId);
 
       // Verify job was actually added
@@ -139,7 +144,7 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
         numberOfKeys: 0,
       });
 
-      const result = await (redis )[commandName]();
+      const result = await redis[commandName]();
       assert.strictEqual(result, 'version-test');
     });
   });
@@ -172,11 +177,11 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
       });
 
       // First call should work (might use EVALSHA or EVAL)
-      const result1 = await (redis ).evalshaTest();
+      const result1 = await redis.evalshaTest();
       assert.strictEqual(result1, 'evalsha-test');
 
       // Second call should also work (should use cached EVALSHA)
-      const result2 = await (redis ).evalshaTest();
+      const result2 = await redis.evalshaTest();
       assert.strictEqual(result2, 'evalsha-test');
     });
   });

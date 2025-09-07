@@ -1,6 +1,6 @@
 /**
  * Clean Test Setup - Minimal, reliable test infrastructure
- * 
+ *
  * Provides simple, reliable test utilities without complex global state
  * or aggressive cleanup that can cause hanging tests.
  */
@@ -12,7 +12,7 @@ export const testUtils = {
   getStandaloneConfig() {
     return {
       host: process.env.VALKEY_HOST || 'localhost',
-      port: parseInt(process.env.VALKEY_PORT || '6379'),
+      port: parseInt(process.env.VALKEY_PORT || '6383'),
       connectTimeout: 5000,
       lazyConnect: false, // Connect immediately for tests
     };
@@ -25,13 +25,13 @@ export const testUtils = {
     if (!process.env.ENABLE_CLUSTER_TESTS) {
       return [];
     }
-    
+
     const basePort = 17000;
     const nodes = [];
     for (let i = 0; i < 3; i++) {
       nodes.push({
         host: 'localhost',
-        port: basePort + i
+        port: basePort + i,
       });
     }
     return nodes;
@@ -56,17 +56,17 @@ export const testUtils = {
     const { Redis } = pkg;
     const clientConfig = {
       ...this.getStandaloneConfig(),
-      ...config
+      ...config,
     };
-    
+
     const client = new Redis(clientConfig);
-    
+
     // Store for cleanup
     if (!global.__testClients) {
       global.__testClients = [];
     }
     global.__testClients.push(client);
-    
+
     return client;
   },
 
@@ -75,17 +75,17 @@ export const testUtils = {
    */
   async cleanupTestClients() {
     if (!global.__testClients) return;
-    
+
     const clients = [...global.__testClients];
     global.__testClients = [];
-    
+
     await Promise.all(
-      clients.map(async (client) => {
+      clients.map(async client => {
         try {
           if (client && typeof client.quit === 'function') {
             await Promise.race([
               client.quit(),
-              new Promise(resolve => setTimeout(resolve, 1000)) // 1s timeout
+              new Promise(resolve => setTimeout(resolve, 1000)), // 1s timeout
             ]);
           }
         } catch {
@@ -93,7 +93,7 @@ export const testUtils = {
         }
       })
     );
-  }
+  },
 };
 
 // Minimal global cleanup only when explicitly requested

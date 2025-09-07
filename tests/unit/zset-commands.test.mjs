@@ -3,7 +3,15 @@
  * Real-world patterns, rankings, time-series data, priority queues
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -15,8 +23,9 @@ describe('ZSet Commands - Real-World Patterns', () => {
   beforeEach(async () => {
     const config = getStandaloneConfig();
     redis = new Redis(config);
-  
-    await redis.connect();});
+
+    await redis.connect();
+  });
 
   afterEach(async () => {
     await redis.quit();
@@ -233,7 +242,10 @@ describe('ZSet Commands - Real-World Patterns', () => {
 
       // Process highest priority task
       const highestPriority = await redis.zpopmax(key);
-      assert.deepStrictEqual(highestPriority, ['critical_security_alert', '15']);
+      assert.deepStrictEqual(highestPriority, [
+        'critical_security_alert',
+        '15',
+      ]);
 
       // Process next highest
       const nextHighest = await redis.zpopmax(key);
@@ -313,8 +325,12 @@ describe('ZSet Commands - Real-World Patterns', () => {
       await redis.set(key, 'not-a-zset');
 
       // ZSet operations on string should throw
-      await assert.ok(redis.zadd(key, 1, 'member')).rejects.toThrow();
-      await assert.ok(redis.zrange(key, 0, -1)).rejects.toThrow();
+      await assert.rejects(async () => {
+        await redis.zadd(key, 1, 'member');
+      });
+      await assert.rejects(async () => {
+        await redis.zrange(key, 0, -1);
+      });
     });
 
     test('should handle floating point scores correctly', async () => {
@@ -339,9 +355,9 @@ describe('ZSet Commands - Real-World Patterns', () => {
       const score2 = await redis.zscore(key, 'member2');
       const score3 = await redis.zscore(key, 'member3');
 
-      assert.ok(Math.abs(parseFloat(score1!) - 1.5) < Math.pow(10, -10));
-      assert.ok(Math.abs(parseFloat(score2!) - 2.7) < Math.pow(10, -10));
-      assert.ok(Math.abs(parseFloat(score3!) - 1.5000001) < Math.pow(10, -10));
+      assert.ok(Math.abs(parseFloat(score1) - 1.5) < Math.pow(10, -10));
+      assert.ok(Math.abs(parseFloat(score2) - 2.7) < Math.pow(10, -10));
+      assert.ok(Math.abs(parseFloat(score3) - 1.5000001) < Math.pow(10, -10));
 
       // Test increment with float
       const newScore = await redis.zincrby(key, 0.3, 'member1');
