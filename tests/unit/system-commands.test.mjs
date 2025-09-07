@@ -325,7 +325,7 @@ describe('System Commands - Monitoring & Metrics', () => {
       // Second element should be microseconds
       assert.strictEqual(typeof time[1], 'string');
       assert.ok(parseInt(time[1]) >= 0);
-      assert.ok(parseInt(time[1]))(1000000);
+      assert.ok(parseInt(time[1]) < 1000000);
     });
   });
 

@@ -69,7 +69,7 @@ describe('Real-World Socket.IO Application', () => {
     await new Promise(resolve => {
       tempServer1.listen(0, () => {
         port1 = tempServer1.address()?.port || 0;
-        tempServer1.close(() => resolve());
+        tempServer1.close(() => resolve(undefined));
       });
     });
 
@@ -77,7 +77,7 @@ describe('Real-World Socket.IO Application', () => {
     await new Promise(resolve => {
       tempServer2.listen(0, () => {
         port2 = tempServer2.address()?.port || 0;
-        tempServer2.close(() => resolve());
+        tempServer2.close(() => resolve(undefined));
       });
     });
 

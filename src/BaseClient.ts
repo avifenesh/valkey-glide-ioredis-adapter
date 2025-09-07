@@ -76,7 +76,7 @@ export abstract class BaseClient extends EventEmitter {
   protected connectionStatus: string = 'disconnected';
   protected options: RedisOptions;
   // Track shutdown/teardown state to avoid racing auto-connect
-  private isClosing: boolean = false;
+  protected isClosing: boolean = false;
   // Track an in-flight connect so we can coordinate teardown
   private pendingConnect?: Promise<void>;
   // ioredis compatibility properties
@@ -425,6 +425,10 @@ export abstract class BaseClient extends EventEmitter {
     const { lua, numberOfKeys = 0 } = options;
 
     const commandHandler = async (...args: any[]): Promise<any> => {
+      // Ensure we have a connected client
+      if (!this.glideClient) {
+        throw new Error('Client not connected');
+      }
       const numkeys = Number(numberOfKeys) || 0;
 
       // BullMQ calls with single array: client[commandName]([...args])
