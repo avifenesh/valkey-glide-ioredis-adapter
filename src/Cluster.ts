@@ -41,7 +41,7 @@ export class Cluster extends ClusterClient {
 
   /**
    * Creates a duplicate instance with optional overrides.
-   * ioredis behavior: duplicate() always auto-connects, even with lazyConnect: true
+   * ioredis behavior: duplicate() auto-connects if the source is connected
    * @param override - Optional configuration overrides
    * @returns New Cluster instance with same or modified configuration
    */
@@ -58,14 +58,16 @@ export class Cluster extends ClusterClient {
       (duplicated as any).clientType = (this as any).clientType;
     }
 
-    // ioredis always auto-connects duplicated instances
+    // ioredis auto-connects duplicated instances if the source is connected
     // This is critical for BullMQ which expects duplicate() to return a connected instance
-    setImmediate(() => {
-      duplicated.connect().catch(err => {
-        // Emit error if connection fails
-        duplicated.emit('error', err);
+    if (this.status === 'ready' || this.status === 'connecting') {
+      setImmediate(() => {
+        duplicated.connect().catch(err => {
+          // Emit error if connection fails
+          duplicated.emit('error', err);
+        });
       });
-    });
+    }
 
     return duplicated;
   }
