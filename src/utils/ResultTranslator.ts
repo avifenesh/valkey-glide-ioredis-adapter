@@ -7,7 +7,7 @@ import { ParameterTranslator } from './ParameterTranslator';
 
 /**
  * Result Translation Utilities
- * 
+ *
  * Converts Valkey GLIDE result formats to ioredis-compatible formats.
  * GLIDE returns structured objects while ioredis expects flat arrays or
  * specific string formats.
@@ -30,10 +30,11 @@ export class ResultTranslator {
     // Performance optimization: Pre-allocate array with known size
     const flatArray = new Array(glideResult.length * 2);
     let index = 0;
-    
+
     for (const item of glideResult) {
       // Direct array assignment is faster than push
-      flatArray[index++] = ParameterTranslator.convertGlideString(item.element) || '';
+      flatArray[index++] =
+        ParameterTranslator.convertGlideString(item.element) || '';
       flatArray[index++] = item.score.toString();
     }
 
@@ -117,7 +118,7 @@ export class ResultTranslator {
       // Fast path for WITHSCORES
       return this.flattenSortedSetData(glideResult as SortedSetDataType);
     }
-    
+
     // Fast path for simple string array conversion
     return this.convertStringArray(glideResult as GlideString[]);
   }
@@ -188,7 +189,7 @@ export class ResultTranslator {
         result.push(docId);
 
         const fieldArray: string[] = [];
-        
+
         if (fields instanceof Map) {
           for (const [fieldName, fieldValue] of fields) {
             fieldArray.push(fieldName, String(fieldValue));
@@ -201,7 +202,7 @@ export class ResultTranslator {
             fieldArray.push(fieldName, String(fieldValue));
           }
         }
-        
+
         result.push(fieldArray.length > 0 ? fieldArray : []);
       }
 
@@ -246,7 +247,11 @@ export class ResultTranslator {
    * @returns ioredis-compatible format: [[streamKey, [[id1, [field1, value1]], [id2, [...]]]]]
    */
   static translateStreamReadResponse(glideResult: any): any[] | null {
-    if (!glideResult || !Array.isArray(glideResult) || glideResult.length === 0) {
+    if (
+      !glideResult ||
+      !Array.isArray(glideResult) ||
+      glideResult.length === 0
+    ) {
       return [];
     }
 

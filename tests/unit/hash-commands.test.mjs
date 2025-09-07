@@ -3,7 +3,15 @@
  * Real-world patterns storage, user profiles, object caching, shopping carts
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -15,8 +23,9 @@ describe('Hash Commands - Real-World Patterns', () => {
   beforeEach(async () => {
     const config = getStandaloneConfig();
     redis = new Redis(config);
-  
-    await redis.connect();});
+
+    await redis.connect();
+  });
 
   afterEach(async () => {
     await redis.quit();
@@ -73,7 +82,12 @@ describe('Hash Commands - Real-World Patterns', () => {
         'email',
         'nonexistent'
       );
-      assert.deepStrictEqual(values, ['67890', 'jane_doe', 'jane@example.com', null]);
+      assert.deepStrictEqual(values, [
+        '67890',
+        'jane_doe',
+        'jane@example.com',
+        null,
+      ]);
 
       // Get all session data
       const allData = await redis.hgetall(sessionKey);
@@ -108,7 +122,7 @@ describe('Hash Commands - Real-World Patterns', () => {
         id: '123',
         name: 'Alice Johnson',
         email: 'alice@example.com',
-        preferencesJSON: JSON.stringify({ theme: 'dark', notifications: true }),
+        preferences: JSON.stringify({ theme: 'dark', notifications: true }),
       };
 
       const result = await redis.hmset(profileKey, profileData);
@@ -119,7 +133,8 @@ describe('Hash Commands - Real-World Patterns', () => {
       assert.strictEqual(storedProfile.id, '123');
       assert.strictEqual(storedProfile.name, 'Alice Johnson');
 
-      const preferences = JSONJSON.parse(storedProfile.preferences!);
+      assert.ok(storedProfile.preferences, 'preferences field should exist');
+      const preferences = JSON.parse(storedProfile.preferences);
       assert.strictEqual(preferences.theme, 'dark');
       assert.strictEqual(preferences.notifications, true);
     });
@@ -142,11 +157,11 @@ describe('Hash Commands - Real-World Patterns', () => {
 
       // Get all field names
       const fieldNames = await redis.hkeys(profileKey);
-      assert.ok(fieldNames.sort()).toEqual(['age', 'name']);
+      assert.deepStrictEqual(fieldNames.sort(), ['age', 'name']);
 
       // Get all values
       const values = await redis.hvals(profileKey);
-      assert.ok(values.sort()).toEqual(['30', 'Bob Smith']);
+      assert.deepStrictEqual(values.sort(), ['30', 'Bob Smith']);
     });
   });
 
@@ -158,7 +173,7 @@ describe('Hash Commands - Real-World Patterns', () => {
       await redis.hset(
         cartKey,
         'item_1',
-        JSONJSON: JSON.stringify({
+        JSON.stringify({
           productId: 'PROD-001',
           name: 'Laptop',
           price: 999.99,
@@ -169,7 +184,7 @@ describe('Hash Commands - Real-World Patterns', () => {
       await redis.hset(
         cartKey,
         'item_2',
-        JSONJSON: JSON.stringify({
+        JSON.stringify({
           productId: 'PROD-002',
           name: 'Mouse',
           price: 29.99,
@@ -179,9 +194,9 @@ describe('Hash Commands - Real-World Patterns', () => {
 
       // Get cart contents
       const cartItems = await redis.hgetall(cartKey);
-      assert.ok(Object.keys(cartItems)).toHaveLength(2);
+      assert.strictEqual(Object.keys(cartItems).length, 2);
 
-      const item1 = JSONJSON.parse(cartItems.item_1!);
+      const item1 = JSON.parse(cartItems.item_1);
       assert.strictEqual(item1.productId, 'PROD-001');
       assert.strictEqual(item1.price, 999.99);
 
@@ -226,7 +241,8 @@ describe('Hash Commands - Real-World Patterns', () => {
         'cpu_usage',
         2.3
       );
-      assert.ok(parseFloat(newCpuUsage.toString())).toBeCloseTo(47.8, 1);
+      const cpuValue = parseFloat(newCpuUsage.toString());
+      assert.ok(Math.abs(cpuValue - 47.8) < 0.1);
 
       // Initialize new field with float increment
       const diskUsage = await redis.hincrbyfloat(
@@ -234,7 +250,8 @@ describe('Hash Commands - Real-World Patterns', () => {
         'disk_usage',
         33.7
       );
-      assert.ok(parseFloat(diskUsage.toString())).toBeCloseTo(33.7, 1);
+      const diskValue = parseFloat(diskUsage.toString());
+      assert.ok(Math.abs(diskValue - 33.7) < 0.1);
     });
 
     test('should handle conditional field setting with HSETNX', async () => {
@@ -318,8 +335,12 @@ describe('Hash Commands - Real-World Patterns', () => {
       await redis.set(stringKey, 'not-a-hash');
 
       // Hash operations should fail on string keys
-      await assert.ok(redis.hset(stringKey, 'field', 'value')).rejects.toThrow();
-      await assert.ok(redis.hget(stringKey, 'field')).rejects.toThrow();
+      await assert.rejects(async () => {
+        await redis.hset(stringKey, 'field', 'value');
+      });
+      await assert.rejects(async () => {
+        await redis.hget(stringKey, 'field');
+      });
     });
 
     test('should handle empty field names and values', async () => {

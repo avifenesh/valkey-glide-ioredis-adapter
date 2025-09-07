@@ -3,7 +3,10 @@ import { BaseClient } from '../BaseClient';
 import { ParameterTranslator } from '../utils/ParameterTranslator';
 import { RedisKey, RedisValue } from '../types';
 
-export async function get(client: BaseClient, key: RedisKey): Promise<string | null> {
+export async function get(
+  client: BaseClient,
+  key: RedisKey
+): Promise<string | null> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const result = await (client as any).glideClient.get(normalizedKey);
@@ -34,11 +37,20 @@ export async function set(
         if (exp.type === 'EX') {
           options.expiry = { type: TimeUnit.Seconds, count: Number(exp.value) };
         } else if (exp.type === 'PX') {
-          options.expiry = { type: TimeUnit.Milliseconds, count: Number(exp.value) };
+          options.expiry = {
+            type: TimeUnit.Milliseconds,
+            count: Number(exp.value),
+          };
         } else if (exp.type === 'EXAT') {
-          options.expiry = { type: TimeUnit.UnixSeconds, count: Number(exp.value) };
+          options.expiry = {
+            type: TimeUnit.UnixSeconds,
+            count: Number(exp.value),
+          };
         } else if (exp.type === 'PXAT') {
-          options.expiry = { type: TimeUnit.UnixMilliseconds, count: Number(exp.value) };
+          options.expiry = {
+            type: TimeUnit.UnixMilliseconds,
+            count: Number(exp.value),
+          };
         }
       }
       if (arg.EX !== undefined) {
@@ -46,9 +58,15 @@ export async function set(
       } else if (arg.PX !== undefined) {
         options.expiry = { type: TimeUnit.Milliseconds, count: Number(arg.PX) };
       } else if (arg.EXAT !== undefined) {
-        options.expiry = { type: TimeUnit.UnixSeconds, count: Number(arg.EXAT) };
+        options.expiry = {
+          type: TimeUnit.UnixSeconds,
+          count: Number(arg.EXAT),
+        };
       } else if (arg.PXAT !== undefined) {
-        options.expiry = { type: TimeUnit.UnixMilliseconds, count: Number(arg.PXAT) };
+        options.expiry = {
+          type: TimeUnit.UnixMilliseconds,
+          count: Number(arg.PXAT),
+        };
       } else if (arg.KEEPTTL === true) {
         options.expiry = 'keepExisting';
       }
@@ -60,16 +78,34 @@ export async function set(
 
     if (typeof arg === 'string') {
       const option = arg.toUpperCase();
-      if ((option === 'EX' || option === 'PX' || option === 'EXAT' || option === 'PXAT') && i + 1 < args.length) {
+      if (
+        (option === 'EX' ||
+          option === 'PX' ||
+          option === 'EXAT' ||
+          option === 'PXAT') &&
+        i + 1 < args.length
+      ) {
         const optionValue = args[i + 1];
         if (option === 'EX') {
-          options.expiry = { type: TimeUnit.Seconds, count: Number(optionValue) };
+          options.expiry = {
+            type: TimeUnit.Seconds,
+            count: Number(optionValue),
+          };
         } else if (option === 'PX') {
-          options.expiry = { type: TimeUnit.Milliseconds, count: Number(optionValue) };
+          options.expiry = {
+            type: TimeUnit.Milliseconds,
+            count: Number(optionValue),
+          };
         } else if (option === 'EXAT') {
-          options.expiry = { type: TimeUnit.UnixSeconds, count: Number(optionValue) };
+          options.expiry = {
+            type: TimeUnit.UnixSeconds,
+            count: Number(optionValue),
+          };
         } else if (option === 'PXAT') {
-          options.expiry = { type: TimeUnit.UnixMilliseconds, count: Number(optionValue) };
+          options.expiry = {
+            type: TimeUnit.UnixMilliseconds,
+            count: Number(optionValue),
+          };
         }
         i++;
       } else if (option === 'NX') {
@@ -84,25 +120,42 @@ export async function set(
     }
   }
 
-  const result = await (client as any).glideClient.set(normalizedKey, normalizedValue, options);
+  const result = await (client as any).glideClient.set(
+    normalizedKey,
+    normalizedValue,
+    options
+  );
   return result === 'OK' ? 'OK' : null;
 }
 
-export async function mget(client: BaseClient, ...keysOrArray: any[]): Promise<(string | null)[]> {
+export async function mget(
+  client: BaseClient,
+  ...keysOrArray: any[]
+): Promise<(string | null)[]> {
   await (client as any).ensureConnection();
   const keys = Array.isArray(keysOrArray[0]) ? keysOrArray[0] : keysOrArray;
-  const normalizedKeys = keys.map((k: RedisKey) => (client as any).normalizeKey(k));
+  const normalizedKeys = keys.map((k: RedisKey) =>
+    (client as any).normalizeKey(k)
+  );
   const results = await (client as any).glideClient.mget(normalizedKeys);
   return results.map(ParameterTranslator.convertGlideString);
 }
 
-export async function mset(client: BaseClient, ...argsOrHash: any[]): Promise<string> {
+export async function mset(
+  client: BaseClient,
+  ...argsOrHash: any[]
+): Promise<string> {
   await (client as any).ensureConnection();
   const keyValuePairs: Record<string, string> = {};
-  if (argsOrHash.length === 1 && typeof argsOrHash[0] === 'object' && !Array.isArray(argsOrHash[0])) {
+  if (
+    argsOrHash.length === 1 &&
+    typeof argsOrHash[0] === 'object' &&
+    !Array.isArray(argsOrHash[0])
+  ) {
     const obj = argsOrHash[0];
     for (const [key, value] of Object.entries(obj)) {
-      keyValuePairs[(client as any).normalizeKey(key)] = ParameterTranslator.normalizeValue(value as any);
+      keyValuePairs[(client as any).normalizeKey(key)] =
+        ParameterTranslator.normalizeValue(value as any);
     }
   } else {
     for (let i = 0; i < argsOrHash.length; i += 2) {

@@ -3,11 +3,23 @@
  * Tests that our ioredis adapter can connect and perform basic operations
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
-import { getStandaloneConfig, checkTestServers, delay } from '../utils/test-config.mjs';
+import {
+  getStandaloneConfig,
+  checkTestServers,
+  delay,
+} from '../utils/test-config.mjs';
 
 describe('Simple Adapter Integration Test', () => {
   let adapter;
@@ -120,6 +132,6 @@ describe('Simple Adapter Integration Test', () => {
 
     // Find keys with pattern
     const userKeys = await adapter.keys('test:user:*');
-    assert.ok(userKeys.sort()).toEqual(['test:user:1', 'test:user:2']);
+    assert.deepStrictEqual(userKeys.sort(), ['test:user:1', 'test:user:2']);
   });
 });

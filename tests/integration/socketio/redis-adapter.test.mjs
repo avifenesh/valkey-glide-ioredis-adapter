@@ -5,15 +5,39 @@
  * for multi-instance Socket.IO scaling and real-time applications.
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
-import { Server as SocketIOServer } from 'socket.io';
+import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
-import { io as Client } from 'socket.io-client';
+import { io } from 'socket.io-client';
 import { createServer } from 'http';
-import { Redis } from '../../../src';
-import { testUtils } from '../../setup';
+import pkg from '../../../dist/index.js';
+const { Redis } = pkg;
+import { getStandaloneConfig } from '../../utils/test-config.mjs';
 
+async function checkTestServers() {
+  try {
+    const config = getStandaloneConfig();
+    const testClient = new Redis(config);
+    await testClient.connect();
+    await testClient.ping();
+    await testClient.quit();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 describe('Socket.IO Valkey Adapter Integration', () => {
   let valkeyClient1;
   let valkeyClient2;
@@ -26,22 +50,20 @@ describe('Socket.IO Valkey Adapter Integration', () => {
   let port1;
   let port2;
   const keyPrefix = 'TEST:socketio:';
-  let originalHandlers[];
+  let originalHandlers = [];
 
   before(async () => {
     // Setup global error handler for GLIDE ClosingError during tests
     originalHandlers = process.listeners('uncaughtException');
     process.removeAllListeners('uncaughtException');
 
-    process.on('uncaughtException', (error) => {
+    process.on('uncaughtException', error => {
       if (
         error.name === 'ClosingError' &&
         error.message === 'Cleanup initiated'
       ) {
         // Silently ignore GLIDE ClosingError during Socket.IO cleanup
-        console.log(
-          'Test GLIDE ClosingError during Socket.IO cleanup'
-        );
+        console.log('Test GLIDE ClosingError during Socket.IO cleanup');
         return;
       }
 
@@ -146,18 +168,18 @@ describe('Socket.IO Valkey Adapter Integration', () => {
 
     // Get first available port
     const tempServer1 = net.createServer();
-    await new Promise<void>(resolve => {
+    await new Promise(resolve => {
       tempServer1.listen(0, () => {
-        port1 = (tempServer1.address() )?.port || 0;
+        port1 = tempServer1.address()?.port || 0;
         tempServer1.close(() => resolve());
       });
     });
 
     // Get second available port
     const tempServer2 = net.createServer();
-    await new Promise<void>(resolve => {
+    await new Promise(resolve => {
       tempServer2.listen(0, () => {
-        port2 = (tempServer2.address() )?.port || 0;
+        port2 = tempServer2.address()?.port || 0;
         tempServer2.close(() => resolve());
       });
     });
@@ -169,14 +191,14 @@ describe('Socket.IO Valkey Adapter Integration', () => {
     server2 = createServer();
 
     // Create Socket.IO instances
-    io1 = new SocketIOServer(server1, {
+    io1 = new Server(server1, {
       cors: {
         origin: '*',
         methods: ['GET', 'POST'],
       },
     });
 
-    io2 = new SocketIOServer(server2, {
+    io2 = new Server(server2, {
       cors: {
         origin: '*',
         methods: ['GET', 'POST'],
@@ -185,8 +207,8 @@ describe('Socket.IO Valkey Adapter Integration', () => {
 
     // Setup Valkey adapters for both instances (using shared connections)
     try {
-      const adapter1 = createAdapter(valkeyClient1 , subClient1 );
-      const adapter2 = createAdapter(valkeyClient2 , subClient2 );
+      const adapter1 = createAdapter(valkeyClient1, subClient1);
+      const adapter2 = createAdapter(valkeyClient2, subClient2);
 
       io1.adapter(adapter1);
       io2.adapter(adapter2);
@@ -229,11 +251,11 @@ describe('Socket.IO Valkey Adapter Integration', () => {
     });
 
     // Start servers
-    await new Promise<void>(resolve => {
+    await new Promise(resolve => {
       server1.listen(port1, resolve);
     });
 
-    await new Promise<void>(resolve => {
+    await new Promise(resolve => {
       server2.listen(port2, resolve);
     });
 
@@ -272,9 +294,9 @@ describe('Socket.IO Valkey Adapter Integration', () => {
 
   describe('Basic Socket.IO Functionality', () => {
     test('should connect and communicate with single instance', async () => {
-      const client = Client(`http://localhost:${port1}`);
+      const client = io(`http://localhost:${port1}`);
 
-      await new Promise<void>(resolve => {
+      await new Promise(resolve => {
         client.on('connect', () => {
           assert.strictEqual(client.connected, true);
           resolve();
@@ -285,33 +307,33 @@ describe('Socket.IO Valkey Adapter Integration', () => {
     });
 
     test('should handle room joining and broadcasting', async () => {
-      const client1 = Client(`http://localhost:${port1}`);
-      const client2 = Client(`http://localhost:${port1}`);
+      const client1 = io(`http://localhost:${port1}`);
+      const client2 = io(`http://localhost:${port1}`);
 
-      const room = 'test-room-' + testUtils.randomString();
+      const room = 'test-room-' + Math.random().toString(36).substring(7);
       let messagesReceived = 0;
 
       await Promise.all([
-        new Promise<void>(resolve => client1.on('connect', resolve)),
-        new Promise<void>(resolve => client2.on('connect', resolve)),
+        new Promise(resolve => client1.on('connect', resolve)),
+        new Promise(resolve => client2.on('connect', resolve)),
       ]);
 
       // Both clients join the same room
       await Promise.all([
-        new Promise<void>(resolve => {
+        new Promise(resolve => {
           client1.emit('join-room', room);
           client1.on('joined-room', resolve);
         }),
-        new Promise<void>(resolve => {
+        new Promise(resolve => {
           client2.emit('join-room', room);
           client2.on('joined-room', resolve);
         }),
       ]);
 
       // Setup message listener
-      const messagePromise = new Promise<void>(resolve => {
-        client2.on('room-message', (message) => {
-          assert.strictEqual(message, 'Hello room!');
+      const messagePromise = new Promise(resolve => {
+        client2.on('room-message', message => {
+          assert.strictEqual(message, 'Hello room');
           messagesReceived++;
           resolve();
         });
@@ -320,7 +342,7 @@ describe('Socket.IO Valkey Adapter Integration', () => {
       // Client 1 broadcasts to room
       client1.emit('broadcast-to-room', {
         room: room,
-        message: 'Hello room!',
+        message: 'Hello room',
       });
 
       await messagePromise;
@@ -333,30 +355,31 @@ describe('Socket.IO Valkey Adapter Integration', () => {
 
   describe('Cross-Instance Communication (requires Redis adapter)', () => {
     test('should broadcast messages across different Socket.IO instances', async () => {
-      const client1 = Client(`http://localhost:${port1}`);
-      const client2 = Client(`http://localhost:${port2}`);
+      const client1 = io(`http://localhost:${port1}`);
+      const client2 = io(`http://localhost:${port2}`);
 
-      const room = 'cross-instance-room-' + testUtils.randomString();
+      const room =
+        'cross-instance-room-' + Math.random().toString(36).substring(7);
 
       await Promise.all([
-        new Promise<void>(resolve => client1.on('connect', resolve)),
-        new Promise<void>(resolve => client2.on('connect', resolve)),
+        new Promise(resolve => client1.on('connect', resolve)),
+        new Promise(resolve => client2.on('connect', resolve)),
       ]);
 
       // Both clients join the same room on different instances
       await Promise.all([
-        new Promise<void>(resolve => {
+        new Promise(resolve => {
           client1.emit('join-room', room);
           client1.on('joined-room', resolve);
         }),
-        new Promise<void>(resolve => {
+        new Promise(resolve => {
           client2.emit('join-room', room);
           client2.on('joined-room', resolve);
         }),
       ]);
 
       // Setup cross-instance message test
-      const crossInstancePromise = new Promise<void>((resolve, reject) => {
+      const crossInstancePromise = new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           reject(
             new Error(
@@ -365,9 +388,9 @@ describe('Socket.IO Valkey Adapter Integration', () => {
           );
         }, 2000);
 
-        client2.on('room-message', (message) => {
+        client2.on('room-message', message => {
           clearTimeout(timeout);
-          assert.strictEqual(message, 'Cross-instance hello!');
+          assert.strictEqual(message, 'Cross-instance hello');
           resolve();
         });
       });
@@ -375,7 +398,7 @@ describe('Socket.IO Valkey Adapter Integration', () => {
       // Client 1 (instance 1) broadcasts to room
       client1.emit('broadcast-to-room', {
         room: room,
-        message: 'Cross-instance hello!',
+        message: 'Cross-instance hello',
       });
 
       // Cross-instance communication must work - no graceful fallbacks
@@ -388,31 +411,31 @@ describe('Socket.IO Valkey Adapter Integration', () => {
 
   describe('Room Management', () => {
     test('should handle multiple rooms correctly', async () => {
-      const client = Client(`http://localhost:${port1}`);
+      const client = io(`http://localhost:${port1}`);
 
-      await new Promise<void>(resolve => client.on('connect', resolve));
+      await new Promise(resolve => client.on('connect', resolve));
 
-      const room1 = 'room1-' + testUtils.randomString();
-      const room2 = 'room2-' + testUtils.randomString();
+      const room1 = 'room1-' + Math.random().toString(36).substring(7);
+      const room2 = 'room2-' + Math.random().toString(36).substring(7);
 
       // Join multiple rooms
       await Promise.all([
-        (new Promise<void>(resolve => {
+        (new Promise(resolve => {
           client.emit('join-room', room1);
-          client.on('joined-room', (room) => {
+          client.on('joined-room', room => {
             if (room === room1) resolve();
           });
         }),
-        new Promise<void>(resolve => {
+        new Promise(resolve => {
           client.emit('join-room', room2);
-          client.on('joined-room', (room) => {
+          client.on('joined-room', room => {
             if (room === room2) resolve();
           });
         })),
       ]);
 
       // Leave one room
-      await new Promise<void>(resolve => {
+      await new Promise(resolve => {
         client.emit('leave-room', room1);
         client.on('left-room', resolve);
       });
@@ -424,14 +447,14 @@ describe('Socket.IO Valkey Adapter Integration', () => {
   describe('Error Handling', () => {
     test('should handle Redis connection errors gracefully', async () => {
       // This test verifies the adapter handles Redis issues gracefully
-      const client = Client(`http://localhost:${port1}`);
+      const client = io(`http://localhost:${port1}`);
 
-      await new Promise<void>(resolve => client.on('connect', resolve));
+      await new Promise(resolve => client.on('connect', resolve));
 
       // Even if Redis has issues, basic Socket.IO should work
       const room = 'error-test-room';
 
-      await new Promise<void>(resolve => {
+      await new Promise(resolve => {
         client.emit('join-room', room);
         client.on('joined-room', resolve);
       });
@@ -440,11 +463,11 @@ describe('Socket.IO Valkey Adapter Integration', () => {
     });
 
     test('should handle disconnections properly', async () => {
-      const client = Client(`http://localhost:${port1}`);
+      const client = io(`http://localhost:${port1}`);
 
-      await new Promise<void>(resolve => client.on('connect', resolve));
+      await new Promise(resolve => client.on('connect', resolve));
 
-      const disconnectPromise = new Promise<void>(resolve => {
+      const disconnectPromise = new Promise(resolve => {
         client.on('disconnect', _reason => resolve());
       });
 
@@ -460,11 +483,11 @@ describe('Socket.IO Valkey Adapter Integration', () => {
 
       // Create multiple clients
       for (let i = 0; i < 5; i++) {
-        const client = Client(`http://localhost:${port1}`);
+        const client = io(`http://localhost:${port1}`);
         clients.push(client);
 
         connectionPromises.push(
-          new Promise<void>(resolve => client.on('connect', resolve))
+          new Promise(resolve => client.on('connect', resolve))
         );
       }
 

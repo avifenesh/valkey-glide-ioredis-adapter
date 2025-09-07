@@ -3,15 +3,28 @@ import assert from 'node:assert';
 
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
-import { testUtils } from '../setup/index.mjs';
-
+import { getStandaloneConfig } from '../utils/test-config.mjs';
+async function checkTestServers() {
+  try {
+    const config = getStandaloneConfig();
+    const testClient = new Redis(config);
+    await testClient.connect();
+    await testClient.ping();
+    await testClient.quit();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
 describe('Connection Management (ioredis compatibility)', () => {
   let client;
 
   before(async () => {
     const serversAvailable = checkTestServers();
     if (!serversAvailable) {
-      throw new Error('Test servers not available. Please start Redis server before running tests.');
+      throw new Error(
+        'Test servers not available. Please start Redis server before running tests.'
+      );
     }
   });
 
@@ -51,7 +64,9 @@ describe('Connection Management (ioredis compatibility)', () => {
       });
       await Promise.race([
         client.connect(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('connect timeout in test')), 4000)),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('connect timeout in test')), 4000)
+        ),
       ]);
 
       const result = await client.ping();
@@ -72,7 +87,9 @@ describe('Connection Management (ioredis compatibility)', () => {
       });
       await Promise.race([
         client.connect(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('connect timeout in test')), 4000)),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('connect timeout in test')), 4000)
+        ),
       ]);
 
       const result = await client.ping();
@@ -94,7 +111,9 @@ describe('Connection Management (ioredis compatibility)', () => {
       });
       await Promise.race([
         client.connect(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('connect timeout in test')), 4000)),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('connect timeout in test')), 4000)
+        ),
       ]);
 
       const result = await client.ping();
@@ -116,7 +135,9 @@ describe('Connection Management (ioredis compatibility)', () => {
       });
       await Promise.race([
         client.connect(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('connect timeout in test')), 4000)),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('connect timeout in test')), 4000)
+        ),
       ]);
 
       const result = await client.ping();
@@ -139,7 +160,9 @@ describe('Connection Management (ioredis compatibility)', () => {
       });
       await Promise.race([
         client.connect(),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('connect timeout in test')), 4000)),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('connect timeout in test')), 4000)
+        ),
       ]);
 
       assert.strictEqual(await client.select(db), 'OK');

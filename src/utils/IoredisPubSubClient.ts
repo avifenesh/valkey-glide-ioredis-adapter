@@ -1,6 +1,6 @@
 /**
  * ioredis-Compatible Pub/Sub Client for Valkey
- * 
+ *
  * Direct TCP connection with RESP protocol parsing for full binary data support.
  * Provides Socket.IO compatibility and binary message handling through the
  * dual pub/sub architecture.
@@ -14,27 +14,33 @@ const RESP_TYPES = {
   ARRAY: '*',
   BULK_STRING: '$',
   INTEGER: ':',
-  CRLF: '\r\n'
+  CRLF: '\r\n',
 } as const;
 
 const CONNECTION_DEFAULTS = {
   TIMEOUT: 10000,
   DEFAULT_PORT: 6379,
-  DEFAULT_HOST: 'localhost'
+  DEFAULT_HOST: 'localhost',
 } as const;
 
 interface RespMessage {
-  type: 'message' | 'pmessage' | 'subscribe' | 'psubscribe' | 'unsubscribe' | 'punsubscribe';
+  type:
+    | 'message'
+    | 'pmessage'
+    | 'subscribe'
+    | 'psubscribe'
+    | 'unsubscribe'
+    | 'punsubscribe';
   channel: string;
   pattern?: string;
   message?: string | Buffer;
   count?: number;
 }
 
-
 export class IoredisPubSubClient extends EventEmitter {
   private socket: Socket | null = null;
-  private connectionStatus: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
+  private connectionStatus: 'disconnected' | 'connecting' | 'connected' =
+    'disconnected';
   private readonly subscriptions = new Set<string>();
   private readonly patternSubscriptions = new Set<string>();
   private buffer = Buffer.alloc(0);
@@ -60,7 +66,8 @@ export class IoredisPubSubClient extends EventEmitter {
     this.emit('connecting');
 
     return new Promise<void>((resolve, reject) => {
-      const timeoutMs = this.options.connectTimeout || CONNECTION_DEFAULTS.TIMEOUT;
+      const timeoutMs =
+        this.options.connectTimeout || CONNECTION_DEFAULTS.TIMEOUT;
       const timeout = setTimeout(() => {
         this.cleanup();
         reject(new Error(`Connection timeout after ${timeoutMs}ms`));
@@ -69,10 +76,14 @@ export class IoredisPubSubClient extends EventEmitter {
 
       this.socket = new Socket();
       // Prevent this socket from keeping the event loop alive
-      try { this.socket.unref(); } catch {}
+      try {
+        this.socket.unref();
+      } catch {}
 
       this.socket.once('connect', async () => {
-        try { this.socket && this.socket.unref && this.socket.unref(); } catch {}
+        try {
+          this.socket && this.socket.unref && this.socket.unref();
+        } catch {}
         clearTimeout(timeout);
         try {
           // Optional AUTH
@@ -195,10 +206,10 @@ export class IoredisPubSubClient extends EventEmitter {
     buffer: Buffer
   ): { message: RespMessage | null; consumed: number } | null {
     if (buffer.length === 0) return null;
-    
+
     const firstByte = buffer[0];
     if (firstByte === undefined) return null;
-    
+
     const respType = String.fromCharCode(firstByte);
 
     if (respType === RESP_TYPES.ARRAY) {
@@ -227,7 +238,7 @@ export class IoredisPubSubClient extends EventEmitter {
 
     const arrayLength = parseInt(buffer.subarray(pos, lengthEnd).toString());
     if (isNaN(arrayLength) || arrayLength < 0) return null;
-    
+
     pos = lengthEnd + RESP_TYPES.CRLF.length;
 
     const elements: (string | Buffer)[] = [];
@@ -237,19 +248,19 @@ export class IoredisPubSubClient extends EventEmitter {
 
       const elementTypeByte = buffer[pos];
       if (elementTypeByte === undefined) return null;
-      
+
       const elementType = String.fromCharCode(elementTypeByte);
 
       if (elementType === RESP_TYPES.BULK_STRING) {
         const bulkStringResult = this.parseBulkString(buffer, pos);
         if (!bulkStringResult) return null;
-        
+
         elements.push(bulkStringResult.value);
         pos = bulkStringResult.consumed;
       } else if (elementType === RESP_TYPES.INTEGER) {
         const crlfIndex = buffer.indexOf(RESP_TYPES.CRLF, pos);
         if (crlfIndex === -1) return null;
-        
+
         const intValue = buffer.subarray(pos + 1, crlfIndex).toString();
         elements.push(intValue);
         pos = crlfIndex + RESP_TYPES.CRLF.length;
@@ -268,33 +279,35 @@ export class IoredisPubSubClient extends EventEmitter {
    * @returns Parsed pub/sub message or null if invalid
    * @private
    */
-  private createPubSubMessage(elements: (string | Buffer)[]): RespMessage | null {
+  private createPubSubMessage(
+    elements: (string | Buffer)[]
+  ): RespMessage | null {
     if (elements.length < 3) return null;
 
     const messageType = this.bufferToString(elements[0]!);
-    
+
     switch (messageType) {
       case 'message':
         if (elements.length >= 3 && elements[2] !== undefined) {
           return {
             type: 'message',
             channel: this.bufferToString(elements[1]!),
-            message: elements[2]
+            message: elements[2],
           };
         }
         break;
-        
+
       case 'pmessage':
         if (elements.length >= 4 && elements[3] !== undefined) {
           return {
             type: 'pmessage',
             pattern: this.bufferToString(elements[1]!),
             channel: this.bufferToString(elements[2]!),
-            message: elements[3]
+            message: elements[3],
           };
         }
         break;
-        
+
       case 'subscribe':
       case 'psubscribe':
       case 'unsubscribe':
@@ -304,12 +317,12 @@ export class IoredisPubSubClient extends EventEmitter {
           return {
             type: messageType as any,
             channel: this.bufferToString(elements[1]!),
-            count: isNaN(count) ? 0 : count
+            count: isNaN(count) ? 0 : count,
           };
         }
         break;
     }
-    
+
     return null;
   }
 
@@ -335,9 +348,12 @@ export class IoredisPubSubClient extends EventEmitter {
     startPos: number
   ): { value: Buffer; consumed: number } | null {
     if (startPos >= buffer.length) return null;
-    
+
     const startByte = buffer[startPos];
-    if (startByte === undefined || String.fromCharCode(startByte) !== RESP_TYPES.BULK_STRING) {
+    if (
+      startByte === undefined ||
+      String.fromCharCode(startByte) !== RESP_TYPES.BULK_STRING
+    ) {
       return null;
     }
 
@@ -348,10 +364,11 @@ export class IoredisPubSubClient extends EventEmitter {
 
     const stringLength = parseInt(buffer.subarray(pos, lengthEnd).toString());
     if (isNaN(stringLength) || stringLength < 0) return null;
-    
+
     pos = lengthEnd + RESP_TYPES.CRLF.length;
 
-    if (pos + stringLength + RESP_TYPES.CRLF.length > buffer.length) return null;
+    if (pos + stringLength + RESP_TYPES.CRLF.length > buffer.length)
+      return null;
 
     const value = buffer.subarray(pos, pos + stringLength);
     pos += stringLength + RESP_TYPES.CRLF.length;
@@ -369,11 +386,11 @@ export class IoredisPubSubClient extends EventEmitter {
       case 'message':
         this.handleRegularMessage(message);
         break;
-        
+
       case 'pmessage':
         this.handlePatternMessage(message);
         break;
-        
+
       case 'subscribe':
       case 'psubscribe':
         break;
@@ -383,11 +400,16 @@ export class IoredisPubSubClient extends EventEmitter {
         const resolver = this.pendingUnsub.get(key);
         if (resolver) {
           this.pendingUnsub.delete(key);
-          try { resolver(); } catch {}
+          try {
+            resolver();
+          } catch {}
         }
         if ((message.count ?? 0) === 0 && this.unsubAllResolve) {
-          const r = this.unsubAllResolve; this.unsubAllResolve = null;
-          try { r(); } catch {}
+          const r = this.unsubAllResolve;
+          this.unsubAllResolve = null;
+          try {
+            r();
+          } catch {}
         }
         break;
       }
@@ -396,11 +418,16 @@ export class IoredisPubSubClient extends EventEmitter {
         const resolver = this.pendingPUnsub.get(key);
         if (resolver) {
           this.pendingPUnsub.delete(key);
-          try { resolver(); } catch {}
+          try {
+            resolver();
+          } catch {}
         }
         if ((message.count ?? 0) === 0 && this.punsubAllResolve) {
-          const r = this.punsubAllResolve; this.punsubAllResolve = null;
-          try { r(); } catch {}
+          const r = this.punsubAllResolve;
+          this.punsubAllResolve = null;
+          try {
+            r();
+          } catch {}
         }
         break;
       }
@@ -429,7 +456,8 @@ export class IoredisPubSubClient extends EventEmitter {
    * @private
    */
   private handlePatternMessage(message: RespMessage): void {
-    if (!message.pattern || !message.channel || message.message === undefined) return;
+    if (!message.pattern || !message.channel || message.message === undefined)
+      return;
 
     const cleanPattern = this.removeKeyPrefix(message.pattern);
     const cleanChannel = this.removeKeyPrefix(message.channel);
@@ -447,7 +475,7 @@ export class IoredisPubSubClient extends EventEmitter {
    * @private
    */
   private removeKeyPrefix(name: string): string {
-    return this.keyPrefix && name.startsWith(this.keyPrefix) 
+    return this.keyPrefix && name.startsWith(this.keyPrefix)
       ? name.substring(this.keyPrefix.length)
       : name;
   }
@@ -459,8 +487,8 @@ export class IoredisPubSubClient extends EventEmitter {
    * @private
    */
   private ensureBuffer(message: string | Buffer): Buffer {
-    return Buffer.isBuffer(message) 
-      ? message 
+    return Buffer.isBuffer(message)
+      ? message
       : Buffer.from(String(message), 'utf8');
   }
 
@@ -471,7 +499,7 @@ export class IoredisPubSubClient extends EventEmitter {
    */
   private async sendCommand(command: string[]): Promise<void> {
     await this.ensureConnected();
-    
+
     const respCommand = this.buildRespCommand(command);
     this.socket!.write(respCommand);
   }
@@ -514,12 +542,12 @@ export class IoredisPubSubClient extends EventEmitter {
    */
   private buildRespCommand(command: string[]): string {
     let resp = `${RESP_TYPES.ARRAY}${command.length}${RESP_TYPES.CRLF}`;
-    
+
     for (const arg of command) {
       const argBytes = Buffer.byteLength(arg);
       resp += `${RESP_TYPES.BULK_STRING}${argBytes}${RESP_TYPES.CRLF}${arg}${RESP_TYPES.CRLF}`;
     }
-    
+
     return resp;
   }
 
@@ -551,7 +579,9 @@ export class IoredisPubSubClient extends EventEmitter {
     if (channel) {
       const prefixedChannel = this.keyPrefix + channel;
       this.subscriptions.delete(prefixedChannel);
-      const ack = new Promise<void>(resolve => this.pendingUnsub.set(prefixedChannel, resolve));
+      const ack = new Promise<void>(resolve =>
+        this.pendingUnsub.set(prefixedChannel, resolve)
+      );
       await this.sendCommand(['UNSUBSCRIBE', prefixedChannel]);
       await Promise.race([
         ack,
@@ -562,7 +592,9 @@ export class IoredisPubSubClient extends EventEmitter {
       ]);
     } else {
       this.subscriptions.clear();
-      const ack = new Promise<void>(resolve => (this.unsubAllResolve = resolve));
+      const ack = new Promise<void>(
+        resolve => (this.unsubAllResolve = resolve)
+      );
       await this.sendCommand(['UNSUBSCRIBE']);
       await Promise.race([
         ack,
@@ -596,7 +628,9 @@ export class IoredisPubSubClient extends EventEmitter {
     if (pattern) {
       const prefixedPattern = this.keyPrefix + pattern;
       this.patternSubscriptions.delete(prefixedPattern);
-      const ack = new Promise<void>(resolve => this.pendingPUnsub.set(prefixedPattern, resolve));
+      const ack = new Promise<void>(resolve =>
+        this.pendingPUnsub.set(prefixedPattern, resolve)
+      );
       await this.sendCommand(['PUNSUBSCRIBE', prefixedPattern]);
       await Promise.race([
         ack,
@@ -607,7 +641,9 @@ export class IoredisPubSubClient extends EventEmitter {
       ]);
     } else {
       this.patternSubscriptions.clear();
-      const ack = new Promise<void>(resolve => (this.punsubAllResolve = resolve));
+      const ack = new Promise<void>(
+        resolve => (this.punsubAllResolve = resolve)
+      );
       await this.sendCommand(['PUNSUBSCRIBE']);
       await Promise.race([
         ack,

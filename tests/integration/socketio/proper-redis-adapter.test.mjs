@@ -11,15 +11,39 @@
  * - Horizontal scalability
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
-import { Server as SocketIOServer } from 'socket.io';
+import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
-import { io as Client } from 'socket.io-client';
+import { io } from 'socket.io-client';
 import { createServer } from 'http';
-import { Redis } from '../../../src';
-import { testUtils } from '../../setup';
+import pkg from '../../../dist/index.js';
+const { Redis } = pkg;
+import { getStandaloneConfig } from '../../utils/test-config.mjs';
 
+async function checkTestServers() {
+  try {
+    const config = getStandaloneConfig();
+    const testClient = new Redis(config);
+    await testClient.connect();
+    await testClient.ping();
+    await testClient.quit();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 describe('Socket.IO Redis Adapter Pattern', () => {
   // Production pattern: 2 Socket.IO servers with separate pub/sub clients each
   let valkeyPubClient1;
@@ -45,17 +69,17 @@ describe('Socket.IO Redis Adapter Pattern', () => {
     const net = await import('net');
 
     const tempServer1 = net.createServer();
-    await new Promise<void>(resolve => {
+    await new Promise(resolve => {
       tempServer1.listen(0, () => {
-        port1 = (tempServer1.address() )?.port || 0;
+        port1 = tempServer1.address()?.port || 0;
         tempServer1.close(() => resolve());
       });
     });
 
     const tempServer2 = net.createServer();
-    await new Promise<void>(resolve => {
+    await new Promise(resolve => {
       tempServer2.listen(0, () => {
-        port2 = (tempServer2.address() )?.port || 0;
+        port2 = tempServer2.address()?.port || 0;
         tempServer2.close(() => resolve());
       });
     });
@@ -88,23 +112,17 @@ describe('Socket.IO Redis Adapter Pattern', () => {
     chatServer2 = createServer();
 
     // Create Socket.IO instances
-    io1 = new SocketIOServer(chatServer1, {
+    io1 = new Server(chatServer1, {
       cors: { origin: '*', methods: ['GET', 'POST'] },
     });
 
-    io2 = new SocketIOServer(chatServer2, {
+    io2 = new Server(chatServer2, {
       cors: { origin: '*', methods: ['GET', 'POST'] },
     });
 
     // Setup Redis adapters - this is the key production pattern
-    const adapter1 = createAdapter(
-      valkeyPubClient1 ,
-      valkeySubClient1 
-    );
-    const adapter2 = createAdapter(
-      valkeyPubClient2 ,
-      valkeySubClient2 
-    );
+    const adapter1 = createAdapter(valkeyPubClient1, valkeySubClient1);
+    const adapter2 = createAdapter(valkeyPubClient2, valkeySubClient2);
 
     io1.adapter(adapter1);
     io2.adapter(adapter2);
@@ -140,7 +158,7 @@ describe('Socket.IO Redis Adapter Pattern', () => {
     });
 
     // Start servers
-    await new Promise<void>(resolve => {
+    await new Promise(resolve => {
       chatServer1.listen(port1, () => {
         chatServer2.listen(port2, resolve);
       });
@@ -170,11 +188,11 @@ describe('Socket.IO Redis Adapter Pattern', () => {
     // This test validates that Socket.IO Redis adapter works for its core purpose:
     // enabling broadcasts from one server to reach clients on other servers
 
-    const alice = Client(`http://localhost:${port1}`);
-    const bob = Client(`http://localhost:${port2}`); // Different server!
+    const alice = io(`http://localhost:${port1}`);
+    const bob = io(`http://localhost:${port2}`); // Different server
 
-    let aliceMessages[] = [];
-    let bobMessages[] = [];
+    let aliceMessages = [];
+    let bobMessages = [];
 
     // Listen for broadcast events (not custom message events)
     alice.on('broadcast-event', data => aliceMessages.push(data));
@@ -182,8 +200,8 @@ describe('Socket.IO Redis Adapter Pattern', () => {
 
     // Wait for connections
     await Promise.all([
-      new Promise<void>(resolve => alice.on('connect', () => resolve())),
-      new Promise<void>(resolve => bob.on('connect', () => resolve())),
+      new Promise(resolve => alice.on('connect', () => resolve())),
+      new Promise(resolve => bob.on('connect', () => resolve())),
     ]);
 
     // Both join the same room
@@ -192,8 +210,8 @@ describe('Socket.IO Redis Adapter Pattern', () => {
 
     // Wait for joins
     await Promise.all([
-      new Promise<void>(resolve => alice.on('joined', () => resolve())),
-      new Promise<void>(resolve => bob.on('joined', () => resolve())),
+      new Promise(resolve => alice.on('joined', () => resolve())),
+      new Promise(resolve => bob.on('joined', () => resolve())),
     ]);
 
     // Server 1 broadcasts to room 'general' - this should reach Bob on server 2
@@ -220,22 +238,22 @@ describe('Socket.IO Redis Adapter Pattern', () => {
   });
 
   test('Room isolation works correctly with Redis adapter', async () => {
-    const user1 = Client(`http://localhost:${port1}`);
-    const user2 = Client(`http://localhost:${port2}`);
-    const user3 = Client(`http://localhost:${port1}`);
+    const user1 = io(`http://localhost:${port1}`);
+    const user2 = io(`http://localhost:${port2}`);
+    const user3 = io(`http://localhost:${port1}`);
 
-    let user1Messages[] = [];
-    let user2Messages[] = [];
-    let user3Messages[] = [];
+    let user1Messages = [];
+    let user2Messages = [];
+    let user3Messages = [];
 
     user1.on('message', msg => user1Messages.push(msg));
     user2.on('message', msg => user2Messages.push(msg));
     user3.on('message', msg => user3Messages.push(msg));
 
     await Promise.all([
-      new Promise<void>(resolve => user1.on('connect', () => resolve())),
-      new Promise<void>(resolve => user2.on('connect', () => resolve())),
-      new Promise<void>(resolve => user3.on('connect', () => resolve())),
+      new Promise(resolve => user1.on('connect', () => resolve())),
+      new Promise(resolve => user2.on('connect', () => resolve())),
+      new Promise(resolve => user3.on('connect', () => resolve())),
     ]);
 
     // User1 and User2 join 'room1'
@@ -247,9 +265,9 @@ describe('Socket.IO Redis Adapter Pattern', () => {
 
     // Wait for all joins to complete
     await Promise.all([
-      new Promise<void>(resolve => user1.on('joined', () => resolve())),
-      new Promise<void>(resolve => user2.on('joined', () => resolve())),
-      new Promise<void>(resolve => user3.on('joined', () => resolve())),
+      new Promise(resolve => user1.on('joined', () => resolve())),
+      new Promise(resolve => user2.on('joined', () => resolve())),
+      new Promise(resolve => user3.on('joined', () => resolve())),
     ]);
 
     await delay(100);
@@ -277,16 +295,16 @@ describe('Socket.IO Redis Adapter Pattern', () => {
 
   test('Multiple servers handle concurrent messaging correctly', async () => {
     // Create 6 users distributed across both servers
-    const users[] = [];
+    const users = [];
     for (let i = 0; i < 6; i++) {
       const serverPort = i % 2 === 0 ? port1 : port2;
-      users.push(Client(`http://localhost:${serverPort}`));
+      users.push(io(`http://localhost:${serverPort}`));
     }
 
     const messagePromises = users.map(client => {
-      return new Promise<any[]>(resolve => {
-        const messages[] = [];
-        client.on('message', (msg) => messages.push(msg));
+      return new Promise(resolve => {
+        const messages = [];
+        client.on('message', msg => messages.push(msg));
         client.on('connect', () => {
           client.emit('join', 'concurrent-room');
           // Wait for messages to collect

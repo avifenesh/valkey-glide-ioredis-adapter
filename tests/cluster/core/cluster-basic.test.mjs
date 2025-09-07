@@ -3,16 +3,24 @@
  * Tests basic cluster functionality with our Cluster
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../../dist/index.js';
 const { Cluster } = pkg;
 
 // Mock Redis cluster for testing
 class MockRedisCluster {
-  private servers = new Map();
+  servers = new Map();
 
-  createServer(port, handler: (argv[]) => any) {
+  createServer(port, handler) {
     // This would be implemented with actual Redis cluster mock
     // For now, we'll create a placeholder
     this.servers.set(port, { port, handler });
@@ -65,7 +73,7 @@ describe('Cluster - Basic Tests', () => {
       });
 
       assert.ok(cluster instanceof Cluster);
-      assert.strictEqual(cluster .clientType, 'client');
+      assert.strictEqual(cluster.clientType, 'client');
     });
 
     it('should support createClient with bclient type', async () => {
@@ -75,8 +83,8 @@ describe('Cluster - Basic Tests', () => {
       });
 
       assert.ok(cluster instanceof Cluster);
-      assert.strictEqual(cluster .clientType, 'bclient');
-      assert.ok((cluster ).enableBlockingOps).strictEqual(true);
+      assert.strictEqual(cluster.clientType, 'bclient');
+      assert.strictEqual(cluster.enableBlockingOps, true);
     });
 
     it('should support createClient with subscriber type', async () => {
@@ -86,7 +94,7 @@ describe('Cluster - Basic Tests', () => {
       });
 
       assert.ok(cluster instanceof Cluster);
-      assert.strictEqual(cluster .clientType, 'subscriber');
+      assert.strictEqual(cluster.clientType, 'subscriber');
     });
   });
 
@@ -103,12 +111,12 @@ describe('Cluster - Basic Tests', () => {
       });
 
       assert.ok(cluster instanceof Cluster);
-      assert.ok((cluster ).clusterOptions.enableReadFromReplicas).strictEqual(true);
-      assert.ok((cluster ).clusterOptions.scaleReads).toBe('all');
-      assert.ok((cluster ).clusterOptions.maxRedirections).toBe(32);
-      assert.ok((cluster ).clusterOptions.retryDelayOnFailover).toBe(200);
-      assert.ok((cluster ).clusterOptions.enableOfflineQueue).strictEqual(false);
-      assert.ok((cluster ).clusterOptions.readOnly).strictEqual(true);
+      assert.strictEqual(cluster.clusterOptions.enableReadFromReplicas, true);
+      assert.strictEqual(cluster.clusterOptions.scaleReads, 'all');
+      assert.strictEqual(cluster.clusterOptions.maxRedirections, 32);
+      assert.strictEqual(cluster.clusterOptions.retryDelayOnFailover, 200);
+      assert.strictEqual(cluster.clusterOptions.enableOfflineQueue, false);
+      assert.strictEqual(cluster.clusterOptions.readOnly, true);
     });
 
     it('should use default cluster options', async () => {
@@ -116,18 +124,12 @@ describe('Cluster - Basic Tests', () => {
         lazyConnect: true,
       });
 
-      assert.ok(
-        (cluster ).clusterOptions.enableReadFromReplicas
-      ).toBeUndefined();
-      assert.ok((cluster ).clusterOptions.scaleReads).toBeUndefined();
-      assert.ok((cluster ).clusterOptions.maxRedirections).toBeUndefined();
-      assert.ok(
-        (cluster ).clusterOptions.retryDelayOnFailover
-      ).toBeUndefined();
-      assert.ok(
-        (cluster ).clusterOptions.enableOfflineQueue
-      ).toBeUndefined();
-      assert.ok((cluster ).clusterOptions.readOnly).toBeUndefined();
+      assert.ok(cluster.clusterOptions.enableReadFromReplicas === undefined);
+      assert.ok(cluster.clusterOptions.scaleReads === undefined);
+      assert.ok(cluster.clusterOptions.maxRedirections === undefined);
+      assert.ok(cluster.clusterOptions.retryDelayOnFailover === undefined);
+      assert.ok(cluster.clusterOptions.enableOfflineQueue === undefined);
+      assert.ok(cluster.clusterOptions.readOnly === undefined);
     });
   });
 
@@ -142,20 +144,18 @@ describe('Cluster - Basic Tests', () => {
 
       assert.ok(duplicate instanceof Cluster);
       assert.notStrictEqual(duplicate, original);
-      assert.ok((duplicate ).clusterOptions.enableReadFromReplicas).toBe(
-        true
-      );
+      assert.strictEqual(duplicate.clusterOptions.enableReadFromReplicas, true);
     });
 
     it('should preserve blocking operations in duplicate', async () => {
       const original = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
         lazyConnect: true,
       });
-      (original ).enableBlockingOps = true;
+      original.enableBlockingOps = true;
 
       const duplicate = original.duplicate();
 
-      assert.ok((duplicate ).enableBlockingOps).strictEqual(true);
+      assert.strictEqual(duplicate.enableBlockingOps, true);
     });
   });
 
@@ -260,7 +260,7 @@ describe('Cluster - Basic Tests', () => {
   });
 
   describe('Event Handling', () => {
-    it('should forward pub/sub events', done => {
+    it('should forward pub/sub events', async () => {
       const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
         lazyConnect: true,
       });
@@ -275,12 +275,14 @@ describe('Cluster - Basic Tests', () => {
         'punsubscribe',
       ];
 
-      expectedEvents.forEach(event => {
-        cluster.on(event, () => {
-          eventCount++;
-          if (eventCount === expectedEvents.length) {
-            done();
-          }
+      const eventPromise = new Promise(resolve => {
+        expectedEvents.forEach(event => {
+          cluster.on(event, () => {
+            eventCount++;
+            if (eventCount === expectedEvents.length) {
+              resolve();
+            }
+          });
         });
       });
 
@@ -290,6 +292,8 @@ describe('Cluster - Basic Tests', () => {
           cluster.emit(event, 'test-channel', 'test-message');
         });
       }, 10);
+
+      await eventPromise;
     });
   });
 
@@ -318,7 +322,7 @@ describe('Cluster - Basic Tests', () => {
 
   describe('Bull Compatibility', () => {
     it('should work with Bull createClient pattern', async () => {
-      const createClient = (type: 'client' | 'subscriber' | 'bclient') => {
+      const createClient = type => {
         return Cluster.createClient(type, {
           nodes: [
             { host: '127.0.0.1', port: 7000 },
@@ -337,10 +341,10 @@ describe('Cluster - Basic Tests', () => {
       assert.ok(subscriber instanceof Cluster);
       assert.ok(bclient instanceof Cluster);
 
-      assert.strictEqual(client .clientType, 'client');
-      assert.strictEqual(subscriber .clientType, 'subscriber');
-      assert.strictEqual(bclient .clientType, 'bclient');
-      assert.ok((bclient ).enableBlockingOps).strictEqual(true);
+      assert.strictEqual(client.clientType, 'client');
+      assert.strictEqual(subscriber.clientType, 'subscriber');
+      assert.strictEqual(bclient.clientType, 'bclient');
+      assert.strictEqual(bclient.enableBlockingOps, true);
     });
   });
 
@@ -361,7 +365,7 @@ describe('Cluster - Basic Tests', () => {
       let errorPromiseResolved = false;
 
       // Set up error event listener
-      const errorPromise = new Promise<void>(resolve => {
+      const errorPromise = new Promise(resolve => {
         cluster.on('error', err => {
           errorEmitted = true;
           assert.ok(err instanceof Error);
@@ -413,7 +417,7 @@ describe('Cluster - Cluster Specific Features', () => {
         lazyConnect: true,
       });
 
-      assert.ok((cluster ).clusterOptions.scaleReads).toBe('master');
+      assert.strictEqual(cluster.clusterOptions.scaleReads, 'master');
     });
 
     it('should support slave read scaling', async () => {
@@ -422,7 +426,7 @@ describe('Cluster - Cluster Specific Features', () => {
         lazyConnect: true,
       });
 
-      assert.ok((cluster ).clusterOptions.scaleReads).toBe('slave');
+      assert.strictEqual(cluster.clusterOptions.scaleReads, 'slave');
     });
 
     it('should support all nodes read scaling', async () => {
@@ -431,7 +435,7 @@ describe('Cluster - Cluster Specific Features', () => {
         lazyConnect: true,
       });
 
-      assert.ok((cluster ).clusterOptions.scaleReads).toBe('all');
+      assert.strictEqual(cluster.clusterOptions.scaleReads, 'all');
     });
   });
 
@@ -442,7 +446,7 @@ describe('Cluster - Cluster Specific Features', () => {
         lazyConnect: true,
       });
 
-      assert.ok((cluster ).clusterOptions.enableReadFromReplicas).strictEqual(true);
+      assert.strictEqual(cluster.clusterOptions.enableReadFromReplicas, true);
     });
 
     it('should support read-only mode', async () => {
@@ -451,7 +455,7 @@ describe('Cluster - Cluster Specific Features', () => {
         lazyConnect: true,
       });
 
-      assert.ok((cluster ).clusterOptions.readOnly).strictEqual(true);
+      assert.strictEqual(cluster.clusterOptions.readOnly, true);
     });
   });
 
@@ -462,7 +466,7 @@ describe('Cluster - Cluster Specific Features', () => {
         lazyConnect: true,
       });
 
-      assert.ok((cluster ).clusterOptions.maxRedirections).toBe(32);
+      assert.strictEqual(cluster.clusterOptions.maxRedirections, 32);
     });
 
     it('should configure retry delay on failover', async () => {
@@ -471,7 +475,7 @@ describe('Cluster - Cluster Specific Features', () => {
         lazyConnect: true,
       });
 
-      assert.ok((cluster ).clusterOptions.retryDelayOnFailover).toBe(500);
+      assert.strictEqual(cluster.clusterOptions.retryDelayOnFailover, 500);
     });
 
     it('should support offline queue configuration', async () => {
@@ -480,7 +484,7 @@ describe('Cluster - Cluster Specific Features', () => {
         lazyConnect: true,
       });
 
-      assert.ok((cluster ).clusterOptions.enableOfflineQueue).strictEqual(false);
+      assert.strictEqual(cluster.clusterOptions.enableOfflineQueue, false);
     });
   });
 });

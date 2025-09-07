@@ -3,17 +3,42 @@
  * Tests that our ioredis adapter works with express-rate-limit and rate-limit-redis
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
-import express = require('express');
-const rateLimit = require('express-rate-limit');
+// Using dynamic imports for CommonJS modules
+const express = (await import('express')).default;
+const { default: rateLimit } = await import('express-rate-limit');
 import { RedisStore } from 'rate-limit-redis';
-import supertest = require('supertest');
-import { Redis } from '../../../src';
-import { testUtils } from '../../setup';
+const supertest = (await import('supertest')).default;
+import pkg from '../../../dist/index.js';
+const { Redis } = pkg;
+import { getStandaloneConfig } from '../../utils/test-config.mjs';
 
+async function checkTestServers() {
+  try {
+    const config = getStandaloneConfig();
+    const testClient = new Redis(config);
+    await testClient.connect();
+    await testClient.ping();
+    await testClient.quit();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 describe('Rate Limiting Integration', () => {
-  let app: express.Application;
+  let app;
   let redisAdapter;
   let request;
 
@@ -56,7 +81,7 @@ describe('Rate Limiting Integration', () => {
       legacyHeaders: false, // Disable the `X-RateLimit-*` headers
       store: new RedisStore({
         // Use our adapter instance
-        sendCommand: (...args[]) => {
+        sendCommand: (...args) => {
           const [command, ...restArgs] = args;
           if (!command) throw new Error('Command is required');
           return redisAdapter.call(command, ...restArgs);
@@ -65,11 +90,11 @@ describe('Rate Limiting Integration', () => {
     });
 
     app.use('/api/', limiter);
-    app.get('/api/test', (_req: express.Request, res: express.Response) => {
-      res.json({ message: 'Success', Date.now() });
+    app.get('/api/test', (_req, res) => {
+      res.json({ message: 'Success', timestamp: Date.now() });
     });
 
-    app.get('/unlimited', (_req: express.Request, res: express.Response) => {
+    app.get('/unlimited', (_req, res) => {
       res.json({ message: 'Unlimited endpoint' });
     });
 

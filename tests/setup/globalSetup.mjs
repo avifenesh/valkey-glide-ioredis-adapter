@@ -1,4 +1,12 @@
-import { describe, it, test, beforeEach, afterEach, beforeAll, afterAll } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  beforeAll,
+  afterAll,
+} from 'node:test';
 import assert from 'node:assert';
 /**
  * Global Test Setup
@@ -26,7 +34,7 @@ const colors = {
   cyan: '\x1b[36m',
 };
 
-function log(message, color: keyof typeof colors = 'blue') {
+function log(message, color = 'blue') {
   console.log(`${colors[color]}🔧 ${message}${colors.reset}`);
 }
 
@@ -173,7 +181,7 @@ async function waitForServersReady(requirements) {
   }
 }
 
-module.exports = async () => {
+export default async function () {
   console.log(
     `${colors.cyan}${colors.bright}🚀 Setting up test infrastructure...${colors.reset}\n`
   );
@@ -235,9 +243,9 @@ module.exports = async () => {
 
       // Set environment variables for compatibility
       process.env.REDIS_HOST = 'localhost';
-      process.env.REDIS_PORT = '6379';
+      process.env.REDIS_PORT = '6383';
       process.env.VALKEY_HOST = 'localhost';
-      process.env.VALKEY_PORT = '6379';
+      process.env.VALKEY_PORT = '6383';
 
       return;
     } catch (error) {
@@ -266,9 +274,9 @@ module.exports = async () => {
 
     // Set environment variables for tests
     process.env.REDIS_HOST = 'localhost';
-    process.env.REDIS_PORT = '6379';
+    process.env.REDIS_PORT = '6383';
     process.env.VALKEY_HOST = 'localhost';
-    process.env.VALKEY_PORT = '6379';
+    process.env.VALKEY_PORT = '6383';
 
     // Set cluster ports
     process.env.VALKEY_CLUSTER_PORT_1 = '17000';
@@ -297,4 +305,4 @@ module.exports = async () => {
 
     throw error;
   }
-};
+}

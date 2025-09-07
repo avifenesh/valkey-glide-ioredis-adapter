@@ -29,12 +29,12 @@ export function getStandaloneConfig() {
  */
 export function getClusterConfig() {
   const clusterNodes = process.env.VALKEY_CLUSTER_NODES || 'localhost:17000';
-  
+
   return clusterNodes.split(',').map(node => {
     const [host, port] = node.trim().split(':');
     return {
       host: host || 'localhost',
-      port: parseInt(port || '17000')
+      port: parseInt(port || '17000'),
     };
   });
 }
@@ -63,5 +63,5 @@ export default {
   getStandaloneConfig,
   getClusterConfig,
   checkTestServers,
-  delay
+  delay,
 };

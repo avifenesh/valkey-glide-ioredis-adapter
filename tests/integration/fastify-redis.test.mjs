@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import pkg from "../../dist/index.js";
+import pkg from '../../dist/index.js';
 const { Redis } = pkg;
 import clusterPkg from '../../dist/Cluster.js';
 const { Cluster } = clusterPkg;
@@ -38,7 +38,7 @@ describe('Fastify Redis Plugin Compatibility', () => {
     it('should handle GET/SET operations with callbacks (fastify pattern)', async () => {
       // Fastify often uses callback style
       await new Promise((resolve, reject) => {
-        client.set('fastify:key', 'value', (err) => {
+        client.set('fastify:key', 'value', err => {
           if (err) reject(err);
           else resolve();
         });
@@ -85,7 +85,11 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
     it('should handle expiration for cache/session', async () => {
       // Common cache pattern
-      await client.setex('fastify:cache:user:1', 60, JSONJSON: JSON.stringify({ name: 'John' }));
+      await client.setex(
+        'fastify:cache:user:1',
+        60,
+        JSON.stringify({ name: 'John' })
+      );
       const ttl = await client.ttl('fastify:cache:user:1');
       assert.ok(ttl > 0 && ttl <= 60);
 
@@ -107,19 +111,24 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
     it('should handle stream operations like fastify example', async () => {
       const streamKey = 'my awesome fastify stream name';
-      
+
       // Add to stream (fastify example pattern)
-      const id = await client.xadd(streamKey, '*', 'hello', 'fastify is awesome');
+      const id = await client.xadd(
+        streamKey,
+        '*',
+        'hello',
+        'fastify is awesome'
+      );
       assert.ok(id);
 
       // Read from stream
       const streams = await client.xread('STREAMS', streamKey, '0');
       assert.ok(Array.isArray(streams));
       assert.strictEqual(streams[0][0], streamKey);
-      
+
       const events = streams[0][1];
       assert.ok(events.length > 0);
-      
+
       // Parse like fastify example
       const firstEvent = events[0];
       assert.ok(firstEvent[0]); // ID
@@ -128,10 +137,10 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
     it('should support blocking stream reads', async () => {
       const streamKey = 'fastify:stream:blocking';
-      
+
       // Add initial message
       await client.xadd(streamKey, '*', 'type', 'init');
-      
+
       // Non-blocking read
       const result = await client.xread('COUNT', 10, 'STREAMS', streamKey, '0');
       assert.ok(result);
@@ -167,13 +176,13 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
     it('should handle pub/sub for real-time updates', async () => {
       const channel = 'fastify:updates';
-      const message = JSONJSON: JSON.stringify({ type: 'user-login', userId: 42 });
+      const message = JSON.stringify({ type: 'user-login', userId: 42 });
 
       const messagePromise = new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
           reject(new Error('Message not received within timeout'));
         }, 5000);
-        
+
         subscriber.on('message', (ch, msg) => {
           if (ch === channel) {
             clearTimeout(timeout);
@@ -203,20 +212,20 @@ describe('Fastify Redis Plugin Compatibility', () => {
     it('should handle pipeline for batch operations', async () => {
       // Common pattern for bulk updates in fastify apps
       const pipeline = client.pipeline();
-      
+
       // Batch user data updates
       pipeline.hset('user:1', 'name', 'Alice');
       pipeline.hset('user:1', 'email', 'alice@example.com');
       pipeline.expire('user:1', 3600);
-      
+
       pipeline.hset('user:2', 'name', 'Bob');
       pipeline.hset('user:2', 'email', 'bob@example.com');
       pipeline.expire('user:2', 3600);
-      
+
       const results = await pipeline.exec();
       assert.ok(Array.isArray(results));
       assert.strictEqual(results.length, 6);
-      
+
       // Verify data
       const user1 = await client.hgetall('user:1');
       assert.strictEqual(user1.name, 'Alice');
@@ -237,23 +246,23 @@ describe('Fastify Redis Plugin Compatibility', () => {
       const key = 'rate:api:/users:192.168.1.1';
       const window = 60; // 60 seconds
       const limit = 10; // 10 requests per window
-      
+
       // Add request timestamps
       const now = Date.now();
       const pipeline = client.pipeline();
-      
+
       // Add current request
       pipeline.zadd(key, now, `${now}:${Math.random()}`);
       // Remove old requests outside window
-      pipeline.zremrangebyscore(key, '-inf', now - (window * 1000));
+      pipeline.zremrangebyscore(key, '-inf', now - window * 1000);
       // Count requests in window
       pipeline.zcard(key);
       // Set expiry
       pipeline.expire(key, window + 1);
-      
+
       const results = await pipeline.exec();
       const count = results[2][1];
-      
+
       assert.ok(count <= limit, 'Rate limit not exceeded');
     });
 
@@ -261,13 +270,14 @@ describe('Fastify Redis Plugin Compatibility', () => {
       const key = 'bucket:api:/posts:user:1';
       const capacity = 5;
       const refillRate = 1; // 1 token per second
-      
+
       // Initialize bucket
       await client.set(key, capacity);
       await client.expire(key, 60);
-      
+
       // Try to consume tokens
-      const consumed = await client.eval(`
+      const consumed = await client.eval(
+        `
         local key = KEYS[1]
         local capacity = tonumber(ARGV[1])
         local requested = tonumber(ARGV[2])
@@ -279,10 +289,15 @@ describe('Fastify Redis Plugin Compatibility', () => {
         else
           return 0
         end
-      `, 1, key, capacity, 1);
-      
+      `,
+        1,
+        key,
+        capacity,
+        1
+      );
+
       assert.ok(consumed, 'Token consumed successfully');
-      
+
       const remaining = await client.get(key);
       assert.strictEqual(Number(remaining), capacity - 1);
     });
@@ -310,18 +325,18 @@ describe('Fastify Redis Plugin Compatibility', () => {
         username: 'johndoe',
         roles: ['user', 'admin'],
       };
-      
+
       // Store session
-      await client.set(sessionId, JSONJSON: JSON.stringify(sessionData), 'EX', 86400);
-      
+      await client.set(sessionId, JSON.stringify(sessionData), 'EX', 86400);
+
       // Retrieve session
       const stored = await client.get(sessionId);
-      const parsed = JSONJSON.parse(stored);
-      
+      const parsed = JSON.parse(stored);
+
       assert.strictEqual(parsed.userId, 42);
       assert.strictEqual(parsed.username, 'johndoe');
       assert.deepStrictEqual(parsed.roles, ['user', 'admin']);
-      
+
       // Touch session (update TTL)
       await client.expire(sessionId, 86400);
       const ttl = await client.ttl(sessionId);
@@ -340,37 +355,42 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
     it('should implement cache-aside pattern', async () => {
       const cacheKey = 'cache:product:123';
-      
+
       // Cache miss simulation
       let cached = await client.get(cacheKey);
       if (!cached) {
         // Simulate DB fetch
         const product = { id: 123, name: 'Widget', price: 29.99 };
-        await client.set(cacheKey, JSONJSON: JSON.stringify(product), 'EX', 300);
-        cached = JSONJSON: JSON.stringify(product);
+        await client.set(cacheKey, JSON.stringify(product), 'EX', 300);
+        cached = JSON.stringify(product);
       }
-      
-      const product = JSONJSON.parse(cached);
+
+      const product = JSON.parse(cached);
       assert.strictEqual(product.id, 123);
       assert.strictEqual(product.name, 'Widget');
     });
 
     it('should implement cache tags pattern', async () => {
       // Store items with tags
-      await client.sadd('tag:electronics', 'product:1', 'product:2', 'product:3');
+      await client.sadd(
+        'tag:electronics',
+        'product:1',
+        'product:2',
+        'product:3'
+      );
       await client.sadd('tag:sale', 'product:2', 'product:4');
-      
-      await client.set('product:1', JSONJSON: JSON.stringify({ name: 'Laptop' }));
-      await client.set('product:2', JSONJSON: JSON.stringify({ name: 'Phone' }));
-      await client.set('product:3', JSONJSON: JSON.stringify({ name: 'Tablet' }));
-      await client.set('product:4', JSONJSON: JSON.stringify({ name: 'Watch' }));
-      
+
+      await client.set('product:1', JSON.stringify({ name: 'Laptop' }));
+      await client.set('product:2', JSON.stringify({ name: 'Phone' }));
+      await client.set('product:3', JSON.stringify({ name: 'Tablet' }));
+      await client.set('product:4', JSON.stringify({ name: 'Watch' }));
+
       // Invalidate by tag
       const toInvalidate = await client.smembers('tag:electronics');
       if (toInvalidate.length > 0) {
         await client.del(...toInvalidate);
       }
-      
+
       // Verify invalidation
       const laptop = await client.get('product:1');
       assert.strictEqual(laptop, null);
@@ -390,24 +410,35 @@ describe('Fastify Redis Plugin Compatibility', () => {
       const lockKey = 'lock:resource:123';
       const lockValue = Math.random().toString(36);
       const ttl = 10; // 10 seconds
-      
+
       // Acquire lock
       const acquired = await client.set(lockKey, lockValue, 'NX', 'EX', ttl);
       assert.strictEqual(acquired, 'OK');
-      
+
       // Try to acquire again (should fail)
-      const secondAttempt = await client.set(lockKey, 'different', 'NX', 'EX', ttl);
+      const secondAttempt = await client.set(
+        lockKey,
+        'different',
+        'NX',
+        'EX',
+        ttl
+      );
       assert.strictEqual(secondAttempt, null);
-      
+
       // Release lock (only if we own it)
-      const released = await client.eval(`
+      const released = await client.eval(
+        `
         if redis.call("get", KEYS[1]) == ARGV[1] then
           return redis.call("del", KEYS[1])
         else
           return 0
         end
-      `, 1, lockKey, lockValue);
-      
+      `,
+        1,
+        lockKey,
+        lockValue
+      );
+
       assert.strictEqual(released, 1);
     });
   });
@@ -420,11 +451,11 @@ describe('Fastify Redis Plugin Compatibility', () => {
         port: parseInt(process.env.VALKEY_PORT || '6383'),
       });
       await existingClient.connect();
-      
+
       await existingClient.set('test', 'value');
       const result = await existingClient.get('test');
       assert.strictEqual(result, 'value');
-      
+
       await existingClient.flushdb();
       await existingClient.quit();
     });
@@ -436,25 +467,25 @@ describe('Fastify Redis Plugin Compatibility', () => {
         { host: 'localhost', port: 17001 },
         { host: 'localhost', port: 17002 },
       ];
-      
+
       let clusterClient;
       try {
         clusterClient = new Cluster(clusterNodes, {
-          clusterRetryStrategy: (times) => {
+          clusterRetryStrategy: times => {
             if (times > 1) return null; // Don't retry, fail fast
             return 100;
           },
           enableOfflineQueue: false,
-          lazyConnect: true
+          lazyConnect: true,
         });
-        
+
         await clusterClient.connect();
-        
+
         // If we get here, cluster is available
         await clusterClient.set('cluster:test', 'value');
         const result = await clusterClient.get('cluster:test');
         assert.strictEqual(result, 'value');
-        
+
         await clusterClient.quit();
       } catch (err) {
         // Cluster not available, skip test gracefully

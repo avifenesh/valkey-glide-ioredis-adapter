@@ -10,7 +10,15 @@
  * - GitHub's system diagnostics
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -21,12 +29,13 @@ describe('System Commands - Monitoring & Metrics', () => {
   beforeEach(async () => {
     const config = {
       host: 'localhost',
-      port: parseInt(process.env.VALKEY_PORT || "6383"),
+      port: parseInt(process.env.VALKEY_PORT || '6383'),
       lazyConnect: true,
     };
     redis = new Redis(config);
-  
-    await redis.connect();});
+
+    await redis.connect();
+  });
 
   afterEach(async () => {
     if (redis) {
@@ -303,12 +312,12 @@ describe('System Commands - Monitoring & Metrics', () => {
 
       // First element should be Unix timestamp (seconds)
       assert.strictEqual(typeof time[0], 'string');
-      assert.ok(parseInt(time[0])).toBeGreaterThan(1600000000); // After 2020
+      assert.ok(parseInt(time[0]) > 1600000000); // After 2020
 
       // Second element should be microseconds
       assert.strictEqual(typeof time[1], 'string');
-      assert.ok(parseInt(time[1])).toBeGreaterThanOrEqual(0);
-      assert.ok(parseInt(time[1])).toBeLessThan(1000000);
+      assert.ok(parseInt(time[1]) >= 0);
+      assert.ok(parseInt(time[1]))(1000000);
     });
   });
 

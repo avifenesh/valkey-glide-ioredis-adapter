@@ -1,9 +1,28 @@
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
-import { testUtils } from '../../tests/setup';
-
+import { getStandaloneConfig } from '../utils/test-config.mjs';
+async function checkTestServers() {
+  try {
+    const config = getStandaloneConfig();
+    const testClient = new Redis(config);
+    await testClient.connect();
+    await testClient.ping();
+    await testClient.quit();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
 describe('Transaction Commands', () => {
   let redis;
 

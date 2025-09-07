@@ -5,11 +5,35 @@
  * analytics data aggregation, and e-commerce scenarios like shopping carts.
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
-import { Redis } from '../../../src';
-import { testUtils } from '../../setup';
+import pkg from '../../../dist/index.js';
+const { Redis } = pkg;
+import { getStandaloneConfig } from '../../utils/test-config.mjs';
 
+async function checkTestServers() {
+  try {
+    const config = getStandaloneConfig();
+    const testClient = new Redis(config);
+    await testClient.connect();
+    await testClient.ping();
+    await testClient.quit();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 describe('Caching, Analytics & E-commerce Integration', () => {
   let redisClient;
 
@@ -78,15 +102,15 @@ describe('Caching, Analytics & E-commerce Integration', () => {
         id: userId,
         name: 'John Doe',
         email: 'john@example.com',
-        lastLogin.now(),
+        lastLogin: Date.now(),
       };
 
-      await redisClient.setex(cacheKey, 3600, JSONJSON: JSON.stringify(userData));
+      await redisClient.setex(cacheKey, 3600, JSON.stringify(userData));
 
       // Simulate cache hit
       cachedUser = await redisClient.get(cacheKey);
       assert.ok(cachedUser !== undefined);
-      assert.ok(JSONJSON.parse(cachedUser!)).toEqual(userData);
+      assert.deepStrictEqual(JSON.parse(cachedUser), userData);
 
       // Verify TTL is set
       const ttl = await redisClient.ttl(cacheKey);
@@ -105,24 +129,24 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       // Set multiple related cache entries
       await Promise.all([
         redisClient.set(
-          cacheKeys[0]!,
-          JSONJSON: JSON.stringify({ id: productId, name: 'Widget' })
+          cacheKeys[0],
+          JSON.stringify({ id: productId, name: 'Widget' })
         ),
         redisClient.set(
-          cacheKeys[1]!,
-          JSONJSON: JSON.stringify([{ rating: 5, comment: 'Great!' }])
+          cacheKeys[1],
+          JSON.stringify([{ rating: 5, comment: 'Great' }])
         ),
-        redisClient.set(
-          cacheKeys[2]!,
-          JSONJSON: JSON.stringify(['related1', 'related2'])
-        ),
+        redisClient.set(cacheKeys[2], JSON.stringify(['related1', 'related2'])),
       ]);
 
       // Verify all are cached
       const cached = await Promise.all(
         cacheKeys.map(key => redisClient.get(key))
       );
-      assert.ok(cached.every((c) => c !== null)).strictEqual(true);
+      assert.strictEqual(
+        cached.every(c => c !== null),
+        true
+      );
 
       // Invalidate all related caches
       await redisClient.del(...cacheKeys);
@@ -131,7 +155,10 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       const afterDeletion = await Promise.all(
         cacheKeys.map(key => redisClient.get(key))
       );
-      assert.ok(afterDeletion.every((c) => c === null)).strictEqual(true);
+      assert.strictEqual(
+        afterDeletion.every(c => c === null),
+        true
+      );
     });
 
     test('should implement write-through cache pattern', async () => {
@@ -145,20 +172,23 @@ describe('Caching, Analytics & E-commerce Integration', () => {
 
       // Write-through: update both cache and "database" simultaneously
       const pipeline = redisClient.pipeline();
-      pipeline.set(configKey, JSONJSON: JSON.stringify(configData));
+      pipeline.set(configKey, JSON.stringify(configData));
       pipeline.expire(configKey, 7200); // 2 hours
 
       // Simulate additional database operations
-      pipeline.set(`${configKey}:backup`, JSONJSON: JSON.stringify(configData));
+      pipeline.set(`${configKey}:backup`, JSON.stringify(configData));
       pipeline.set(`${configKey}:timestamp`, Date.now().toString());
 
       const results = await pipeline.exec();
       assert.strictEqual(results.length, 4);
-      assert.ok(results.every(([err]) => err === null)).strictEqual(true);
+      assert.strictEqual(
+        results.every(([err]) => err === null),
+        true
+      );
 
       // Verify data consistency
       const cached = await redisClient.get(configKey);
-      assert.ok(JSONJSON.parse(cached!)).toEqual(configData);
+      assert.deepStrictEqual(JSON.parse(cached), configData);
     });
 
     test('should handle cache stampede prevention', async () => {
@@ -182,14 +212,14 @@ describe('Caching, Analytics & E-commerce Integration', () => {
           const result = {
             calculated: true,
             worker: `worker-${index}`,
-            Date.now(),
+            timestamp: Date.now(),
           };
 
           // Cache the result
           await redisClient.setex(
             expensiveDataKey,
             300,
-            JSONJSON: JSON.stringify(result)
+            JSON.stringify(result)
           );
 
           // Release lock
@@ -202,7 +232,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
           while (attempts < 20) {
             const cached = await redisClient.get(expensiveDataKey);
             if (cached) {
-              return JSONJSON.parse(cached);
+              return JSON.parse(cached);
             }
             await delay(50);
             attempts++;
@@ -239,10 +269,10 @@ describe('Caching, Analytics & E-commerce Integration', () => {
         analytics[page] = parseInt(views || '0');
       }
 
-      assert.ok(Object.keys(analytics)).toHaveLength(4);
+      assert.strictEqual(Object.keys(analytics).length, 4);
       assert.ok(
         Object.values(analytics).every(v => typeof v === 'number' && v > 0)
-      ).strictEqual(true);
+      );
     });
 
     test('should implement real-time event aggregation', async () => {
@@ -272,32 +302,32 @@ describe('Caching, Analytics & E-commerce Integration', () => {
         const storedCount = await redisClient.get(
           `events:${timeWindow}:${eventType}`
         );
-        assert.strictEqual(parseInt(storedCount!), count);
+        assert.strictEqual(parseInt(storedCount), count);
       }
     });
 
     test('should handle user activity tracking', async () => {
       const userId = 'user789';
       const activities = [
-        { action: 'login', Date.now() },
+        { action: 'login', timestamp: Date.now() },
         {
           action: 'view_product',
           productId: 'prod123',
-          Date.now() + 1000,
+          timestamp: Date.now() + 1000,
         },
         {
           action: 'add_to_cart',
           productId: 'prod123',
-          Date.now() + 2000,
+          timestamp: Date.now() + 2000,
         },
-        { action: 'checkout', total: 99.99, Date.now() + 3000 },
+        { action: 'checkout', total: 99.99, timestamp: Date.now() + 3000 },
       ];
 
       // Store user activity timeline
       const activityKey = `user:${userId}:activity`;
 
       for (const activity of activities) {
-        await redisClient.lpush(activityKey, JSONJSON: JSON.stringify(activity));
+        await redisClient.lpush(activityKey, JSON.stringify(activity));
       }
 
       // Set expiration for the activity log
@@ -307,7 +337,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       const recentActivities = await redisClient.lrange(activityKey, 0, 9); // Last 10 activities
       assert.strictEqual(recentActivities.length, 4);
 
-      const parsedActivities = recentActivities.map((a) => JSONJSON.parse(a));
+      const parsedActivities = recentActivities.map(a => JSON.parse(a));
       assert.strictEqual(parsedActivities[0].action, 'checkout'); // Most recent first
       assert.strictEqual(parsedActivities[3].action, 'login'); // Oldest last
     });
@@ -327,7 +357,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
         await redisClient.hset(
           cartId,
           product.id,
-          JSONJSON: JSON.stringify({
+          JSON.stringify({
             name: product.name,
             price: product.price,
             quantity: product.quantity,
@@ -341,12 +371,12 @@ describe('Caching, Analytics & E-commerce Integration', () => {
 
       // Retrieve entire cart
       const cart = await redisClient.hgetall(cartId);
-      assert.ok(Object.keys(cart)).toHaveLength(3);
+      assert.strictEqual(Object.keys(cart).length, 3);
 
       // Calculate total
       let total = 0;
       for (const [_productId, productData] of Object.entries(cart)) {
-        const product = JSONJSON.parse(productData as string);
+        const product = JSON.parse(productData);
         total += product.subtotal;
         assert.ok(product.name !== undefined);
         assert.ok(product.price > 0);
@@ -363,7 +393,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       await redisClient.hset(
         cartId,
         productId,
-        JSONJSON: JSON.stringify({
+        JSON.stringify({
           name: 'Test Product',
           price: 25.0,
           quantity: 1,
@@ -372,15 +402,15 @@ describe('Caching, Analytics & E-commerce Integration', () => {
 
       // Update quantity
       const currentProduct = await redisClient.hget(cartId, productId);
-      const product = JSONJSON.parse(currentProduct!);
+      const product = JSON.parse(currentProduct);
       product.quantity = 3;
       product.subtotal = product.price * product.quantity;
 
-      await redisClient.hset(cartId, productId, JSONJSON: JSON.stringify(product));
+      await redisClient.hset(cartId, productId, JSON.stringify(product));
 
       // Verify update
       const updatedProduct = await redisClient.hget(cartId, productId);
-      assert.ok(JSONJSON.parse(updatedProduct!).quantity).toBe(3);
+      assert.strictEqual(JSON.parse(updatedProduct).quantity, 3);
 
       // Remove product from cart
       await redisClient.hdel(cartId, productId);
@@ -399,7 +429,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       await redisClient.hset(
         cartKey,
         'item1',
-        JSONJSON: JSON.stringify({
+        JSON.stringify({
           name: 'Abandoned Item',
           price: 99.99,
           quantity: 1,
@@ -413,9 +443,9 @@ describe('Caching, Analytics & E-commerce Integration', () => {
         // Store abandoned cart for marketing purposes
         await redisClient.set(
           abandonmentKey,
-          JSONJSON: JSON.stringify({
+          JSON.stringify({
             items: cartItems,
-            abandonedAt.now(),
+            abandonedAt: Date.now(),
             userId: userId,
           })
         );
@@ -428,7 +458,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       const abandonedCart = await redisClient.get(abandonmentKey);
       assert.ok(abandonedCart !== undefined);
 
-      const parsed = JSONJSON.parse(abandonedCart!);
+      const parsed = JSON.parse(abandonedCart);
       assert.strictEqual(parsed.userId, userId);
       assert.ok(parsed.items.item1 !== undefined);
     });
@@ -443,12 +473,12 @@ describe('Caching, Analytics & E-commerce Integration', () => {
         {
           type: 'order_shipped',
           orderId: 'order456',
-          message: 'Your order has been shipped!',
+          message: 'Your order has been shipped',
         },
         {
           type: 'promotion',
-          message: '20% off your next purchase!',
-          expiresAt.now() + 86400000,
+          message: '20% off your next purchase',
+          expiresAt: Date.now() + 86400000,
         },
         {
           type: 'friend_request',
@@ -461,10 +491,10 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       for (const notification of notifications) {
         await redisClient.lpush(
           notificationQueue,
-          JSONJSON: JSON.stringify({
+          JSON.stringify({
             ...notification,
-            id: testUtils.randomString(),
-            createdAt.now(),
+            id: Math.random().toString(36).substring(7),
+            createdAt: Date.now(),
             read: false,
           })
         );
@@ -482,9 +512,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       assert.strictEqual(unreadNotifications.length, 3);
 
       // Mark notification as read (update specific notification)
-      const notificationList = unreadNotifications.map((n) =>
-        JSONJSON.parse(n)
-      );
+      const notificationList = unreadNotifications.map(n => JSON.parse(n));
       notificationList[0].read = true;
 
       // Update the list (in production, you might use a more efficient method)
@@ -492,7 +520,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       for (const notification of notificationList.reverse()) {
         await redisClient.lpush(
           notificationQueue,
-          JSONJSON: JSON.stringify(notification)
+          JSON.stringify(notification)
         );
       }
 
@@ -503,7 +531,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
         -1
       );
       if (updatedNotifications.length > 0) {
-        const firstNotification = JSONJSON.parse(updatedNotifications[0] || '{}');
+        const firstNotification = JSON.parse(updatedNotifications[0] || '{}');
         assert.strictEqual(firstNotification.read, true);
       }
     });
@@ -551,11 +579,11 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       for (let i = 0; i < itemCount; i++) {
         const data = {
           id: i,
-          value: testUtils.randomString(10),
-          Date.now(),
-          score.random(),
+          value: Math.random().toString(36).substring(7),
+          timestamp: Date.now(),
+          score: Math.random(),
         };
-        pipeline.hset(largeDataKey, i.toString(), JSONJSON: JSON.stringify(data));
+        pipeline.hset(largeDataKey, i.toString(), JSON.stringify(data));
       }
 
       const pipelineResults = await pipeline.exec();
@@ -595,19 +623,19 @@ describe('Caching, Analytics & E-commerce Integration', () => {
         assert.ok(firstItem !== undefined);
         assert.ok(firstItem !== null);
 
-        const parsed = JSONJSON.parse(firstItem as string);
+        const parsed = JSON.parse(firstItem);
         assert.strictEqual(parsed.id, 0);
       } else {
         assert.ok(randomItem !== undefined);
         assert.ok(randomItem !== null);
 
-        const parsed = JSONJSON.parse(randomItem as string);
+        const parsed = JSON.parse(randomItem);
         assert.strictEqual(parsed.id, parseInt(randomKey));
       }
 
       // Check total items
       const allItems = await redisClient.hgetall(largeDataKey);
-      assert.ok(Object.keys(allItems)).toHaveLength(itemCount);
+      assert.strictEqual(Object.keys(allItems).length, itemCount);
 
       assert.ok(duration < 5000); // Should complete within 5 seconds
     });

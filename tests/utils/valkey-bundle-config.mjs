@@ -1,4 +1,12 @@
-import { describe, it, test, beforeEach, afterEach, beforeAll, afterAll } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 /**
  * Valkey Bundle Test Configuration
@@ -10,17 +18,6 @@ import assert from 'node:assert';
  * - Valkey Bloom (for probabilistic data structures)
  * - Valkey LDAP (for authentication)
  */
-
-import { RedisOptions } from '../../src/types.js';
-
-export interface ValkeyBundleTestConfig extends RedisOptions {
-  modules?: {
-    json?;
-    search?;
-    bloom?;
-    ldap?;
-  };
-}
 
 /**
  * Get configuration for valkey-bundle testing
@@ -60,12 +57,7 @@ export async function getValkeyBundleTestConfig() {
  * Check if valkey-bundle modules are available
  * Returns which modules are actually loaded
  */
-export async function checkAvailableModules(_redis?): Promise<{
-  json;
-  search;
-  bloom;
-  ldap;
-}> {
+export async function checkAvailableModules(_redis) {
   try {
     // Use Docker exec approach for reliable module detection
     const { exec } = await import('child_process');
@@ -110,19 +102,13 @@ export async function checkAvailableModules(_redis?): Promise<{
 /**
  * Skip test if required modules are not available
  */
-export function skipIfModuleUnavailable(
-  moduleName: keyof ReturnType<typeof checkAvailableModules>
-) {
-  return (
-    _target,
-    propertyKey | symbol,
-    descriptor: PropertyDescriptor
-  ) => {
+export function skipIfModuleUnavailable(moduleName) {
+  return (_target, propertyKey, descriptor) => {
     const originalMethod = descriptor.value;
 
-    descriptor.value = async function (...args: any[]) {
+    descriptor.value = async function (...args) {
       // This would be set by the test setup
-      const modules = (this as any).availableModules;
+      const modules = this.availableModules;
 
       if (!modules || !modules[moduleName]) {
         console.warn(
@@ -149,11 +135,11 @@ services:
     image: valkey/valkey-bundle:latest
     container_name: valkey-bundle-test
     ports:
-      - "6379:6379"
+      - "6383:6383"
     command: >
       valkey-server 
       --bind 0.0.0.0 
-      --port 6379
+      --port 6383
       --loadmodule /opt/valkey-stack/lib/valkey-json.so
       --loadmodule /opt/valkey-stack/lib/valkey-search.so  
       --loadmodule /opt/valkey-stack/lib/valkey-bloom.so

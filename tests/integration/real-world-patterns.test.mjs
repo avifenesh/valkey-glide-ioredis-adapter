@@ -6,7 +6,15 @@
  * and Stack Overflow.
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -18,15 +26,14 @@ describe('Real-World ioredis Usage Patterns', () => {
     const config = {
       host: process.env.REDIS_HOST || process.env.VALKEY_HOST || 'localhost',
       port: parseInt(
-        process.env.REDIS_PORT || process.env.VALKEY_PORT || '6379',
+        process.env.REDIS_PORT || process.env.VALKEY_PORT || '6383',
         10
       ),
       connectTimeout: 5000,
     };
     redis = new Redis(config);
 
-    
-    await redis.connect();// Wait for connection
+    await redis.connect(); // Wait for connection
     await redis.ping();
   });
 
@@ -46,8 +53,8 @@ describe('Real-World ioredis Usage Patterns', () => {
   describe('Basic Connection Patterns', () => {
     test('should handle basic Redis constructor pattern from GitHub examples', async () => {
       // Pattern: const redis = new Redis({ port, host, password })
-      
-    await redis.connect();// Found in GitHub repositories
+
+      await redis.connect(); // Found in GitHub repositories
       assert.ok(redis !== undefined);
       assert.strictEqual(typeof redis.ping, 'function');
 
@@ -122,7 +129,7 @@ describe('Real-World ioredis Usage Patterns', () => {
       // Pattern from Bull production usage
       // Bull passes RedisOpts directly to ioredis constructor
       const connectionInfo = {
-        port: parseInt(process.env.VALKEY_PORT || "6383"),
+        port: parseInt(process.env.VALKEY_PORT || '6383'),
         host: 'localhost',
         db: 0,
       };
@@ -145,7 +152,7 @@ describe('Real-World ioredis Usage Patterns', () => {
           body: 'Hello World',
         },
         attempts: 1,
-        Date.now(),
+        timestamp: Date.now(),
       };
 
       // Simulate Bull's job storage pattern
@@ -157,7 +164,7 @@ describe('Real-World ioredis Usage Patterns', () => {
       });
 
       const storedData = await redis.hget('bull:email:12345', 'data');
-      const parsed = JSONJSON.parse(storedData!);
+      const parsed = JSON.parse(storedData);
       assert.strictEqual(parsed.id, '12345');
       assert.strictEqual(parsed.type, 'email');
     });
@@ -170,7 +177,7 @@ describe('Real-World ioredis Usage Patterns', () => {
       const sessionData = {
         userId: '12345',
         username: 'testuser',
-        lastAccess.now(),
+        lastAccess: Date.now(),
         data: {
           cart: ['item1', 'item2'],
           preferences: { theme: 'dark' },
@@ -178,10 +185,10 @@ describe('Real-World ioredis Usage Patterns', () => {
       };
 
       // Set session with TTL (30 minutes)
-      await redis.setex(sessionId, 1800, JSONJSON: JSON.stringify(sessionData));
+      await redis.setex(sessionId, 1800, JSON.stringify(sessionData));
 
       const retrieved = await redis.get(sessionId);
-      const parsed = JSONJSON.parse(retrieved!);
+      const parsed = JSON.parse(retrieved);
       assert.strictEqual(parsed.userId, '12345');
       assert.strictEqual(parsed.username, 'testuser');
 
@@ -208,11 +215,11 @@ describe('Real-World ioredis Usage Patterns', () => {
       };
 
       // Set with 1 hour expiry
-      await redis.setex(cacheKey, 3600, JSONJSON: JSON.stringify(userData));
+      await redis.setex(cacheKey, 3600, JSON.stringify(userData));
 
       // Retrieve and parse
       const cached = await redis.get(cacheKey);
-      const parsed = JSONJSON.parse(cached!);
+      const parsed = JSON.parse(cached);
       assert.strictEqual(parsed.id, 12345);
       assert.deepStrictEqual(parsed.roles, ['user', 'premium']);
     });
@@ -225,14 +232,14 @@ describe('Real-World ioredis Usage Patterns', () => {
       assert.strictEqual(cached, null);
 
       // Simulate expensive computation
-      const result = { computed: true, value.random() };
+      const result = { computed: true, value: Math.random() };
 
       // Cache the result
-      await redis.setex(cacheKey, 300, JSONJSON: JSON.stringify(result));
+      await redis.setex(cacheKey, 300, JSON.stringify(result));
 
       // Verify cache hit
       cached = await redis.get(cacheKey);
-      const parsed = JSONJSON.parse(cached!);
+      const parsed = JSON.parse(cached);
       assert.strictEqual(parsed.computed, true);
     });
   });
@@ -248,7 +255,7 @@ describe('Real-World ioredis Usage Patterns', () => {
       await redis.incr(pageKey);
 
       const views = await redis.get(pageKey);
-      assert.strictEqual(parseInt(views!), 3);
+      assert.strictEqual(parseInt(views), 3);
     });
 
     test('should handle user activity tracking with hashes', async () => {
@@ -256,7 +263,7 @@ describe('Real-World ioredis Usage Patterns', () => {
       const userKey = 'user:activity:12345';
 
       await redis.hset(userKey, {
-        last_login.now().toString(),
+        last_login: Date.now().toString(),
         page_views: '15',
         sessions: '3',
       });
@@ -268,8 +275,8 @@ describe('Real-World ioredis Usage Patterns', () => {
       const pageViews = await redis.hget(userKey, 'page_views');
       const sessions = await redis.hget(userKey, 'sessions');
 
-      assert.strictEqual(parseInt(pageViews!), 16);
-      assert.strictEqual(parseInt(sessions!), 4);
+      assert.strictEqual(parseInt(pageViews), 16);
+      assert.strictEqual(parseInt(sessions), 4);
     });
   });
 
@@ -279,16 +286,16 @@ describe('Real-World ioredis Usage Patterns', () => {
       const queueKey = 'tasks:pending';
 
       // Add tasks to queue
-      await redis.lpush(queueKey, JSONJSON: JSON.stringify({ type: 'email', id: 1 }));
-      await redis.lpush(queueKey, JSONJSON: JSON.stringify({ type: 'sms', id: 2 }));
-      await redis.lpush(queueKey, JSONJSON: JSON.stringify({ type: 'push', id: 3 }));
+      await redis.lpush(queueKey, JSON.stringify({ type: 'email', id: 1 }));
+      await redis.lpush(queueKey, JSON.stringify({ type: 'sms', id: 2 }));
+      await redis.lpush(queueKey, JSON.stringify({ type: 'push', id: 3 }));
 
       // Process tasks (FIFO with RPOP or LIFO with LPOP)
       const task1 = await redis.rpop(queueKey);
       const task2 = await redis.rpop(queueKey);
 
-      assert.ok(JSONJSON.parse(task1 as string).id).toBe(1);
-      assert.ok(JSONJSON.parse(task2 as string).id).toBe(2);
+      assert.strictEqual(JSON.parse(task1).id, 1);
+      assert.strictEqual(JSON.parse(task2).id, 2);
 
       // Check remaining queue length
       const remaining = await redis.llen(queueKey);
@@ -329,10 +336,10 @@ describe('Real-World ioredis Usage Patterns', () => {
       // In real applications, you'd have separate publisher and subscriber instances
 
       const channel = 'notifications:user:12345';
-      const message = JSONJSON: JSON.stringify({
+      const message = JSON.stringify({
         type: 'new_message',
         from: 'Alice',
-        content: 'Hello!',
+        content: 'Hello',
       });
 
       // Publish message

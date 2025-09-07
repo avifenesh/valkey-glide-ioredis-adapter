@@ -2,14 +2,18 @@ import { RedisKey, RedisValue } from '../types';
 import { ParameterTranslator } from '../utils/ParameterTranslator';
 import { BaseClient } from '../BaseClient';
 
-export async function zadd(client: BaseClient, key: RedisKey, ...args: any[]): Promise<number> {
+export async function zadd(
+  client: BaseClient,
+  key: RedisKey,
+  ...args: any[]
+): Promise<number> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
-  
+
   // Parse ioredis style: [NX|XX] [CH] [INCR] score member [score member ...]
   const options: any = {};
   const members: { score: number; member: string }[] = [];
-  
+
   let i = 0;
   while (i < args.length) {
     const arg = String(args[i]).toUpperCase();
@@ -55,30 +59,51 @@ export async function zadd(client: BaseClient, key: RedisKey, ...args: any[]): P
     // Regular ZADD
     const memberScores = members.map(m => ({
       element: ParameterTranslator.normalizeValue(m.member),
-      score: m.score
+      score: m.score,
     }));
-    return await (client as any).glideClient.zadd(normalizedKey, memberScores, options);
+    return await (client as any).glideClient.zadd(
+      normalizedKey,
+      memberScores,
+      options
+    );
   }
 }
 
-export async function zrem(client: BaseClient, key: RedisKey, ...members: RedisValue[]): Promise<number> {
+export async function zrem(
+  client: BaseClient,
+  key: RedisKey,
+  ...members: RedisValue[]
+): Promise<number> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const normalizedMembers = members.map(ParameterTranslator.normalizeValue);
-  return await (client as any).glideClient.zrem(normalizedKey, normalizedMembers);
+  return await (client as any).glideClient.zrem(
+    normalizedKey,
+    normalizedMembers
+  );
 }
 
-export async function zcard(client: BaseClient, key: RedisKey): Promise<number> {
+export async function zcard(
+  client: BaseClient,
+  key: RedisKey
+): Promise<number> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   return await (client as any).glideClient.zcard(normalizedKey);
 }
 
-export async function zscore(client: BaseClient, key: RedisKey, member: RedisValue): Promise<string | null> {
+export async function zscore(
+  client: BaseClient,
+  key: RedisKey,
+  member: RedisValue
+): Promise<string | null> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const normalizedMember = ParameterTranslator.normalizeValue(member);
-  const result = await (client as any).glideClient.zscore(normalizedKey, normalizedMember);
+  const result = await (client as any).glideClient.zscore(
+    normalizedKey,
+    normalizedMember
+  );
   return result ? result.toString() : null;
 }
 
@@ -90,22 +115,39 @@ export async function zmscore(
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const normalizedMembers = members.map(ParameterTranslator.normalizeValue);
-  const results = await (client as any).glideClient.zmscore(normalizedKey, normalizedMembers);
-  return results.map((score: any) => score ? score.toString() : null);
+  const results = await (client as any).glideClient.zmscore(
+    normalizedKey,
+    normalizedMembers
+  );
+  return results.map((score: any) => (score ? score.toString() : null));
 }
 
-export async function zrank(client: BaseClient, key: RedisKey, member: RedisValue): Promise<number | null> {
+export async function zrank(
+  client: BaseClient,
+  key: RedisKey,
+  member: RedisValue
+): Promise<number | null> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const normalizedMember = ParameterTranslator.normalizeValue(member);
-  return await (client as any).glideClient.zrank(normalizedKey, normalizedMember);
+  return await (client as any).glideClient.zrank(
+    normalizedKey,
+    normalizedMember
+  );
 }
 
-export async function zrevrank(client: BaseClient, key: RedisKey, member: RedisValue): Promise<number | null> {
+export async function zrevrank(
+  client: BaseClient,
+  key: RedisKey,
+  member: RedisValue
+): Promise<number | null> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const normalizedMember = ParameterTranslator.normalizeValue(member);
-  return await (client as any).glideClient.zrevrank(normalizedKey, normalizedMember);
+  return await (client as any).glideClient.zrevrank(
+    normalizedKey,
+    normalizedMember
+  );
 }
 
 export async function zrange(
@@ -139,7 +181,10 @@ export async function zrange(
     }
     return flattened;
   } else {
-    result = await (client as any).glideClient.zrange(normalizedKey, rangeQuery);
+    result = await (client as any).glideClient.zrange(
+      normalizedKey,
+      rangeQuery
+    );
     return result.map(
       (item: any) => ParameterTranslator.convertGlideString(item) || ''
     );
@@ -171,9 +216,13 @@ export async function zrevrange(
       }
     );
   } else {
-    result = await (client as any).glideClient.zrange(normalizedKey, rangeQuery, {
-      reverse: true,
-    });
+    result = await (client as any).glideClient.zrange(
+      normalizedKey,
+      rangeQuery,
+      {
+        reverse: true,
+      }
+    );
   }
 
   return result.map(
@@ -227,7 +276,10 @@ export async function zrangebylex(
     }
   }
 
-  const result = await (client as any).glideClient.zrange(normalizedKey, rangeQuery);
+  const result = await (client as any).glideClient.zrange(
+    normalizedKey,
+    rangeQuery
+  );
   if (!Array.isArray(result)) return [];
   return result.map(
     (item: any) => ParameterTranslator.convertGlideString(item) || ''
@@ -292,11 +344,18 @@ export async function zrevrangebylex(
   );
 }
 
-export async function zpopmin(client: BaseClient, key: RedisKey, count?: number): Promise<string[]> {
+export async function zpopmin(
+  client: BaseClient,
+  key: RedisKey,
+  count?: number
+): Promise<string[]> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const options = count !== undefined ? { count } : undefined;
-  const result = await (client as any).glideClient.zpopmin(normalizedKey, options);
+  const result = await (client as any).glideClient.zpopmin(
+    normalizedKey,
+    options
+  );
 
   if (Array.isArray(result)) {
     // GLIDE returns [{element: string, score: number}, ...]
@@ -320,11 +379,18 @@ export async function zpopmin(client: BaseClient, key: RedisKey, count?: number)
   return [];
 }
 
-export async function zpopmax(client: BaseClient, key: RedisKey, count?: number): Promise<string[]> {
+export async function zpopmax(
+  client: BaseClient,
+  key: RedisKey,
+  count?: number
+): Promise<string[]> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
   const options = count !== undefined ? { count } : undefined;
-  const result = await (client as any).glideClient.zpopmax(normalizedKey, options);
+  const result = await (client as any).glideClient.zpopmax(
+    normalizedKey,
+    options
+  );
 
   if (Array.isArray(result)) {
     // GLIDE returns [{element: string, score: number}, ...]
@@ -356,13 +422,15 @@ export async function zrandmember(
 ): Promise<string | string[]> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
-  
+
   if (count === undefined) {
     const result = await (client as any).glideClient.zrandmember(normalizedKey);
     return ParameterTranslator.convertGlideString(result) || '';
   } else {
     if (withScores) {
-      const list = await ((client as any).glideClient as any).zrandmemberWithCountWithScores(normalizedKey, count);
+      const list = await (
+        (client as any).glideClient as any
+      ).zrandmemberWithCountWithScores(normalizedKey, count);
       const flat: string[] = [];
       for (const [member, score] of list) {
         flat.push(
@@ -372,10 +440,9 @@ export async function zrandmember(
       }
       return flat;
     } else {
-      const list = await ((client as any).glideClient as any).zrandmemberWithCount(
-        normalizedKey,
-        count
-      );
+      const list = await (
+        (client as any).glideClient as any
+      ).zrandmemberWithCount(normalizedKey, count);
       return list.map(
         (m: any) => ParameterTranslator.convertGlideString(m) || ''
       );
@@ -400,10 +467,15 @@ export async function zincrby(
   return result.toString();
 }
 
-export async function zcount(client: BaseClient, key: RedisKey, min: number | string, max: number | string): Promise<number> {
+export async function zcount(
+  client: BaseClient,
+  key: RedisKey,
+  min: number | string,
+  max: number | string
+): Promise<number> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
-  
+
   let minBoundary: { value: number | string; isInclusive: boolean };
   let maxBoundary: { value: number | string; isInclusive: boolean };
 
@@ -433,19 +505,37 @@ export async function zcount(client: BaseClient, key: RedisKey, min: number | st
     maxBoundary = { value: max, isInclusive: true };
   }
 
-  return await (client as any).glideClient.zcount(normalizedKey, minBoundary as any, maxBoundary as any);
+  return await (client as any).glideClient.zcount(
+    normalizedKey,
+    minBoundary as any,
+    maxBoundary as any
+  );
 }
 
-export async function zremrangebyrank(client: BaseClient, key: RedisKey, start: number, stop: number): Promise<number> {
+export async function zremrangebyrank(
+  client: BaseClient,
+  key: RedisKey,
+  start: number,
+  stop: number
+): Promise<number> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
-  return await (client as any).glideClient.zremRangeByRank(normalizedKey, start, stop);
+  return await (client as any).glideClient.zremRangeByRank(
+    normalizedKey,
+    start,
+    stop
+  );
 }
 
-export async function zremrangebyscore(client: BaseClient, key: RedisKey, min: number | string, max: number | string): Promise<number> {
+export async function zremrangebyscore(
+  client: BaseClient,
+  key: RedisKey,
+  min: number | string,
+  max: number | string
+): Promise<number> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
-  
+
   let minBoundary: any;
   let maxBoundary: any;
 
@@ -483,7 +573,10 @@ export async function zremrangebyscore(client: BaseClient, key: RedisKey, min: n
 }
 
 // === ZSET algebra and STORE variants ===
-function parseWeightsAndAgg(keys: string[], tokens: any[]): {
+function parseWeightsAndAgg(
+  keys: string[],
+  tokens: any[]
+): {
   weighted: [string, number][] | null;
   agg?: 'SUM' | 'MIN' | 'MAX';
 } {
@@ -507,12 +600,21 @@ function parseWeightsAndAgg(keys: string[], tokens: any[]): {
   }
 
   if (weights) {
-    const weighted: [string, number][] = keys.map((k, idx) => [k, weights![idx] ?? 1]);
-    const res: { weighted: [string, number][] | null; agg?: 'SUM' | 'MIN' | 'MAX' } = { weighted };
+    const weighted: [string, number][] = keys.map((k, idx) => [
+      k,
+      weights![idx] ?? 1,
+    ]);
+    const res: {
+      weighted: [string, number][] | null;
+      agg?: 'SUM' | 'MIN' | 'MAX';
+    } = { weighted };
     if (agg !== undefined) res.agg = agg;
     return res;
   }
-  const res: { weighted: [string, number][] | null; agg?: 'SUM' | 'MIN' | 'MAX' } = { weighted: null };
+  const res: {
+    weighted: [string, number][] | null;
+    agg?: 'SUM' | 'MIN' | 'MAX';
+  } = { weighted: null };
   if (agg !== undefined) res.agg = agg;
   return res;
 }
@@ -525,14 +627,24 @@ export async function zunionstore(
 ): Promise<number> {
   await (client as any).ensureConnection();
   const dest = (client as any).normalizeKey(destination);
-  const keyArgs = args.slice(0, numKeys).map((k: any) => (client as any).normalizeKey(String(k)));
+  const keyArgs = args
+    .slice(0, numKeys)
+    .map((k: any) => (client as any).normalizeKey(String(k)));
   const options = args.slice(numKeys);
   const { weighted, agg } = parseWeightsAndAgg(keyArgs, options);
 
   if (weighted) {
-    return await ((client as any).glideClient as any).zunionstore(dest, weighted, agg ? { aggregationType: agg } : undefined);
+    return await ((client as any).glideClient as any).zunionstore(
+      dest,
+      weighted,
+      agg ? { aggregationType: agg } : undefined
+    );
   }
-  return await ((client as any).glideClient as any).zunionstore(dest, keyArgs, agg ? { aggregationType: agg } : undefined);
+  return await ((client as any).glideClient as any).zunionstore(
+    dest,
+    keyArgs,
+    agg ? { aggregationType: agg } : undefined
+  );
 }
 
 export async function zinterstore(
@@ -543,14 +655,24 @@ export async function zinterstore(
 ): Promise<number> {
   await (client as any).ensureConnection();
   const dest = (client as any).normalizeKey(destination);
-  const keyArgs = args.slice(0, numKeys).map((k: any) => (client as any).normalizeKey(String(k)));
+  const keyArgs = args
+    .slice(0, numKeys)
+    .map((k: any) => (client as any).normalizeKey(String(k)));
   const options = args.slice(numKeys);
   const { weighted, agg } = parseWeightsAndAgg(keyArgs, options);
 
   if (weighted) {
-    return await ((client as any).glideClient as any).zinterstore(dest, weighted, agg ? { aggregationType: agg } : undefined);
+    return await ((client as any).glideClient as any).zinterstore(
+      dest,
+      weighted,
+      agg ? { aggregationType: agg } : undefined
+    );
   }
-  return await ((client as any).glideClient as any).zinterstore(dest, keyArgs, agg ? { aggregationType: agg } : undefined);
+  return await ((client as any).glideClient as any).zinterstore(
+    dest,
+    keyArgs,
+    agg ? { aggregationType: agg } : undefined
+  );
 }
 
 export async function zdiffstore(
@@ -561,25 +683,44 @@ export async function zdiffstore(
 ): Promise<number> {
   await (client as any).ensureConnection();
   const dest = (client as any).normalizeKey(destination);
-  const keyArgs = args.slice(0, numKeys).map((k: any) => (client as any).normalizeKey(String(k)));
+  const keyArgs = args
+    .slice(0, numKeys)
+    .map((k: any) => (client as any).normalizeKey(String(k)));
   return await ((client as any).glideClient as any).zdiffstore(dest, keyArgs);
 }
 
-export async function zunion(client: BaseClient, ...args: any[]): Promise<string[] | string[]> {
+export async function zunion(
+  client: BaseClient,
+  ...args: any[]
+): Promise<string[] | string[]> {
   await (client as any).ensureConnection();
   // Redis 6.2+: ZUNION numkeys key [key ...] [WEIGHTS ...] [AGGREGATE ...] [WITHSCORES]
   if (args.length < 2) return [];
   const numKeys = Number(args[0]);
-  const keyArgs = args.slice(1, 1 + numKeys).map((k: any) => (client as any).normalizeKey(String(k)));
-  const tail = args.slice(1 + numKeys).map((a: any) => (typeof a === 'string' ? a : String(a)));
-  const withScores = tail.some((t: any) => String(t).toUpperCase() === 'WITHSCORES');
+  const keyArgs = args
+    .slice(1, 1 + numKeys)
+    .map((k: any) => (client as any).normalizeKey(String(k)));
+  const tail = args
+    .slice(1 + numKeys)
+    .map((a: any) => (typeof a === 'string' ? a : String(a)));
+  const withScores = tail.some(
+    (t: any) => String(t).toUpperCase() === 'WITHSCORES'
+  );
   const { weighted, agg } = parseWeightsAndAgg(keyArgs, tail);
 
   if (withScores) {
-    const list = await ((client as any).glideClient as any).zunionWithScores(weighted || keyArgs, agg ? { aggregationType: agg } : undefined);
+    const list = await ((client as any).glideClient as any).zunionWithScores(
+      weighted || keyArgs,
+      agg ? { aggregationType: agg } : undefined
+    );
     const flat: string[] = [];
     for (const item of list) {
-      if (item && typeof item === 'object' && 'element' in item && 'score' in item) {
+      if (
+        item &&
+        typeof item === 'object' &&
+        'element' in item &&
+        'score' in item
+      ) {
         flat.push(String(item.element), String(item.score));
       }
     }
@@ -589,20 +730,37 @@ export async function zunion(client: BaseClient, ...args: any[]): Promise<string
   return res.map((x: any) => ParameterTranslator.convertGlideString(x) || '');
 }
 
-export async function zinter(client: BaseClient, ...args: any[]): Promise<string[] | string[]> {
+export async function zinter(
+  client: BaseClient,
+  ...args: any[]
+): Promise<string[] | string[]> {
   await (client as any).ensureConnection();
   if (args.length < 2) return [];
   const numKeys = Number(args[0]);
-  const keyArgs = args.slice(1, 1 + numKeys).map((k: any) => (client as any).normalizeKey(String(k)));
-  const tail = args.slice(1 + numKeys).map((a: any) => (typeof a === 'string' ? a : String(a)));
-  const withScores = tail.some((t: any) => String(t).toUpperCase() === 'WITHSCORES');
+  const keyArgs = args
+    .slice(1, 1 + numKeys)
+    .map((k: any) => (client as any).normalizeKey(String(k)));
+  const tail = args
+    .slice(1 + numKeys)
+    .map((a: any) => (typeof a === 'string' ? a : String(a)));
+  const withScores = tail.some(
+    (t: any) => String(t).toUpperCase() === 'WITHSCORES'
+  );
   const { weighted, agg } = parseWeightsAndAgg(keyArgs, tail);
 
   if (withScores) {
-    const list = await ((client as any).glideClient as any).zinterWithScores(weighted || keyArgs, agg ? { aggregationType: agg } : undefined);
+    const list = await ((client as any).glideClient as any).zinterWithScores(
+      weighted || keyArgs,
+      agg ? { aggregationType: agg } : undefined
+    );
     const flat: string[] = [];
     for (const item of list) {
-      if (item && typeof item === 'object' && 'element' in item && 'score' in item) {
+      if (
+        item &&
+        typeof item === 'object' &&
+        'element' in item &&
+        'score' in item
+      ) {
         flat.push(String(item.element), String(item.score));
       }
     }
@@ -612,18 +770,34 @@ export async function zinter(client: BaseClient, ...args: any[]): Promise<string
   return res.map((x: any) => ParameterTranslator.convertGlideString(x) || '');
 }
 
-export async function zdiff(client: BaseClient, ...args: any[]): Promise<string[] | string[]> {
+export async function zdiff(
+  client: BaseClient,
+  ...args: any[]
+): Promise<string[] | string[]> {
   await (client as any).ensureConnection();
   if (args.length < 2) return [];
   const numKeys = Number(args[0]);
-  const keyArgs = args.slice(1, 1 + numKeys).map((k: any) => (client as any).normalizeKey(String(k)));
-  const tail = args.slice(1 + numKeys).map((a: any) => (typeof a === 'string' ? a : String(a)));
-  const withScores = tail.some((t: any) => String(t).toUpperCase() === 'WITHSCORES');
+  const keyArgs = args
+    .slice(1, 1 + numKeys)
+    .map((k: any) => (client as any).normalizeKey(String(k)));
+  const tail = args
+    .slice(1 + numKeys)
+    .map((a: any) => (typeof a === 'string' ? a : String(a)));
+  const withScores = tail.some(
+    (t: any) => String(t).toUpperCase() === 'WITHSCORES'
+  );
   if (withScores) {
-    const list = await ((client as any).glideClient as any).zdiffWithScores(keyArgs);
+    const list = await ((client as any).glideClient as any).zdiffWithScores(
+      keyArgs
+    );
     const flat: string[] = [];
     for (const item of list) {
-      if (item && typeof item === 'object' && 'element' in item && 'score' in item) {
+      if (
+        item &&
+        typeof item === 'object' &&
+        'element' in item &&
+        'score' in item
+      ) {
         flat.push(String(item.element), String(item.score));
       }
     }

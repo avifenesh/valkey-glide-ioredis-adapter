@@ -10,7 +10,15 @@
  * - Geospatial search and filtering
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -227,14 +235,16 @@ describe('Search Commands - Valkey Search Compatibility', () => {
         try {
           await valkey.ftDrop(uniqueName, false);
           // If it doesn't throw, that's unexpected but we'll handle it
-          fail(
+          assert.fail(
             "Expected ftDrop to throw an error since it's not supported in Valkey Search"
           );
         } catch (error) {
           // Verify we get the expected "not available" error
-          assert.ok(error.message.includes(
-            'FT.DROP command is not available in Valkey Search'
-          ));
+          assert.ok(
+            error.message.includes(
+              'FT.DROP command is not available in Valkey Search'
+            )
+          );
         }
       } catch (error) {
         if (error.message?.includes('already exists')) {
@@ -289,13 +299,13 @@ describe('Search Commands - Valkey Search Compatibility', () => {
 
       const result = await valkey.ftAdd(
         'test_products',
-        `product:${product!.id}`,
+        `product:${product.id}`,
         1.0,
         {
-          name: product!.name,
-          description: product!.description,
-          price: product!.price.toString(),
-          category: product!.category,
+          name: product.name,
+          description: product.description,
+          price: product.price.toString(),
+          category: product.category,
         }
       );
 
@@ -511,7 +521,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
         );
 
         for (let i = 1; i < ratings.length; i++) {
-          assert.ok(ratings[i]! <= ratings[i - 1]!);
+          assert.ok(ratings[i] <= ratings[i - 1]);
         }
       }
     });
@@ -604,7 +614,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
         const testVector = [0.1, 0.2, 0.3, 0.4];
         await valkey.ftAdd('test_vectors', 'vec:1', 1.0, {
           title: 'Test Document',
-          embedding.from(new Float32Array(testVector).buffer),
+          embedding: Buffer.from(new Float32Array(testVector).buffer),
         });
 
         // Perform vector search
@@ -646,7 +656,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
       // Verify all results are under $1500
       for (const doc of results.documents) {
         if (doc.fields && doc.fields.price) {
-          assert.ok(parseFloat(doc.fields.price)).toBeLessThanOrEqual(1500);
+          assert.ok(parseFloat(doc.fields.price) <= 1500);
         }
       }
     });
@@ -712,9 +722,12 @@ describe('Search Commands - Valkey Search Compatibility', () => {
 
   describe('Error Handling and Edge Cases', () => {
     test('should handle search on non-existent index', async () => {
-      await assert.ok(
-        valkey.ftSearch('nonexistent_index', { query: '*' })
-      ).rejects.toThrow();
+      try {
+        await valkey.ftSearch('nonexistent_index', { query: '*' });
+        assert.fail('Expected error for non-existent index');
+      } catch (error) {
+        assert.ok(error);
+      }
     });
 
     test('should handle malformed queries gracefully', async () => {
@@ -766,11 +779,15 @@ describe('Search Commands - Valkey Search Compatibility', () => {
         options: { LIMIT: { offset: 0, count: 10 } },
       };
 
-      await assert.ok(
-        valkey.ftSearch('products', textSearchQuery)
-      ).rejects.toThrow(
-        /Unsupported query type.*only supports vector similarity search.*KNN syntax/
-      );
+      try {
+        await valkey.ftSearch('products', textSearchQuery);
+        assert.fail('Expected error for unsupported query type');
+      } catch (error) {
+        assert.match(
+          error.message,
+          /Unsupported query type.*only supports vector similarity search.*KNN syntax/
+        );
+      }
     });
 
     test('should accept vector similarity queries', async () => {
@@ -789,8 +806,10 @@ describe('Search Commands - Valkey Search Compatibility', () => {
         await valkey.ftSearch('products', vectorSearchQuery);
       } catch (error) {
         // Should not be our "unsupported query type" error
-        assert.ok(error.message).not.toMatch(
-          /Unsupported query type.*only supports vector similarity search/
+        assert.ok(
+          !error.message.match(
+            /Unsupported query type.*only supports vector similarity search/
+          )
         );
       }
     });

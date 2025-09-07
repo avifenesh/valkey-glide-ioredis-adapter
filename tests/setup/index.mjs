@@ -1,16 +1,20 @@
 import { afterEach } from 'node:test';
-import { getStandaloneConfig, getClusterConfig, checkTestServers } from '../utils/test-config.mjs';
+import {
+  getStandaloneConfig,
+  getClusterConfig,
+  checkTestServers,
+} from '../utils/test-config.mjs';
 import pkg from '../../dist/index.js';
 
 export const testUtils = {
   getStandaloneConfig,
-  checkTestServers
+  checkTestServers,
 };
 
 // DISABLED: Aggressive global cleanup was causing hanging tests
 // Individual tests should handle their own cleanup as needed
-// 
-// // Global cleanup after each test: flush databases and close clients  
+//
+// // Global cleanup after each test: flush databases and close clients
 // // Skip if a global setup is already handling this.
 // if (process.env.GLOBAL_TEST_SETUP !== '1') afterEach(async () => {
 //   try {

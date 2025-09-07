@@ -10,7 +10,15 @@
  * - Edge case parameter combinations
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -22,8 +30,9 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
   beforeEach(async () => {
     const config = getStandaloneConfig();
     redis = new Redis(config);
-  
-    await redis.connect();});
+
+    await redis.connect();
+  });
 
   afterEach(async () => {
     if (redis) {
@@ -92,15 +101,17 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
       // Collect all errors to prevent unhandled errors
       const errors = [];
-      const errorHandler = (error) => {
+      const errorHandler = error => {
         errors.push(error);
       };
       invalidRedis.on('error', errorHandler);
 
       // Should handle connection errors gracefully
-      await assert.ok(async () => {
-        await invalidRedis.set('test', 'value');
-      }).rejects.toThrow();
+      await assert
+        .ok(async () => {
+          await invalidRedis.set('test', 'value');
+        })
+        .rejects.toThrow();
 
       // Wait for any async errors and then clean up
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -136,7 +147,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
         const retrieved = await redis.get(key);
 
         assert.strictEqual(retrieved, largeValue);
-        assert.strictEqual(retrieved!.length, size);
+        assert.strictEqual(retrieved.length, size);
       }
     });
 
@@ -191,7 +202,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
     test('should handle type conflicts gracefully', async () => {
       const key = 'type:conflict:test';
 
-      // Set as string
+      // Set
       await redis.set(key, 'string_value');
 
       // Try to use as list (should fail)
@@ -589,7 +600,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       try {
         // Database selection is not implemented in this adapter
         // This test verifies the adapter handles missing methods gracefully
-        assert.ok((redis ).select).toBeUndefined();
+        assert.ok(redis.select === undefined);
       } catch (error) {
         // Database selection might not be supported in cluster mode
         assert.ok(error !== undefined);
@@ -696,7 +707,12 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       const entries = await redis.xrange(streamKey, '-', '+');
       assert.strictEqual(entries.length, 2);
       assert.strictEqual(entries[0][0], id1);
-      assert.deepStrictEqual(entries[0][1], ['field1', 'value1', 'field2', 'value2']);
+      assert.deepStrictEqual(entries[0][1], [
+        'field1',
+        'value1',
+        'field2',
+        'value2',
+      ]);
 
       // Get stream length
       const length = await redis.xlen(streamKey);
@@ -716,9 +732,9 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       // HyperLogLog commands are not implemented in the current adapter
       // This test verifies the adapter handles missing methods gracefully
       try {
-        assert.ok((redis ).pfadd).toBeUndefined();
-        assert.ok((redis ).pfcount).toBeUndefined();
-        assert.ok((redis ).pfmerge).toBeUndefined();
+        assert.ok(redis.pfadd === undefined);
+        assert.ok(redis.pfcount === undefined);
+        assert.ok(redis.pfmerge === undefined);
       } catch (error) {
         // Commands might not be available
         assert.ok(error !== undefined);

@@ -23,10 +23,10 @@ describe('Simple Socket.IO Pattern Test', () => {
       ...baseConfig,
       enableEventBasedPubSub: true, // Socket.IO compatibility mode
     };
-    
+
     pubClient = new Redis(config);
     subClient = new Redis(config);
-    
+
     // Connect both clients
     await pubClient.connect();
     await subClient.connect();
@@ -39,46 +39,52 @@ describe('Simple Socket.IO Pattern Test', () => {
         if (subClient) {
           // Remove all event listeners
           subClient.removeAllListeners();
-          
+
           // Unsubscribe before disconnecting
           try {
             await subClient.punsubscribe();
           } catch {}
-          
+
           // Clean shutdown with proper connection draining
           try {
             await subClient.quit();
           } catch {}
-          
+
           // Additional cleanup for GLIDE connections
-          if (subClient.disconnect && typeof subClient.disconnect === 'function') {
+          if (
+            subClient.disconnect &&
+            typeof subClient.disconnect === 'function'
+          ) {
             try {
               await subClient.disconnect();
             } catch {}
           }
-          
+
           subClient = null;
         }
         if (pubClient) {
           try {
             await pubClient.quit();
           } catch {}
-          
+
           // Additional cleanup for GLIDE connections
-          if (pubClient.disconnect && typeof pubClient.disconnect === 'function') {
+          if (
+            pubClient.disconnect &&
+            typeof pubClient.disconnect === 'function'
+          ) {
             try {
               await pubClient.disconnect();
             } catch {}
           }
-          
+
           pubClient = null;
         }
-        
+
         // Allow time for connections to fully close
         await new Promise(resolve => setTimeout(resolve, 100));
-        
+
         // Force close any remaining handles
-        const handles = (process)._getActiveHandles?.() || [];
+        const handles = process._getActiveHandles?.() || [];
         handles.forEach(handle => {
           if (handle && typeof handle.destroy === 'function') {
             try {
@@ -91,7 +97,7 @@ describe('Simple Socket.IO Pattern Test', () => {
           }
         });
       };
-      
+
       await cleanup();
     } catch (error) {
       // Ignore cleanup errors
@@ -101,28 +107,35 @@ describe('Simple Socket.IO Pattern Test', () => {
 
   it('should handle basic pattern subscription like Socket.IO adapter', async () => {
     const receivedMessages = [];
-    
+
     // Set up pattern listener (Socket.IO uses pattern subscriptions)
     subClient.on('pmessage', (pattern, channel, message) => {
-      const messageStr = Buffer.isBuffer(message) ? message.toString() : message;
-      console.log(`Received pattern message: ${pattern} -> ${channel}: ${messageStr.substring(0, 50)}`);
+      const messageStr = Buffer.isBuffer(message)
+        ? message.toString()
+        : message;
+      console.log(
+        `Received pattern message: ${pattern} -> ${channel}: ${messageStr.substring(0, 50)}`
+      );
       receivedMessages.push({ pattern, channel, message: messageStr });
     });
 
     // Subscribe to Socket.IO-style pattern
     await subClient.psubscribe('socket.io#/#*');
-    
+
     // Wait a bit for subscription to be established
     await delay(100);
 
     // Publish a Socket.IO-style message
-    const testMessage = JSONJSON: JSON.stringify({
+    const testMessage = JSON.stringify({
       type: 'test',
       message: 'Hello from Node.js test',
       data: { framework: 'node:test' },
     });
 
-    const publishResult = await pubClient.publish('socket.io#/#general#', testMessage);
+    const publishResult = await pubClient.publish(
+      'socket.io#/#general#',
+      testMessage
+    );
     console.log(`Publish result: ${publishResult}`);
 
     // Wait for message propagation with timeout
@@ -132,11 +145,28 @@ describe('Simple Socket.IO Pattern Test', () => {
     }
 
     // Verify we received the pattern message
-    assert.strictEqual(receivedMessages.length, 1, 'Should receive exactly one pattern message');
-    assert.strictEqual(receivedMessages[0].pattern, 'socket.io#/#*', 'Pattern should match subscription');
-    assert.strictEqual(receivedMessages[0].channel, 'socket.io#/#general#', 'Channel should match published channel');
-    assert.ok(receivedMessages[0].message.includes('Hello from Node.js test'), 'Message should contain test content');
+    assert.strictEqual(
+      receivedMessages.length,
+      1,
+      'Should receive exactly one pattern message'
+    );
+    assert.strictEqual(
+      receivedMessages[0].pattern,
+      'socket.io#/#*',
+      'Pattern should match subscription'
+    );
+    assert.strictEqual(
+      receivedMessages[0].channel,
+      'socket.io#/#general#',
+      'Channel should match published channel'
+    );
+    assert.ok(
+      receivedMessages[0].message.includes('Hello from Node.js test'),
+      'Message should contain test content'
+    );
 
-    console.log('✅ Socket.IO pattern subscription working with Node.js test runner');
+    console.log(
+      '✅ Socket.IO pattern subscription working with Node.js test runner'
+    );
   });
 });

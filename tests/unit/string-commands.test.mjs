@@ -3,11 +3,23 @@
  * These tests are adapted from ioredis patterns to ensure compatibility
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
-import { getStandaloneConfig, checkTestServers, delay } from '../utils/test-config.mjs';
+import {
+  getStandaloneConfig,
+  checkTestServers,
+  delay,
+} from '../utils/test-config.mjs';
 
 describe('String Commands (ioredis compatibility)', () => {
   let redis;
@@ -71,36 +83,36 @@ describe('String Commands (ioredis compatibility)', () => {
     test('set and get should work with basic string values', async () => {
       // Basic SET/GET - most common pattern
       await redis.set('foo', 'bar');
-      assert.ok(await redis.get('foo')).toBe('bar');
+      assert.strictEqual(await redis.get('foo'), 'bar');
     });
 
     test('get should return null for non-existent keys', async () => {
-      assert.ok(await redis.get('nonexistent')).toBeNull();
+      assert.strictEqual(await redis.get('nonexistent'), null);
     });
 
     test('set should overwrite existing values', async () => {
       await redis.set('key', 'value1');
       await redis.set('key', 'value2');
-      assert.ok(await redis.get('key')).toBe('value2');
+      assert.strictEqual(await redis.get('key'), 'value2');
     });
 
     test('set with expiration using EX option', async () => {
       // ioredis pattern: redis.set('key', 'value', 'EX', 1)
       await redis.set('foo', 'bar', 'EX', 1);
-      assert.ok(await redis.get('foo')).toBe('bar');
+      assert.strictEqual(await redis.get('foo'), 'bar');
 
       // Wait for expiration - increased delay for reliability
       await delay(1500);
-      assert.ok(await redis.get('foo')).toBeNull();
+      assert.strictEqual(await redis.get('foo'), null);
     });
 
     test('set with expiration using PX option', async () => {
       // ioredis pattern: redis.set('key', 'value', 'PX', 500)
       await redis.set('foo', 'bar', 'PX', 500);
-      assert.ok(await redis.get('foo')).toBe('bar');
+      assert.strictEqual(await redis.get('foo'), 'bar');
 
       await delay(600);
-      assert.ok(await redis.get('foo')).toBeNull();
+      assert.strictEqual(await redis.get('foo'), null);
     });
 
     test('set with NX option (only if not exists)', async () => {
@@ -108,7 +120,7 @@ describe('String Commands (ioredis compatibility)', () => {
       await redis.set('foo', 'bar');
       const result = await redis.set('foo', 'new_value', 'NX');
       assert.strictEqual(result, null); // Should fail because key exists
-      assert.ok(await redis.get('foo')).toBe('bar'); // Value unchanged
+      assert.strictEqual(await redis.get('foo'), 'bar'); // Value unchanged
     });
 
     test('set with XX option (only if exists)', async () => {
@@ -119,7 +131,7 @@ describe('String Commands (ioredis compatibility)', () => {
       await redis.set('existing', 'old_value');
       const result2 = await redis.set('existing', 'new_value', 'XX');
       assert.strictEqual(result2, 'OK');
-      assert.ok(await redis.get('existing')).toBe('new_value');
+      assert.strictEqual(await redis.get('existing'), 'new_value');
     });
 
     test('set with combined options EX and NX', async () => {
@@ -137,17 +149,17 @@ describe('String Commands (ioredis compatibility)', () => {
       // ioredis variadic pattern: redis.mset('key1', 'val1', 'key2', 'val2')
       await redis.mset('key1', 'val1', 'key2', 'val2', 'key3', 'val3');
 
-      assert.ok(await redis.get('key1')).toBe('val1');
-      assert.ok(await redis.get('key2')).toBe('val2');
-      assert.ok(await redis.get('key3')).toBe('val3');
+      assert.strictEqual(await redis.get('key1'), 'val1');
+      assert.strictEqual(await redis.get('key2'), 'val2');
+      assert.strictEqual(await redis.get('key3'), 'val3');
     });
 
     test('mset should accept object format', async () => {
       // ioredis object pattern: redis.mset({key1: 'val1', key2: 'val2'})
       await redis.mset({ key1: 'val1', key2: 'val2' });
 
-      assert.ok(await redis.get('key1')).toBe('val1');
-      assert.ok(await redis.get('key2')).toBe('val2');
+      assert.strictEqual(await redis.get('key1'), 'val1');
+      assert.strictEqual(await redis.get('key2'), 'val2');
     });
 
     test('mget should return multiple values', async () => {
@@ -174,7 +186,7 @@ describe('String Commands (ioredis compatibility)', () => {
       await redis.set('counter', '10');
       const result = await redis.incr('counter');
       assert.strictEqual(result, 11);
-      assert.ok(await redis.get('counter')).toBe('11');
+      assert.strictEqual(await redis.get('counter'), '11');
     });
 
     test('incr should initialize to 1 for non-existent key', async () => {
@@ -212,13 +224,13 @@ describe('String Commands (ioredis compatibility)', () => {
       await redis.set('mykey', 'Hello');
       const length = await redis.append('mykey', ' World');
       assert.strictEqual(length, 11);
-      assert.ok(await redis.get('mykey')).toBe('Hello World');
+      assert.strictEqual(await redis.get('mykey'), 'Hello World');
     });
 
     test('append should set value for non-existent key', async () => {
       const length = await redis.append('newkey', 'Hello');
       assert.strictEqual(length, 5);
-      assert.ok(await redis.get('newkey')).toBe('Hello');
+      assert.strictEqual(await redis.get('newkey'), 'Hello');
     });
 
     test('strlen should return string length', async () => {
@@ -242,18 +254,18 @@ describe('String Commands (ioredis compatibility)', () => {
       await redis.set('mykey', 'Hello World');
       const length = await redis.setrange('mykey', 6, 'Redis');
       assert.strictEqual(length, 11);
-      assert.ok(await redis.get('mykey')).toBe('Hello Redis');
+      assert.strictEqual(await redis.get('mykey'), 'Hello Redis');
     });
   });
 
   describe('Advanced SET operations', () => {
     test('setex should set key with expiration', async () => {
       await redis.setex('tempkey', 1, 'tempvalue');
-      assert.ok(await redis.get('tempkey')).toBe('tempvalue');
+      assert.strictEqual(await redis.get('tempkey'), 'tempvalue');
 
       // Wait for expiration - increased delay for reliability
       await delay(1500);
-      assert.ok(await redis.get('tempkey')).toBeNull();
+      assert.strictEqual(await redis.get('tempkey'), null);
     });
 
     test('setnx should set only if key does not exist', async () => {
@@ -263,33 +275,37 @@ describe('String Commands (ioredis compatibility)', () => {
       const result2 = await redis.setnx('newkey', 'value2');
       assert.strictEqual(result2, 0); // Failed because key exists
 
-      assert.ok(await redis.get('newkey')).toBe('value1');
+      assert.strictEqual(await redis.get('newkey'), 'value1');
     });
 
     test('psetex should set key with millisecond expiration', async () => {
       await redis.psetex('tempkey', 500, 'tempvalue');
-      assert.ok(await redis.get('tempkey')).toBe('tempvalue');
+      assert.strictEqual(await redis.get('tempkey'), 'tempvalue');
 
       await delay(600);
-      assert.ok(await redis.get('tempkey')).toBeNull();
+      assert.strictEqual(await redis.get('tempkey'), null);
     });
   });
 
   describe('Error handling', () => {
     test('incr should throw error for non-numeric value', async () => {
       await redis.set('textkey', 'not_a_number');
-      await assert.ok(redis.incr('textkey')).rejects.toThrow();
+      await assert.rejects(async () => {
+        await redis.incr('textkey');
+      });
     });
 
     test('incrby should throw error for non-numeric value', async () => {
       await redis.set('textkey', 'not_a_number');
-      await assert.ok(redis.incrby('textkey', 5)).rejects.toThrow();
+      await assert.rejects(async () => {
+        await redis.incrby('textkey', 5);
+      });
     });
 
     test('operations should handle large values', async () => {
       const largeValue = 'x'.repeat(10000);
       await redis.set('largekey', largeValue);
-      assert.ok(await redis.get('largekey')).toBe(largeValue);
+      assert.strictEqual(await redis.get('largekey'), largeValue);
     });
   });
 });

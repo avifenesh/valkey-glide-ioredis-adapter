@@ -10,7 +10,15 @@
  * - Discord's temporary data cleanup
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -21,12 +29,13 @@ describe('Key Management - TTL & Persistence Patterns', () => {
   beforeEach(async () => {
     const config = {
       host: 'localhost',
-      port: parseInt(process.env.VALKEY_PORT || "6383"),
+      port: parseInt(process.env.VALKEY_PORT || '6383'),
       lazyConnect: true,
     };
     redis = new Redis(config);
-  
-    await redis.connect();});
+
+    await redis.connect();
+  });
 
   afterEach(async () => {
     if (redis) {
@@ -37,9 +46,9 @@ describe('Key Management - TTL & Persistence Patterns', () => {
   describe('Session Management Patterns', () => {
     test('should handle user session TTL like Spotify', async () => {
       const sessionKey = 'session:user:' + Math.random();
-      const sessionData = JSONJSON: JSON.stringify({
+      const sessionData = JSON.stringify({
         userId: '12345',
-        loginTime.now(),
+        loginTime: Date.now(),
         permissions: ['read', 'write'],
         preferences: { theme: 'dark', language: 'en' },
       });
@@ -81,11 +90,11 @@ describe('Key Management - TTL & Persistence Patterns', () => {
 
       // Create session
       await redis.setex(sessionKey, 3600, 'active_session');
-      assert.ok(await redis.exists(sessionKey)).toBe(1);
+      assert.strictEqual(await redis.exists(sessionKey), 1);
 
       // Logout - remove session immediately
       await redis.del(sessionKey);
-      assert.ok(await redis.exists(sessionKey)).toBe(0);
+      assert.strictEqual(await redis.exists(sessionKey), 0);
 
       // TTL should return -2 (key doesn't exist)
       const ttl = await redis.ttl(sessionKey);
@@ -98,11 +107,11 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       const cacheKey = 'cache:route:' + Math.random();
 
       // Warm cache with long TTL for popular route
-      const routeData = JSONJSON: JSON.stringify({
+      const routeData = JSON.stringify({
         route: 'downtown-airport',
         estimatedTime: 25,
         trafficFactor: 1.2,
-        cachedAt.now(),
+        cachedAt: Date.now(),
       });
 
       await redis.setex(cacheKey, 3600, routeData); // 1 hour cache
@@ -130,9 +139,9 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       await redis.setex(`${baseKey}:priority:low`, 1200, 'low_priority_data'); // 20 min
 
       // Verify all exist
-      assert.ok(await redis.exists(`${baseKey}:priority:high`)).toBe(1);
-      assert.ok(await redis.exists(`${baseKey}:priority:medium`)).toBe(1);
-      assert.ok(await redis.exists(`${baseKey}:priority:low`)).toBe(1);
+      assert.strictEqual(await redis.exists(`${baseKey}:priority:high`), 1);
+      assert.strictEqual(await redis.exists(`${baseKey}:priority:medium`), 1);
+      assert.strictEqual(await redis.exists(`${baseKey}:priority:low`), 1);
 
       // Check TTLs are different
       const ttlHigh = await redis.ttl(`${baseKey}:priority:high`);
@@ -195,16 +204,16 @@ describe('Key Management - TTL & Persistence Patterns', () => {
 
       // Consume OTP (delete after use)
       await redis.del(otpKey);
-      assert.ok(await redis.get(otpKey)).toBeNull();
+      assert.strictEqual(await redis.get(otpKey), null);
     });
 
     test('should handle temporary upload tokens', async () => {
       const tokenKey = 'upload:token:' + Math.random();
-      const tokenData = JSONJSON: JSON.stringify({
+      const tokenData = JSON.stringify({
         uploadId: 'upload_123',
         maxSize: 10485760, // 10MB
         allowedTypes: ['image/jpeg', 'image/png'],
-        createdAt.now(),
+        createdAt: Date.now(),
       });
 
       // Upload token expires in 15 minutes
@@ -216,14 +225,14 @@ describe('Key Management - TTL & Persistence Patterns', () => {
 
       // Remove token after use
       await redis.del(tokenKey);
-      assert.ok(await redis.exists(tokenKey)).toBe(0);
+      assert.strictEqual(await redis.exists(tokenKey), 0);
     });
   });
 
   describe('Key Persistence Patterns', () => {
     test('should handle persistent data without TTL', async () => {
       const configKey = 'config:app:' + Math.random();
-      const configData = JSONJSON: JSON.stringify({
+      const configData = JSON.stringify({
         appName: 'MyApp',
         version: '1.0.0',
         features: { analytics: true, notifications: true },
@@ -264,10 +273,10 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       const primaryKey = 'primary:data:' + Math.random();
       const backupKey = 'backup:data:' + Math.random();
 
-      const importantData = JSONJSON: JSON.stringify({
+      const importantData = JSON.stringify({
         userId: '54321',
         criticalInfo: 'important_business_data',
-        Date.now(),
+        timestamp: Date.now(),
       });
 
       // Store in primary location (with TTL)
@@ -277,12 +286,12 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       await redis.set(backupKey, importantData);
 
       // Primary should have TTL, backup should not
-      assert.ok(await redis.ttl(primaryKey)).toBeGreaterThan(0);
-      assert.ok(await redis.ttl(backupKey)).toBe(-1);
+      assert.ok((await redis.ttl(primaryKey)) > 0);
+      assert.strictEqual(await redis.ttl(backupKey), -1);
 
       // Both should have same data
-      assert.ok(await redis.get(primaryKey)).toBe(importantData);
-      assert.ok(await redis.get(backupKey)).toBe(importantData);
+      assert.strictEqual(await redis.get(primaryKey), importantData);
+      assert.strictEqual(await redis.get(backupKey), importantData);
     });
   });
 
@@ -298,12 +307,12 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       await redis.lpush(`${baseKey}:list`, 'item1');
 
       // Check types
-      assert.ok(await redis.type(`${baseKey}`)).toBe('string');
-      assert.ok(await redis.type(`${baseKey}:hash`)).toBe('hash');
-      assert.ok(await redis.type(`${baseKey}:set`)).toBe('set');
-      assert.ok(await redis.type(`${baseKey}:zset`)).toBe('zset');
-      assert.ok(await redis.type(`${baseKey}:list`)).toBe('list');
-      assert.ok(await redis.type(`${baseKey}:nonexistent`)).toBe('none');
+      assert.strictEqual(await redis.type(`${baseKey}`), 'string');
+      assert.strictEqual(await redis.type(`${baseKey}:hash`), 'hash');
+      assert.strictEqual(await redis.type(`${baseKey}:set`), 'set');
+      assert.strictEqual(await redis.type(`${baseKey}:zset`), 'zset');
+      assert.strictEqual(await redis.type(`${baseKey}:list`), 'list');
+      assert.strictEqual(await redis.type(`${baseKey}:nonexistent`), 'none');
     });
 
     test('should handle bulk key operations', async () => {
@@ -317,7 +326,7 @@ describe('Key Management - TTL & Persistence Patterns', () => {
 
       // Create multiple keys
       for (let i = 0; i < keys.length; i++) {
-        await redis.set(keys[i]!, `value_${i}`);
+        await redis.set(keys[i], `value_${i}`);
       }
 
       // Check all exist
@@ -329,7 +338,7 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       assert.strictEqual(deletedCount, keys.length);
 
       // Verify all deleted
-      assert.ok(await redis.exists(...keys)).toBe(0);
+      assert.strictEqual(await redis.exists(...keys), 0);
     });
 
     test('should handle key pattern matching for maintenance', async () => {
@@ -345,11 +354,17 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       // Find keys by pattern
       const userKeys = await redis.keys(`${prefix}:user:*`);
       assert.strictEqual(userKeys.length, 2);
-      assert.ok(userKeys.every(key => key.includes('user'))).strictEqual(true);
+      assert.strictEqual(
+        userKeys.every(key => key.includes('user')),
+        true
+      );
 
       const sessionKeys = await redis.keys(`${prefix}:session:*`);
       assert.strictEqual(sessionKeys.length, 2);
-      assert.ok(sessionKeys.every(key => key.includes('session'))).strictEqual(true);
+      assert.strictEqual(
+        sessionKeys.every(key => key.includes('session')),
+        true
+      );
     });
   });
 
@@ -361,16 +376,16 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       await redis.setex(shortKey, 2, 'short_lived_data');
 
       // Verify exists initially
-      assert.ok(await redis.exists(shortKey)).toBe(1);
-      assert.ok(await redis.ttl(shortKey)).toBeLessThanOrEqual(2);
+      assert.strictEqual(await redis.exists(shortKey), 1);
+      assert.ok((await redis.ttl(shortKey)) <= 2);
 
       // Wait for expiration
       await new Promise(resolve => setTimeout(resolve, 2500));
 
       // Should be expired
-      assert.ok(await redis.exists(shortKey)).toBe(0);
-      assert.ok(await redis.ttl(shortKey)).toBe(-2);
-      assert.ok(await redis.get(shortKey)).toBeNull();
+      assert.strictEqual(await redis.exists(shortKey), 0);
+      assert.strictEqual(await redis.ttl(shortKey), -2);
+      assert.strictEqual(await redis.get(shortKey), null);
     });
 
     test('should handle TTL updates and cancellations', async () => {
@@ -378,18 +393,18 @@ describe('Key Management - TTL & Persistence Patterns', () => {
 
       // Set with initial TTL
       await redis.setex(mutableKey, 300, 'mutable_data');
-      assert.ok(await redis.ttl(mutableKey)).toBeLessThanOrEqual(300);
+      assert.ok((await redis.ttl(mutableKey)) <= 300);
 
       // Update TTL to longer duration
       await redis.expire(mutableKey, 600);
-      assert.ok(await redis.ttl(mutableKey)).toBeGreaterThan(500);
+      assert.ok((await redis.ttl(mutableKey)) > 500);
 
       // Cancel expiration (make persistent)
       await redis.persist(mutableKey);
-      assert.ok(await redis.ttl(mutableKey)).toBe(-1);
+      assert.strictEqual(await redis.ttl(mutableKey), -1);
 
       // Data should still be there
-      assert.ok(await redis.get(mutableKey)).toBe('mutable_data');
+      assert.strictEqual(await redis.get(mutableKey), 'mutable_data');
     });
   });
 
@@ -398,7 +413,7 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       const nonExistentKey = 'nonexistent:' + Math.random();
 
       // TTL on non-existent key should return -2
-      assert.ok(await redis.ttl(nonExistentKey)).toBe(-2);
+      assert.strictEqual(await redis.ttl(nonExistentKey), -2);
 
       // EXPIRE on non-existent key should return 0
       const expireResult = await redis.expire(nonExistentKey, 300);
@@ -417,19 +432,19 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       await redis.expire(testKey, 0);
 
       // Key should be expired/deleted
-      assert.ok(await redis.exists(testKey)).toBe(0);
+      assert.strictEqual(await redis.exists(testKey), 0);
     });
 
     test('should handle type operations on various data structures', async () => {
       const baseKey = 'type:edge:' + Math.random();
 
       // Test TYPE on fresh key (should be 'none')
-      assert.ok(await redis.type(`${baseKey}:fresh`)).toBe('none');
+      assert.strictEqual(await redis.type(`${baseKey}:fresh`), 'none');
 
       // Create and delete key, then check type
       await redis.set(`${baseKey}:temp`, 'temp');
       await redis.del(`${baseKey}:temp`);
-      assert.ok(await redis.type(`${baseKey}:temp`)).toBe('none');
+      assert.strictEqual(await redis.type(`${baseKey}:temp`), 'none');
     });
 
     test('should handle concurrent TTL operations', async () => {
@@ -442,7 +457,7 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       const ttl2 = await redis.ttl(concurrentKey);
 
       // TTL values should be close (within a few seconds)
-      assert.ok(Math.abs(ttl1 - ttl2)).toBeLessThan(5);
+      assert.ok(Math.abs(ttl1 - ttl2))(5);
       assert.ok(ttl1 > 3500);
       assert.ok(ttl2 > 3500);
     });

@@ -19,19 +19,21 @@ export function getTestConfig(mode = 'standalone') {
     return {
       mode: 'cluster',
       nodes: getClusterConfig(),
-      createClient: (options = {}) => new Cluster(getClusterConfig(), {
-        lazyConnect: true,
-        ...options
-      })
+      createClient: (options = {}) =>
+        new Cluster(getClusterConfig(), {
+          lazyConnect: true,
+          ...options,
+        }),
     };
   } else {
     return {
-      mode: 'standalone', 
+      mode: 'standalone',
       config: getStandaloneConfig(),
-      createClient: (options = {}) => new Redis({
-        ...getStandaloneConfig(),
-        ...options
-      })
+      createClient: (options = {}) =>
+        new Redis({
+          ...getStandaloneConfig(),
+          ...options,
+        }),
     };
   }
 }
@@ -43,7 +45,7 @@ export function getTestConfig(mode = 'standalone') {
 export function getStandaloneConfig() {
   return {
     host: process.env.VALKEY_HOST || 'localhost',
-    port: parseInt(process.env.VALKEY_PORT || '6379'),
+    port: parseInt(process.env.VALKEY_PORT || '6383'),
     lazyConnect: true, // Critical for valkey-bundle compatibility
   };
 }
@@ -53,13 +55,15 @@ export function getStandaloneConfig() {
  * @returns {Array} Array of cluster node configurations
  */
 export function getClusterConfig() {
-  const clusterNodes = process.env.VALKEY_CLUSTER_NODES || 'localhost:17000,localhost:17001,localhost:17002';
-  
+  const clusterNodes =
+    process.env.VALKEY_CLUSTER_NODES ||
+    'localhost:17000,localhost:17001,localhost:17002';
+
   return clusterNodes.split(',').map(node => {
     const [host, port] = node.trim().split(':');
     return {
       host: host || 'localhost',
-      port: parseInt(port || '17000')
+      port: parseInt(port || '17000'),
     };
   });
 }
@@ -71,7 +75,7 @@ export function getClusterConfig() {
  */
 export function testBothModes(testName, testFn) {
   const modes = ['standalone'];
-  
+
   // Only test cluster mode if cluster nodes are available
   if (process.env.ENABLE_CLUSTER_TESTS === 'true') {
     modes.push('cluster');
@@ -80,7 +84,7 @@ export function testBothModes(testName, testFn) {
   modes.forEach(mode => {
     describe(`${testName} (${mode})`, () => {
       const config = getTestConfig(mode);
-      
+
       // Pass a factory function that creates clients
       testFn(() => config.createClient(), mode);
     });
@@ -91,5 +95,5 @@ export default {
   getTestConfig,
   getStandaloneConfig,
   getClusterConfig,
-  testBothModes
+  testBothModes,
 };

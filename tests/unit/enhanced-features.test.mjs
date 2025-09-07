@@ -3,11 +3,23 @@
  * Tests the new implementations for Bull/Bee-Queue compatibility
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
-import { getStandaloneConfig, checkTestServers, delay } from '../utils/test-config.mjs';
+import {
+  getStandaloneConfig,
+  checkTestServers,
+  delay,
+} from '../utils/test-config.mjs';
 
 describe('Enhanced Features for Queue Compatibility', () => {
   let redis;
@@ -45,7 +57,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
         numberOfKeys: 1,
       });
 
-      const result = await (redis ).testCmd('key1', 'arg1');
+      const result = await redis.testCmd('key1', 'arg1');
       assert.deepStrictEqual(result, ['key1', 'arg1']);
     });
 
@@ -55,7 +67,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
         numberOfKeys: 1,
       });
 
-      const result = await (redis ).testCmd(['key1', 'arg1']);
+      const result = await redis.testCmd(['key1', 'arg1']);
       assert.deepStrictEqual(result, ['key1', 'arg1']);
     });
 
@@ -65,7 +77,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
         numberOfKeys: 0,
       });
 
-      const result = await (redis ).emptyCmd();
+      const result = await redis.emptyCmd();
       assert.deepStrictEqual(result, []);
       assert.ok(result !== null);
     });
@@ -76,11 +88,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
         numberOfKeys: 1,
       });
 
-      const result = await (redis ).complexCmd(
-        'key1',
-        { data: 'test' },
-        42
-      );
+      const result = await redis.complexCmd('key1', { data: 'test' }, 42);
       assert.deepStrictEqual(result, ['key1', '{"data":"test"}', '42']);
     });
   });
@@ -89,20 +97,20 @@ describe('Enhanced Features for Queue Compatibility', () => {
     test('creates client type', async () => {
       const client = Redis.createClient('client', config);
       assert.ok(client instanceof Redis);
-      assert.strictEqual(client .clientType, 'client');
+      assert.strictEqual(client.clientType, 'client');
     });
 
     test('creates subscriber type', async () => {
       const subscriber = Redis.createClient('subscriber', config);
       assert.ok(subscriber instanceof Redis);
-      assert.strictEqual(subscriber .clientType, 'subscriber');
+      assert.strictEqual(subscriber.clientType, 'subscriber');
     });
 
     test('creates bclient type with blocking ops enabled', async () => {
       const bclient = Redis.createClient('bclient', config);
       assert.ok(bclient instanceof Redis);
-      assert.strictEqual(bclient .clientType, 'bclient');
-      assert.ok((bclient ).enableBlockingOps).strictEqual(true);
+      assert.strictEqual(bclient.clientType, 'bclient');
+      assert.strictEqual(bclient.enableBlockingOps, true);
     });
 
     test('returns client immediately (Bull compatibility)', async () => {
@@ -209,15 +217,15 @@ describe('Enhanced Features for Queue Compatibility', () => {
       const original = Redis.createClient('bclient', config);
       const duplicated = await original.duplicate();
 
-      assert.strictEqual(duplicated .clientType, 'bclient');
+      assert.strictEqual(duplicated.clientType, 'bclient');
     });
 
     test('allows override options', async () => {
       const targetPort = process.env.REDIS_PORT
         ? Number(process.env.REDIS_PORT)
-        : 6379;
+        : 6383;
       const duplicated = await redis.duplicate({ port: targetPort });
-      assert.ok((duplicated )._options.port).toBe(targetPort);
+      assert.strictEqual(duplicated._options.port, targetPort);
     });
 
     test('connects in background (Bull compatibility)', async () => {

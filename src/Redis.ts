@@ -1,6 +1,6 @@
 /**
  * Redis - Valkey Standalone client (External API)
- * 
+ *
  * Drop-in replacement for ioredis Redis class using Valkey GLIDE.
  * Wraps internal StandaloneClient with ioredis-compatible naming.
  */
@@ -80,7 +80,6 @@ export class Redis extends StandaloneClient {
 
     return duplicated;
   }
-
 }
 
 /**

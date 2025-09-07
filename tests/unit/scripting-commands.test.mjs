@@ -5,7 +5,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import pkg from "../../dist/index.js";
+import pkg from '../../dist/index.js';
 const { Redis } = pkg;
 
 describe('Scripting Commands', () => {
@@ -36,7 +36,7 @@ describe('Scripting Commands', () => {
 
     it('should execute script with KEYS', async () => {
       await client.set('mykey', 'myvalue');
-      
+
       const script = 'return redis.call("get", KEYS[1])';
       const result = await client.eval(script, 1, 'mykey');
       assert.strictEqual(result, 'myvalue');
@@ -52,7 +52,7 @@ describe('Scripting Commands', () => {
       const script = 'return redis.call("set", KEYS[1], ARGV[1])';
       const result = await client.eval(script, 1, 'testkey', 'testvalue');
       assert.strictEqual(result, 'OK');
-      
+
       const value = await client.get('testkey');
       assert.strictEqual(value, 'testvalue');
     });
@@ -85,10 +85,10 @@ describe('Scripting Commands', () => {
     it('should handle boolean returns', async () => {
       const scriptTrue = 'return true';
       const scriptFalse = 'return false';
-      
+
       const resultTrue = await client.eval(scriptTrue, 0);
       const resultFalse = await client.eval(scriptFalse, 0);
-      
+
       assert.strictEqual(resultTrue, 1);
       assert.strictEqual(resultFalse, null);
     });
@@ -101,21 +101,31 @@ describe('Scripting Commands', () => {
         local val2 = redis.call("get", KEYS[2])
         return val1 .. ":" .. val2
       `;
-      
-      const result = await client.eval(script, 2, 'key1', 'key2', 'value1', 'value2');
+
+      const result = await client.eval(
+        script,
+        2,
+        'key1',
+        'key2',
+        'value1',
+        'value2'
+      );
       assert.strictEqual(result, 'value1:value2');
     });
 
     it('should handle errors in script', async () => {
       const script = 'return redis.call("unknown_command")';
-      
+
       try {
         await client.eval(script, 0);
         assert.fail('Should have thrown error');
       } catch (err) {
         assert.ok(err);
         // More flexible error check - just ensure we got an error
-        assert.ok(err.message && err.message.length > 0, 'Should have error message');
+        assert.ok(
+          err.message && err.message.length > 0,
+          'Should have error message'
+        );
       }
     });
 
@@ -130,7 +140,7 @@ describe('Scripting Commands', () => {
           return "Error caught"
         end
       `;
-      
+
       const result = await client.eval(script, 0);
       assert.strictEqual(result, 'Error caught');
     });
@@ -143,7 +153,7 @@ describe('Scripting Commands', () => {
         end
         return count
       `;
-      
+
       const result = await client.eval(script, 0);
       assert.strictEqual(result, 500500); // Sum of 1 to 1000
     });
@@ -159,11 +169,11 @@ describe('Scripting Commands', () => {
           return "equal"
         end
       `;
-      
+
       const result1 = await client.eval(script, 0, 15);
       const result2 = await client.eval(script, 0, 5);
       const result3 = await client.eval(script, 0, 10);
-      
+
       assert.strictEqual(result1, 'greater');
       assert.strictEqual(result2, 'less');
       assert.strictEqual(result3, 'equal');
@@ -173,13 +183,13 @@ describe('Scripting Commands', () => {
   describe('EVALSHA', () => {
     it('should execute script by SHA1 hash', async () => {
       const script = 'return "Hello from cached script"';
-      
+
       // First load the script
       const sha = await client.script('load', script);
       assert.ok(sha);
       assert.strictEqual(typeof sha, 'string');
       assert.strictEqual(sha.length, 40); // SHA1 hash is 40 characters
-      
+
       // Execute by SHA
       const result = await client.evalsha(sha, 0);
       assert.strictEqual(result, 'Hello from cached script');
@@ -187,24 +197,26 @@ describe('Scripting Commands', () => {
 
     it('should handle NOSCRIPT error gracefully', async () => {
       const fakeSha = 'a'.repeat(40);
-      
+
       try {
         await client.evalsha(fakeSha, 0);
         assert.fail('Should have thrown NOSCRIPT error');
       } catch (err) {
         assert.ok(err);
         // Check for NOSCRIPT or NoScriptError (GLIDE uses NoScriptError)
-        assert.ok(err.message.includes('NOSCRIPT') || err.message.includes('NoScript'));
+        assert.ok(
+          err.message.includes('NOSCRIPT') || err.message.includes('NoScript')
+        );
       }
     });
 
     it('should execute with KEYS and ARGV', async () => {
       const script = 'return redis.call("set", KEYS[1], ARGV[1])';
       const sha = await client.script('load', script);
-      
+
       const result = await client.evalsha(sha, 1, 'mykey', 'myvalue');
       assert.strictEqual(result, 'OK');
-      
+
       const value = await client.get('mykey');
       assert.strictEqual(value, 'myvalue');
     });
@@ -214,7 +226,7 @@ describe('Scripting Commands', () => {
     it('should load script and return SHA1', async () => {
       const script = 'return "test script"';
       const sha = await client.script('load', script);
-      
+
       assert.ok(sha);
       assert.strictEqual(typeof sha, 'string');
       assert.strictEqual(sha.length, 40);
@@ -228,10 +240,10 @@ describe('Scripting Commands', () => {
         end
         return sum
       `;
-      
+
       const sha = await client.script('load', script);
       assert.ok(sha);
-      
+
       // Test execution
       const result = await client.evalsha(sha, 0, 1, 2, 3, 4, 5);
       assert.strictEqual(result, 15);
@@ -239,10 +251,10 @@ describe('Scripting Commands', () => {
 
     it('should handle duplicate loads', async () => {
       const script = 'return 42';
-      
+
       const sha1 = await client.script('load', script);
       const sha2 = await client.script('load', script);
-      
+
       assert.strictEqual(sha1, sha2); // Same script should have same SHA
     });
   });
@@ -251,7 +263,7 @@ describe('Scripting Commands', () => {
     it('should check if script exists', async () => {
       const script = 'return "exists test"';
       const sha = await client.script('load', script);
-      
+
       const exists = await client.script('exists', sha);
       assert.deepStrictEqual(exists, [1]);
     });
@@ -262,7 +274,7 @@ describe('Scripting Commands', () => {
       const sha1 = await client.script('load', script1);
       const sha2 = await client.script('load', script2);
       const fakeSha = 'a'.repeat(40);
-      
+
       const exists = await client.script('exists', sha1, sha2, fakeSha);
       assert.deepStrictEqual(exists, [1, 1, 0]);
     });
@@ -278,15 +290,15 @@ describe('Scripting Commands', () => {
     it('should flush all scripts', async () => {
       const script = 'return "flush test"';
       const sha = await client.script('load', script);
-      
+
       // Verify script exists
       let exists = await client.script('exists', sha);
       assert.deepStrictEqual(exists, [1]);
-      
+
       // Flush all scripts
       const result = await client.script('flush');
       assert.strictEqual(result, 'OK');
-      
+
       // Verify script no longer exists
       exists = await client.script('exists', sha);
       assert.deepStrictEqual(exists, [0]);
@@ -295,10 +307,10 @@ describe('Scripting Commands', () => {
     it('should flush with SYNC mode', async () => {
       const script = 'return "sync flush"';
       const sha = await client.script('load', script);
-      
+
       const result = await client.script('flush', 'SYNC');
       assert.strictEqual(result, 'OK');
-      
+
       const exists = await client.script('exists', sha);
       assert.deepStrictEqual(exists, [0]);
     });
@@ -306,13 +318,13 @@ describe('Scripting Commands', () => {
     it('should flush with ASYNC mode', async () => {
       const script = 'return "async flush"';
       const sha = await client.script('load', script);
-      
+
       const result = await client.script('flush', 'ASYNC');
       assert.strictEqual(result, 'OK');
-      
+
       // May need to wait for async flush
       await new Promise(resolve => setTimeout(resolve, 100));
-      
+
       const exists = await client.script('exists', sha);
       assert.deepStrictEqual(exists, [0]);
     });
@@ -325,7 +337,10 @@ describe('Scripting Commands', () => {
         assert.fail('Should have thrown error');
       } catch (err) {
         assert.ok(err);
-        assert.ok(err.message.includes('NOTBUSY') || err.message.includes('No scripts in execution'));
+        assert.ok(
+          err.message.includes('NOTBUSY') ||
+            err.message.includes('No scripts in execution')
+        );
       }
     });
 
@@ -365,16 +380,16 @@ describe('Scripting Commands', () => {
           return redis.call("incr", KEYS[1])
         end
       `;
-      
+
       const key = 'counter';
       const limit = 5;
-      
+
       // Increment up to limit
       for (let i = 1; i <= limit; i++) {
         const result = await client.eval(script, 1, key, limit);
         assert.strictEqual(result, i);
       }
-      
+
       // Should return -1 when limit reached
       const result = await client.eval(script, 1, key, limit);
       assert.strictEqual(result, -1);
@@ -390,21 +405,21 @@ describe('Scripting Commands', () => {
           return 0
         end
       `;
-      
+
       const key = 'cas_key';
       await client.set(key, 'initial');
-      
+
       // Successful CAS
       const result1 = await client.eval(script, 1, key, 'initial', 'updated');
       assert.strictEqual(result1, 1);
-      
+
       const value = await client.get(key);
       assert.strictEqual(value, 'updated');
-      
+
       // Failed CAS (wrong expected value)
       const result2 = await client.eval(script, 1, key, 'wrong', 'another');
       assert.strictEqual(result2, 0);
-      
+
       const value2 = await client.get(key);
       assert.strictEqual(value2, 'updated'); // Should remain unchanged
     });
@@ -431,20 +446,34 @@ describe('Scripting Commands', () => {
           return 0
         end
       `;
-      
+
       const key = 'rate_limit';
       const limit = 3;
       const window = 10; // 10 seconds
       const now = Math.floor(Date.now() / 1000);
-      
+
       // Should allow first 3 requests
       for (let i = 0; i < limit; i++) {
-        const result = await client.eval(script, 1, key, limit, window, now + i);
+        const result = await client.eval(
+          script,
+          1,
+          key,
+          limit,
+          window,
+          now + i
+        );
         assert.strictEqual(result, 1);
       }
-      
+
       // Should deny 4th request
-      const result = await client.eval(script, 1, key, limit, window, now + limit);
+      const result = await client.eval(
+        script,
+        1,
+        key,
+        limit,
+        window,
+        now + limit
+      );
       assert.strictEqual(result, 0);
     });
 
@@ -456,12 +485,12 @@ describe('Scripting Commands', () => {
         end
         return results
       `;
-      
+
       // Set up test data
       await client.set('bulk1', 'value1');
       await client.set('bulk2', 'value2');
       await client.set('bulk3', 'value3');
-      
+
       const results = await client.eval(script, 3, 'bulk1', 'bulk2', 'bulk3');
       assert.deepStrictEqual(results, ['value1', 'value2', 'value3']);
     });
@@ -479,16 +508,16 @@ describe('Scripting Commands', () => {
           return 0
         end
       `;
-      
+
       const lockKey = 'distributed_lock';
       const token1 = 'token_123';
       const token2 = 'token_456';
       const ttl = 10;
-      
+
       // First lock should succeed
       const result1 = await client.eval(script, 1, lockKey, token1, ttl);
       assert.strictEqual(result1, 1);
-      
+
       // Second lock should fail
       const result2 = await client.eval(script, 1, lockKey, token2, ttl);
       assert.strictEqual(result2, 0);
@@ -505,21 +534,21 @@ describe('Scripting Commands', () => {
           return 0
         end
       `;
-      
+
       const lockKey = 'release_lock';
       const token = 'my_token';
-      
+
       // Set the lock
       await client.set(lockKey, token);
-      
+
       // Release with correct token
       const result1 = await client.eval(releaseScript, 1, lockKey, token);
       assert.strictEqual(result1, 1);
-      
+
       // Verify lock is released
       const value = await client.get(lockKey);
       assert.strictEqual(value, null);
-      
+
       // Try to release non-existent lock
       const result2 = await client.eval(releaseScript, 1, lockKey, token);
       assert.strictEqual(result2, 0);
@@ -529,20 +558,23 @@ describe('Scripting Commands', () => {
   describe('Error Handling', () => {
     it('should handle syntax errors in script', async () => {
       const script = 'this is not valid lua';
-      
+
       try {
         await client.eval(script, 0);
         assert.fail('Should have thrown error');
       } catch (err) {
         assert.ok(err);
         // Just check we got an error - message format varies
-        assert.ok(err.message && err.message.length > 0, 'Should have error message');
+        assert.ok(
+          err.message && err.message.length > 0,
+          'Should have error message'
+        );
       }
     });
 
     it('should handle runtime errors in script', async () => {
       const script = 'return 1 / 0'; // Division by zero
-      
+
       try {
         await client.eval(script, 0);
         // Some versions might handle this differently
@@ -553,20 +585,23 @@ describe('Scripting Commands', () => {
 
     it('should handle invalid Redis commands in script', async () => {
       const script = 'return redis.call("INVALID_COMMAND", "key")';
-      
+
       try {
         await client.eval(script, 0);
         assert.fail('Should have thrown error');
       } catch (err) {
         assert.ok(err);
         // Just check we got an error - message format varies
-        assert.ok(err.message && err.message.length > 0, 'Should have error message');
+        assert.ok(
+          err.message && err.message.length > 0,
+          'Should have error message'
+        );
       }
     });
 
     it('should handle wrong number of arguments', async () => {
       const script = 'return KEYS[1]';
-      
+
       try {
         await client.eval(script, 2, 'only_one_key'); // Says 2 keys but provides 1
         assert.fail('Should have thrown error');

@@ -10,7 +10,15 @@
  * - API responses caching, session data, configuration
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -18,7 +26,7 @@ import {
   getValkeyBundleTestConfig,
   checkAvailableModules,
   waitForValkeyBundle,
-} from '../utils/valkey-bundle-config';
+} from '../utils/valkey-bundle-config.mjs';
 
 describe('JSON Commands - ValkeyJSON Compatibility', () => {
   let redis;
@@ -27,8 +35,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
     const config = await getValkeyBundleTestConfig();
     redis = new Redis(config);
 
-    
-    await redis.connect();// Wait for valkey-bundle to be ready and check modules
+    await redis.connect(); // Wait for valkey-bundle to be ready and check modules
     const isReady = await waitForValkeyBundle(redis);
     if (!isReady) {
       throw new Error(
@@ -78,7 +85,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       const getResult = await redis.jsonGet('user:123');
       assert.ok(getResult);
 
-      const parsed = JSONJSON.parse(getResult!);
+      const parsed = JSON.parse(getResult);
       assert.strictEqual(parsed.id, 123);
       assert.strictEqual(parsed.name, 'John Doe');
       assert.strictEqual(parsed.active, true);
@@ -120,7 +127,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       );
       assert.ok(preferences);
 
-      const parsed = JSONJSON.parse(preferences!);
+      const parsed = JSON.parse(preferences);
       assert.strictEqual(parsed.theme, 'dark');
       assert.ok(parsed.languages.includes('en'));
     });
@@ -155,7 +162,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Verify the value was updated
       const final = await redis.jsonGet('conditional:test');
-      const parsed = JSONJSON.parse(final!);
+      const parsed = JSON.parse(final);
       assert.strictEqual(parsed.value, 3);
     });
   });
@@ -199,7 +206,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Verify deletion
       const users = await redis.jsonGet('pathtest', '$.users');
-      const parsed = JSONJSON.parse(users!);
+      const parsed = JSON.parse(users);
       assert.strictEqual(parsed.length, 2);
       assert.strictEqual(parsed[0].name, 'Alice');
       assert.strictEqual(parsed[1].name, 'Charlie'); // Bob was removed
@@ -212,7 +219,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Verify array is empty
       const tags = await redis.jsonGet('pathtest', '$.metadata.tags');
-      const parsed = JSONJSON.parse(tags!);
+      const parsed = JSON.parse(tags);
       assert.deepStrictEqual(parsed, []);
     });
   });
@@ -248,7 +255,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Verify results
       const final = await redis.jsonGet('counters', '$.stats');
-      const parsed = JSONJSON.parse(final!);
+      const parsed = JSON.parse(final);
       assert.strictEqual(parsed.page_views, 115);
       assert.strictEqual(parsed.conversion_rate, 3.0);
     });
@@ -264,7 +271,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Verify result
       const final = await redis.jsonGet('counters', '$.stats.page_views');
-      const parsed = JSONJSON.parse(final!);
+      const parsed = JSON.parse(final);
       assert.strictEqual(parsed, 200);
     });
   });
@@ -285,14 +292,14 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       const newLength = await redis.jsonStrAppend(
         'strings',
         '$.messages.welcome',
-        ' World!'
+        ' World'
       );
       assert.ok(newLength > 0);
 
       // Verify result
       const result = await redis.jsonGet('strings', '$.messages.welcome');
-      const parsed = JSONJSON.parse(result!);
-      assert.strictEqual(parsed, 'Hello World!');
+      const parsed = JSON.parse(result);
+      assert.strictEqual(parsed, 'Hello World');
     });
 
     test('should get string length', async () => {
@@ -326,7 +333,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Verify result
       const result = await redis.jsonGet('arrays', '$.items');
-      const parsed = JSONJSON.parse(result!);
+      const parsed = JSON.parse(result);
       assert.deepStrictEqual(parsed, ['apple', 'banana', 'orange', 'grape']);
     });
 
@@ -342,7 +349,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Verify result
       const result = await redis.jsonGet('arrays', '$.numbers');
-      const parsed = JSONJSON.parse(result!);
+      const parsed = JSON.parse(result);
       assert.deepStrictEqual(parsed, [1, 1.5, 2, 3]);
     });
 
@@ -362,11 +369,11 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Verify results
       const items = await redis.jsonGet('arrays', '$.items');
-      const itemsParsed = JSONJSON.parse(items!);
+      const itemsParsed = JSON.parse(items);
       assert.deepStrictEqual(itemsParsed, ['apple']); // banana was popped
 
       const numbers = await redis.jsonGet('arrays', '$.numbers');
-      const numbersParsed = JSONJSON.parse(numbers!);
+      const numbersParsed = JSON.parse(numbers);
       assert.deepStrictEqual(numbersParsed, [2, 3]); // 1 was popped from index 0
     });
 
@@ -377,7 +384,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Verify result
       const result = await redis.jsonGet('arrays', '$.numbers');
-      const parsed = JSONJSON.parse(result!);
+      const parsed = JSON.parse(result);
       assert.deepStrictEqual(parsed, [2]); // Only middle element remains
     });
   });
@@ -440,7 +447,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Verify results
       const final = await redis.jsonGet('booleans', '$.flags');
-      const parsed = JSONJSON.parse(final!);
+      const parsed = JSON.parse(final);
       assert.strictEqual(parsed.enabled, false);
       assert.strictEqual(parsed.debug, true);
       assert.strictEqual(parsed.experimental, true); // unchanged
@@ -461,7 +468,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
           gpu: 'NVIDIA RTX 3060',
         },
         reviews: [
-          { user: 'user1', rating: 5, comment: 'Excellent!' },
+          { user: 'user1', rating: 5, comment: 'Excellent' },
           { user: 'user2', rating: 4, comment: 'Good performance' },
         ],
         tags: ['gaming', 'laptop', 'high-performance'],
@@ -479,7 +486,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       await redis.jsonArrAppend('product:prod_123', '$.reviews', {
         user: 'user3',
         rating: 5,
-        comment: 'Amazing laptop!',
+        comment: 'Amazing laptop',
       });
 
       // Decrease stock
@@ -487,7 +494,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Get updated product
       const updated = await redis.jsonGet('product:prod_123');
-      const parsedProduct = JSONJSON.parse(updated!);
+      const parsedProduct = JSON.parse(updated);
 
       assert.ok(Math.abs(parsedProduct.price - 1169.99) < Math.pow(10, -2)); // Discounted price
       assert.strictEqual(parsedProduct.reviews.length, 3);
@@ -529,7 +536,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Get final session state
       const finalSession = await redis.jsonGet('session:sess_789');
-      const parsed = JSONJSON.parse(finalSession!);
+      const parsed = JSON.parse(finalSession);
 
       assert.strictEqual(parsed.activity.page_views, 1);
       assert.strictEqual(parsed.activity.actions_performed.length, 1);
@@ -573,7 +580,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Get updated config
       const updated = await redis.jsonGet('app:config');
-      const parsedConfig = JSONJSON.parse(updated!);
+      const parsedConfig = JSON.parse(updated);
 
       assert.strictEqual(parsedConfig.maintenance_mode, true);
       assert.strictEqual(parsedConfig.cache.ttl, 4800);
@@ -609,9 +616,12 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
         '$.users[?(@.active == true)]'
       );
       if (activeUsers) {
-        const parsed = JSONJSON.parse(activeUsers);
+        const parsed = JSON.parse(activeUsers);
         // Should contain Alice and Charlie
-        assert.ok(Array.isArray(parsed) || typeof parsed === 'object').strictEqual(true);
+        assert.strictEqual(
+          Array.isArray(parsed) || typeof parsed === 'object',
+          true
+        );
       }
     });
   });
@@ -666,11 +676,11 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       // Create large document
       const largeDoc = {
         metadata: { size: 'large' },
-        data.from({ length: 1000 }, (_, i) => ({
+        data: Array.from({ length: 1000 }, (_, i) => ({
           id: i,
           value: `item_${i}`,
           timestamp: new Date().toISOString(),
-          random.random(),
+          random: Math.random(),
         })),
       };
 
@@ -686,7 +696,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       const element = await redis.jsonGet('large:doc', '$.data[500]');
       assert.ok(element);
 
-      const parsed = JSONJSON.parse(element!);
+      const parsed = JSON.parse(element);
       assert.strictEqual(parsed.id, 500);
     });
   });

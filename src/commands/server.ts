@@ -206,9 +206,15 @@ export async function debug(
   return await (client as any).glideClient.customCommand(commandArgs);
 }
 
-export async function echo(client: BaseClient, message: string): Promise<string> {
+export async function echo(
+  client: BaseClient,
+  message: string
+): Promise<string> {
   await (client as any).ensureConnection();
-  const result = await (client as any).glideClient.customCommand(['ECHO', message]);
+  const result = await (client as any).glideClient.customCommand([
+    'ECHO',
+    message,
+  ]);
   return String(result);
 }
 
@@ -244,4 +250,3 @@ export async function monitor(client: BaseClient): Promise<'OK'> {
   const result = await (client as any).glideClient.customCommand(['MONITOR']);
   return (ParameterTranslator.convertGlideString(result) as any) || 'OK';
 }
-

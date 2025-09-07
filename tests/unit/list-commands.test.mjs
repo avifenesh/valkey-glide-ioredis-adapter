@@ -3,7 +3,15 @@
  * Real-world patterns queues, task queues, activity logs, job processing
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -15,8 +23,9 @@ describe('List Commands - Real-World Patterns', () => {
   beforeEach(async () => {
     const config = getStandaloneConfig();
     redis = new Redis(config);
-  
-    await redis.connect();});
+
+    await redis.connect();
+  });
 
   afterEach(async () => {
     await redis.quit();
@@ -83,17 +92,17 @@ describe('List Commands - Real-World Patterns', () => {
         id: '123',
         type: 'email',
         recipient: 'user@example.com',
-        Date.now(),
+        timestamp: Date.now(),
       };
 
-      await redis.rpush(messageKey, JSONJSON: JSON.stringify(messageData));
+      await redis.rpush(messageKey, JSON.stringify(messageData));
 
       // Consumer receives message
       const rawMessage = await redis.lpop(messageKey);
       assert.ok(rawMessage);
 
       if (rawMessage) {
-        const message = JSONJSON.parse(rawMessage as string);
+        const message = JSON.parse(rawMessage);
         assert.strictEqual(message.type, 'email');
         assert.strictEqual(message.recipient, 'user@example.com');
       }
@@ -104,9 +113,9 @@ describe('List Commands - Real-World Patterns', () => {
 
       // Add several messages
       const messages = [
-        JSONJSON: JSON.stringify({ id: 1, type: 'notification' }),
-        JSONJSON: JSON.stringify({ id: 2, type: 'email' }),
-        JSONJSON: JSON.stringify({ id: 3, type: 'sms' }),
+        JSON.stringify({ id: 1, type: 'notification' }),
+        JSON.stringify({ id: 2, type: 'email' }),
+        JSON.stringify({ id: 3, type: 'sms' }),
       ];
 
       await redis.rpush(inspectKey, ...messages);
@@ -115,7 +124,7 @@ describe('List Commands - Real-World Patterns', () => {
       const firstThree = await redis.lrange(inspectKey, 0, 2);
       assert.strictEqual(firstThree.length, 3);
 
-      const parsedFirst = JSONJSON.parse(firstThree[0]!);
+      const parsedFirst = JSON.parse(firstThree[0]);
       assert.strictEqual(parsedFirst.id, 1);
 
       // Queue should still have all messages
@@ -131,19 +140,19 @@ describe('List Commands - Real-World Patterns', () => {
       // Log user activities (most recent first)
       await redis.lpush(
         activityKey,
-        JSONJSON: JSON.stringify({ action: 'login', Date.now() })
+        JSON.stringify({ action: 'login', timestamp: Date.now() })
       );
 
       await redis.lpush(
         activityKey,
-        JSONJSON: JSON.stringify({ action: 'view_profile', Date.now() + 1000 })
+        JSON.stringify({ action: 'view_profile', timestamp: Date.now() + 1000 })
       );
 
       await redis.lpush(
         activityKey,
-        JSONJSON: JSON.stringify({
+        JSON.stringify({
           action: 'update_settings',
-          Date.now() + 2000,
+          timestamp: Date.now() + 2000,
         })
       );
 
@@ -151,7 +160,7 @@ describe('List Commands - Real-World Patterns', () => {
       const recentActivities = await redis.lrange(activityKey, 0, 4);
       assert.strictEqual(recentActivities.length, 3);
 
-      const latestActivity = JSONJSON.parse(recentActivities[0]!);
+      const latestActivity = JSON.parse(recentActivities[0]);
       assert.strictEqual(latestActivity.action, 'update_settings'); // Most recent
     });
 
@@ -162,10 +171,10 @@ describe('List Commands - Real-World Patterns', () => {
       const logEntries = [];
       for (let i = 0; i < 10; i++) {
         logEntries.push(
-          JSONJSON: JSON.stringify({
+          JSON.stringify({
             level: 'info',
             message: `Log entry ${i}`,
-            Date.now() + i,
+            timestamp: Date.now() + i,
           })
         );
       }
@@ -179,7 +188,7 @@ describe('List Commands - Real-World Patterns', () => {
       assert.strictEqual(remainingLogs, 5);
 
       const logs = await redis.lrange(logKey, 0, -1);
-      const firstLog = JSONJSON.parse(logs[0]!);
+      const firstLog = JSON.parse(logs[0]);
       assert.ok(firstLog.message.includes('Log entry 5')); // First of the kept entries
     });
   });
@@ -194,18 +203,18 @@ describe('List Commands - Real-World Patterns', () => {
         type: 'image_processing',
         data: { imageId: 'img_456', filters: ['resize', 'crop'] },
         priority: 'high',
-        createdAt.now(),
+        createdAt: Date.now(),
       };
 
       // Add job to queue
-      await redis.lpush(jobKey, JSONJSON: JSON.stringify(job));
+      await redis.lpush(jobKey, JSON.stringify(job));
 
       // Worker picks up job
       const rawJob = await redis.rpop(jobKey);
       assert.ok(rawJob);
 
       if (rawJob) {
-        const processedJob = JSONJSON.parse(rawJob as string);
+        const processedJob = JSON.parse(rawJob);
         assert.strictEqual(processedJob.type, 'image_processing');
         assert.strictEqual(processedJob.data.imageId, 'img_456');
       }
@@ -225,7 +234,7 @@ describe('List Commands - Real-World Patterns', () => {
       // Job fails, move to retry queue
       await redis.rpush(
         retryQueueKey,
-        JSONJSON: JSON.stringify({
+        JSON.stringify({
           ...job,
           attempts: 1,
           lastError: 'SMTP connection failed',
@@ -237,11 +246,11 @@ describe('List Commands - Real-World Patterns', () => {
       assert.ok(retryJob);
 
       if (retryJob) {
-        const jobData = JSONJSON.parse(retryJob as string);
+        const jobData = JSON.parse(retryJob);
         assert.strictEqual(jobData.attempts, 1);
 
         // Move back to main queue for retry
-        await redis.lpush(mainQueueKey, JSONJSON: JSON.stringify(jobData));
+        await redis.lpush(mainQueueKey, JSON.stringify(jobData));
       }
 
       const mainQueueLength = await redis.llen(mainQueueKey);
@@ -279,7 +288,11 @@ describe('List Commands - Real-World Patterns', () => {
       await redis.lset(modifyKey, 1, 'updated2');
 
       const updatedList = await redis.lrange(modifyKey, 0, -1);
-      assert.deepStrictEqual(updatedList, ['original1', 'updated2', 'original3']);
+      assert.deepStrictEqual(updatedList, [
+        'original1',
+        'updated2',
+        'original3',
+      ]);
 
       // Update first element
       await redis.lset(modifyKey, 0, 'updated1');
@@ -307,7 +320,12 @@ describe('List Commands - Real-World Patterns', () => {
       assert.strictEqual(removed, 2);
 
       const afterRemove = await redis.lrange(removeKey, 0, -1);
-      assert.deepStrictEqual(afterRemove, ['item1', 'item2', 'item3', 'duplicate']);
+      assert.deepStrictEqual(afterRemove, [
+        'item1',
+        'item2',
+        'item3',
+        'duplicate',
+      ]);
 
       // Remove all remaining occurrences
       const removedAll = await redis.lrem(removeKey, 0, 'duplicate');
@@ -343,8 +361,12 @@ describe('List Commands - Real-World Patterns', () => {
       await redis.set(stringKey, 'not-a-list');
 
       // List operations should fail on string keys
-      await assert.ok(redis.lpush(stringKey, 'value')).rejects.toThrow();
-      await assert.ok(redis.lrange(stringKey, 0, -1)).rejects.toThrow();
+      await assert.rejects(async () => {
+        await redis.lpush(stringKey, 'value');
+      });
+      await assert.rejects(async () => {
+        await redis.lrange(stringKey, 0, -1);
+      });
     });
 
     test('should handle empty list cleanup', async () => {

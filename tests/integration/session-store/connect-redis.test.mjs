@@ -5,17 +5,42 @@
  * for Express session management - a critical use case for web applications.
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
-import express = require('express');
-import session = require('express-session');
+// Using dynamic imports for CommonJS modules
+const express = (await import('express')).default;
+const session = (await import('express-session')).default;
 import { RedisStore } from 'connect-redis';
-import supertest = require('supertest');
-import { Redis } from '../../../src';
-import { testUtils } from '../../setup';
+const supertest = (await import('supertest')).default;
+import pkg from '../../../dist/index.js';
+const { Redis } = pkg;
+import { getStandaloneConfig } from '../../utils/test-config.mjs';
 
+async function checkTestServers() {
+  try {
+    const config = getStandaloneConfig();
+    const testClient = new Redis(config);
+    await testClient.connect();
+    await testClient.ping();
+    await testClient.quit();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 describe('Express Session Store Integration', () => {
-  let app: express.Application;
+  let app;
   let redisClient;
   let request;
   const keyPrefix = 'TEST:session:';
@@ -56,7 +81,7 @@ describe('Express Session Store Integration', () => {
     app.use(
       session({
         store: new RedisStore({
-          client: redisClient , // Type assertion for compatibility
+          client: redisClient, // Type assertion for compatibility
           prefix: `${keyPrefix}sess:`,
           ttl: 3600, // 1 hour
         }),
@@ -71,7 +96,7 @@ describe('Express Session Store Integration', () => {
     );
 
     // Test routes
-    app.get('/login', (req, res: express.Response) => {
+    app.get('/login', (req, res) => {
       req.session.userId = 'user123';
       req.session.username = 'testuser';
       req.session.loginTime = Date.now();
@@ -81,7 +106,7 @@ describe('Express Session Store Integration', () => {
       });
     });
 
-    app.get('/profile', (req, res: express.Response) => {
+    app.get('/profile', (req, res) => {
       if (!req.session.userId) {
         return res.status(401).json({ error: 'Not authenticated' });
       }
@@ -93,7 +118,7 @@ describe('Express Session Store Integration', () => {
       });
     });
 
-    app.post('/update-profile', (req, res: express.Response) => {
+    app.post('/update-profile', (req, res) => {
       if (!req.session.userId) {
         return res.status(401).json({ error: 'Not authenticated' });
       }
@@ -105,8 +130,8 @@ describe('Express Session Store Integration', () => {
       });
     });
 
-    app.post('/logout', (req, res: express.Response) => {
-      req.session.destroy((err) => {
+    app.post('/logout', (req, res) => {
+      req.session.destroy(err => {
         if (err) {
           return res.status(500).json({ error: 'Failed to logout' });
         }

@@ -8,15 +8,39 @@
  * - Long-lived connections (not rapid create/destroy)
  */
 
-import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
-import { Server as SocketIOServer } from 'socket.io';
+import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
-import { io as Client } from 'socket.io-client';
+import { io } from 'socket.io-client';
 import { createServer } from 'http';
-import { Redis } from '../../../src';
-import { testUtils } from '../../setup';
+import pkg from '../../../dist/index.js';
+const { Redis } = pkg;
+import { getStandaloneConfig } from '../../utils/test-config.mjs';
 
+async function checkTestServers() {
+  try {
+    const config = getStandaloneConfig();
+    const testClient = new Redis(config);
+    await testClient.connect();
+    await testClient.ping();
+    await testClient.quit();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+function delay(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 describe('Real-World Socket.IO Application', () => {
   // Production pattern pub/sub clients for each Socket.IO server
   let valkeyPubClient1;
@@ -42,17 +66,17 @@ describe('Real-World Socket.IO Application', () => {
     const net = await import('net');
 
     const tempServer1 = net.createServer();
-    await new Promise<void>(resolve => {
+    await new Promise(resolve => {
       tempServer1.listen(0, () => {
-        port1 = (tempServer1.address() )?.port || 0;
+        port1 = tempServer1.address()?.port || 0;
         tempServer1.close(() => resolve());
       });
     });
 
     const tempServer2 = net.createServer();
-    await new Promise<void>(resolve => {
+    await new Promise(resolve => {
       tempServer2.listen(0, () => {
-        port2 = (tempServer2.address() )?.port || 0;
+        port2 = tempServer2.address()?.port || 0;
         tempServer2.close(() => resolve());
       });
     });
@@ -99,12 +123,12 @@ describe('Real-World Socket.IO Application', () => {
     const originalPublish1 = valkeyPubClient1.publish.bind(valkeyPubClient1);
     const originalPublish2 = valkeyPubClient2.publish.bind(valkeyPubClient2);
 
-    valkeySubClient1.subscribe = (...args[]) => {
+    valkeySubClient1.subscribe = (...args) => {
       console.log('Real ioredis SubClient1.subscribe called with:', args);
       return originalSubscribe1(...args);
     };
 
-    valkeySubClient2.subscribe = (...args[]) => {
+    valkeySubClient2.subscribe = (...args) => {
       console.log('Real ioredis SubClient2.subscribe called with:', args);
       return originalSubscribe2(...args);
     };
@@ -130,23 +154,17 @@ describe('Real-World Socket.IO Application', () => {
     chatServer2 = createServer();
 
     // Create Socket.IO instances with real chat functionality
-    io1 = new SocketIOServer(chatServer1, {
+    io1 = new Server(chatServer1, {
       cors: { origin: '*', methods: ['GET', 'POST'] },
     });
 
-    io2 = new SocketIOServer(chatServer2, {
+    io2 = new Server(chatServer2, {
       cors: { origin: '*', methods: ['GET', 'POST'] },
     });
 
     // Setup Redis adapters with separate clients for each server
-    const adapter1 = createAdapter(
-      valkeyPubClient1 ,
-      valkeySubClient1 
-    );
-    const adapter2 = createAdapter(
-      valkeyPubClient2 ,
-      valkeySubClient2 
-    );
+    const adapter1 = createAdapter(valkeyPubClient1, valkeySubClient1);
+    const adapter2 = createAdapter(valkeyPubClient2, valkeySubClient2);
 
     io1.adapter(adapter1);
     io2.adapter(adapter2);
@@ -168,7 +186,7 @@ describe('Real-World Socket.IO Application', () => {
           socket.to(roomName).emit('user-joined', {
             username,
             message: `${username} joined the chat`,
-            Date.now(),
+            timestamp: Date.now(),
           });
 
           socket.emit('joined-room', {
@@ -180,11 +198,11 @@ describe('Real-World Socket.IO Application', () => {
         // Handle chat messages
         socket.on('chat-message', data => {
           const message = {
-            id.random().toString(36).substr(2, 9),
+            id: Math.random().toString(36).substr(2, 9),
             username: socket.data.username,
             message: data.message,
             room: socket.data.room,
-            Date.now(),
+            timestamp: Date.now(),
             server: serverIndex + 1,
           };
 
@@ -197,7 +215,7 @@ describe('Real-World Socket.IO Application', () => {
           const privateMsg = {
             from: socket.data.username,
             message: data.message,
-            Date.now(),
+            timestamp: Date.now(),
             server: serverIndex + 1,
           };
 
@@ -210,7 +228,7 @@ describe('Real-World Socket.IO Application', () => {
             socket.to(socket.data.room).emit('user-left', {
               username: socket.data.username,
               message: `${socket.data.username} left the chat`,
-              Date.now(),
+              timestamp: Date.now(),
             });
           }
         });
@@ -218,7 +236,7 @@ describe('Real-World Socket.IO Application', () => {
     });
 
     // Start servers
-    await new Promise<void>(resolve => {
+    await new Promise(resolve => {
       chatServer1.listen(port1, () => {
         chatServer2.listen(port2, resolve);
       });
@@ -256,11 +274,11 @@ describe('Real-World Socket.IO Application', () => {
 
   test('Real chat can join rooms and exchange messages', async () => {
     // Connect users to different servers (real production scenario)
-    const alice = Client(`http://localhost:${port1}`);
-    const bob = Client(`http://localhost:${port2}`); // Different server!
+    const alice = io(`http://localhost:${port1}`);
+    const bob = io(`http://localhost:${port2}`); // Different server
 
-    let aliceMessages[] = [];
-    let bobMessages[] = [];
+    let aliceMessages = [];
+    let bobMessages = [];
 
     // Setup message listeners
     alice.on('new-message', msg => aliceMessages.push(msg));
@@ -268,8 +286,8 @@ describe('Real-World Socket.IO Application', () => {
 
     // Wait for connections
     await Promise.all([
-      new Promise<void>(resolve => alice.on('connect', () => resolve())),
-      new Promise<void>(resolve => bob.on('connect', () => resolve())),
+      new Promise(resolve => alice.on('connect', () => resolve())),
+      new Promise(resolve => bob.on('connect', () => resolve())),
     ]);
 
     // Both users join the same room
@@ -280,48 +298,48 @@ describe('Real-World Socket.IO Application', () => {
     await delay(100);
 
     // Alice sends a message
-    alice.emit('chat-message', { message: 'Hello everyone!' });
+    alice.emit('chat-message', { message: 'Hello everyone' });
 
     // Wait for cross-server message propagation
     await delay(200);
 
     // Bob should receive Alice's message (cross-server communication)
     assert.strictEqual(bobMessages.length, 1);
-    assert.strictEqual(bobMessages[0].message, 'Hello everyone!');
+    assert.strictEqual(bobMessages[0].message, 'Hello everyone');
     assert.strictEqual(bobMessages[0].username, 'Alice');
     assert.strictEqual(bobMessages[0].room, 'general');
 
     // Bob replies
-    bob.emit('chat-message', { message: 'Hi Alice! Nice to meet you.' });
+    bob.emit('chat-message', { message: 'Hi Alice Nice to meet you.' });
 
     await delay(200);
 
     // Alice should receive Bob's message
     assert.strictEqual(aliceMessages.length, 2); // Alice's own message + Bob's reply
     const bobsMessage = aliceMessages.find(msg => msg.username === 'Bob');
-    assert.strictEqual(bobsMessage.message, 'Hi Alice! Nice to meet you.');
+    assert.strictEqual(bobsMessage.message, 'Hi Alice Nice to meet you.');
 
     alice.disconnect();
     bob.disconnect();
   });
 
   test('Real chat isolation works correctly', async () => {
-    const user1 = Client(`http://localhost:${port1}`);
-    const user2 = Client(`http://localhost:${port2}`);
-    const user3 = Client(`http://localhost:${port1}`);
+    const user1 = io(`http://localhost:${port1}`);
+    const user2 = io(`http://localhost:${port2}`);
+    const user3 = io(`http://localhost:${port1}`);
 
-    let user1Messages[] = [];
-    let user2Messages[] = [];
-    let user3Messages[] = [];
+    let user1Messages = [];
+    let user2Messages = [];
+    let user3Messages = [];
 
     user1.on('new-message', msg => user1Messages.push(msg));
     user2.on('new-message', msg => user2Messages.push(msg));
     user3.on('new-message', msg => user3Messages.push(msg));
 
     await Promise.all([
-      new Promise<void>(resolve => user1.on('connect', () => resolve())),
-      new Promise<void>(resolve => user2.on('connect', () => resolve())),
-      new Promise<void>(resolve => user3.on('connect', () => resolve())),
+      new Promise(resolve => user1.on('connect', () => resolve())),
+      new Promise(resolve => user2.on('connect', () => resolve())),
+      new Promise(resolve => user3.on('connect', () => resolve())),
     ]);
 
     // User1 and User2 join 'dev-team'
@@ -360,11 +378,11 @@ describe('Real-World Socket.IO Application', () => {
   });
 
   test('Real chat user connections and disconnections', async () => {
-    const user1 = Client(`http://localhost:${port1}`);
-    const user2 = Client(`http://localhost:${port2}`);
+    const user1 = io(`http://localhost:${port1}`);
+    const user2 = io(`http://localhost:${port2}`);
 
-    let user1Events[] = [];
-    let user2Events[] = [];
+    let user1Events = [];
+    let user2Events = [];
 
     user1.on('user-joined', event =>
       user1Events.push({ type: 'joined', ...event })
@@ -381,8 +399,8 @@ describe('Real-World Socket.IO Application', () => {
     );
 
     await Promise.all([
-      new Promise<void>(resolve => user1.on('connect', () => resolve())),
-      new Promise<void>(resolve => user2.on('connect', () => resolve())),
+      new Promise(resolve => user1.on('connect', () => resolve())),
+      new Promise(resolve => user2.on('connect', () => resolve())),
     ]);
 
     // User1 joins first
@@ -412,17 +430,17 @@ describe('Real-World Socket.IO Application', () => {
 
   test('Real chat with 20 concurrent users', async () => {
     // Create 20 users distributed across both servers (realistic busy chat room)
-    const users[] = [];
+    const users = [];
     for (let i = 0; i < 20; i++) {
       // Distribute users across servers (load balancing pattern)
       const serverPort = i % 2 === 0 ? port1 : port2;
-      users.push(Client(`http://localhost:${serverPort}`));
+      users.push(io(`http://localhost:${serverPort}`));
     }
 
     const messagePromises = users.map((client, index) => {
-      return new Promise<any[]>(resolve => {
-        const messages[] = [];
-        client.on('new-message', (msg) => messages.push(msg));
+      return new Promise(resolve => {
+        const messages = [];
+        client.on('new-message', msg => messages.push(msg));
         client.on('connect', () => {
           client.emit('join-room', 'busy-room', `User${index + 1}`);
           // Stagger message collection to avoid overwhelming
