@@ -66,6 +66,14 @@ describe('Rate Limiting Integration', () => {
     const config = await getStandaloneConfig();
     redisAdapter = new Redis(config);
     await redisAdapter.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redisAdapter.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
 
     // Create Express app with rate limiting
     app = express();

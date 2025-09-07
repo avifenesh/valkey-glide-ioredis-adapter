@@ -76,8 +76,9 @@ export function getClusterConfig() {
 export function testBothModes(testName, testFn) {
   const modes = ['standalone'];
 
-  // Only test cluster mode if cluster nodes are available
-  if (process.env.ENABLE_CLUSTER_TESTS === 'true') {
+  // Test cluster mode by default, unless explicitly disabled
+  // This ensures feature parity between standalone and cluster
+  if (process.env.DISABLE_CLUSTER_TESTS !== 'true') {
     modes.push('cluster');
   }
 

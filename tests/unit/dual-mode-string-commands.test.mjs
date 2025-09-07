@@ -35,8 +35,9 @@ const testModes = [
   },
 ];
 
-// Only add cluster tests if enabled
-if (process.env.ENABLE_CLUSTER_TESTS === 'true') {
+// Add cluster tests by default (unless explicitly disabled)
+// This ensures feature parity between standalone and cluster
+if (process.env.DISABLE_CLUSTER_TESTS !== 'true') {
   testModes.push({
     name: 'cluster',
     createClient: () => new Cluster(getClusterConfig(), { lazyConnect: true }),
@@ -51,6 +52,14 @@ testModes.forEach(({ name: mode, createClient }) => {
       beforeEach(async () => {
         redis = createClient();
         await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
       });
 
       afterEach(async () => {
@@ -142,6 +151,14 @@ testModes.forEach(({ name: mode, createClient }) => {
       beforeEach(async () => {
         redis = createClient();
         await redis.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await redis.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
       });
 
       afterEach(async () => {

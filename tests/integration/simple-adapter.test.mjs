@@ -44,6 +44,14 @@ describe('Simple Adapter Integration Test', () => {
     const config = await getStandaloneConfig();
     adapter = new Redis(config);
     await adapter.connect();
+    
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
+    try {
+      await adapter.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
   });
 
   afterEach(async () => {
