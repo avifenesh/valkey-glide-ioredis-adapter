@@ -213,7 +213,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         created: false,
       };
 
-      for (const [eventData] of accountEvents) {
+      for (const [eventId, eventData] of accountEvents) {
         const eventFields = {};
         for (let i = 0; i < eventData.length; i += 2) {
           eventFields[eventData[i]] = eventData[i + 1];
@@ -476,7 +476,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       let failedCount = 0;
       let compensationCount = 0;
 
-      for (const [eventData] of sagaEvents[0][1]) {
+      for (const [eventId, eventData] of sagaEvents[0][1]) {
         const action = eventData[eventData.indexOf('action') + 1];
         if (action === 'success') successCount++;
         if (action === 'failed') failedCount++;
@@ -685,7 +685,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       let errors = 0;
       let totalResponseTime = 0;
 
-      for (const [metricData] of metricEvents) {
+      for (const [metricId, metricData] of metricEvents) {
         const metricType = metricData[metricData.indexOf('metric_type') + 1];
 
         if (metricType === 'api_request') {
@@ -755,7 +755,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         pagesVisited: new Set(),
       };
 
-      for (const [activityData] of userActions) {
+      for (const [activityId, activityData] of userActions) {
         const action = activityData[activityData.indexOf('action') + 1];
 
         switch (action) {

@@ -148,7 +148,7 @@ export async function xread(
   // Call GLIDE xread directly without timeout race
   // GLIDE handles the blocking internally and will return null on timeout
   const result = await (client as any).glideClient.xread(keysAndIds, options);
-  if (result == null) return null;
+  if (result == null) return [];
   const out: any[] = [];
   const pushStream = (name: string, val: any) => {
     let entries: any[] = [];
@@ -506,7 +506,7 @@ export async function xreadgroup(
       options
     );
   }
-  if (result == null) return null;
+  if (result == null) return [];
   const out: any[] = [];
   const pushStream = (name: string, val: any) => {
     let entries: any[] = [];

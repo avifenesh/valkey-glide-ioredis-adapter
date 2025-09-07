@@ -364,4 +364,18 @@ export class ClusterClient extends BaseClient {
     await (this.glideClient as GlideClusterClient).unwatch();
     return 'OK';
   }
+
+  /**
+   * Override exec method for cluster-specific batch operations.
+   * In GLIDE, cluster clients use different batch mechanisms than standalone clients.
+   * 
+   * For ioredis compatibility, this creates an empty multi transaction and executes it.
+   * This is mainly for Bull/BullMQ compatibility which checks for the existence of exec method.
+   */
+  async exec(): Promise<Array<[Error | null, any]> | null> {
+    // Create an empty multi transaction and execute it
+    // This provides ioredis compatibility for libraries that call client.exec() directly
+    const multi = this.multi();
+    return await multi.exec();
+  }
 }
