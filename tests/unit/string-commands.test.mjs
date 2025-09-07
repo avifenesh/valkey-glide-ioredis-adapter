@@ -50,6 +50,8 @@ describe('String Commands (ioredis compatibility)', () => {
     // GLIDE's flushall is multislot safe
     try {
       await client.flushall();
+      // Add a small delay to ensure flush completes
+      await delay(50);
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     }
