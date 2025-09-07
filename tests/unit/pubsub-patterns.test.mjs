@@ -10,22 +10,18 @@
  * - Trading platforms' real-time price updates
  */
 
-
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
 import assert from 'node:assert';
-
-// Global declarations for Node.js built-in APIs
-/* global setTimeout, console */
 import pkg from '../../dist/index.js';
-import { testUtils } from '../setup/index.mjs';
 const { Redis } = pkg;
+import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('Pub/Sub Patterns - Real-World Message Routing', () => {
   let publisher;
   let subscriber;
 
   beforeEach(async () => {
-    const config = await testUtils.getStandaloneConfig();
+    const config = getStandaloneConfig();
     publisher = new Redis(config);
     subscriber = new Redis(config);
   });
@@ -36,7 +32,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       try {
         await subscriber.unsubscribe();
         await subscriber.punsubscribe();
-      } catch {
+      } catch (error) {
         // Ignore cleanup errors
       }
       await subscriber.disconnect();
@@ -48,18 +44,18 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
   });
 
   describe('Slack Channel Notification Pattern', () => {
-    it('should route messages to specific channels', async () => {
+    test('should route messages to specific channels', async () => {
       const receivedMessages = [];
 
       // Subscribe to specific Slack-style channels
       await subscriber.subscribe(
-        'channel',
-        'channel',
-        'channel-discuss'
+        'channel:general',
+        'channel:random',
+        'channel:tech-discuss'
       );
 
-      subscriber.on('message', (channel, message) => {
-        receivedMessages.push({ channel, message });
+      subscriber.on('message', (_channel, message) => {
+        receivedMessages.push({ channel: _channel, message });
       });
 
       // Wait for subscription to be established
@@ -67,31 +63,31 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Simulate Slack messages to different channels
       await publisher.publish(
-        'channel',
-        JSON.stringify({
+        'channel:general',
+        JSONJSON: JSON.stringify({
           user: 'alice',
-          text: 'Good morning everyone',
-          timestamp: Date.now(),
+          text: 'Good morning everyone!',
+          Date.now(),
           thread_ts: null,
         })
       );
 
       await publisher.publish(
-        'channel-discuss',
-        JSON.stringify({
+        'channel:tech-discuss',
+        JSONJSON: JSON.stringify({
           user: 'bob_dev',
           text: 'Anyone tried the new Redis features?',
-          timestamp: Date.now(),
+          Date.now(),
           thread_ts: null,
         })
       );
 
       await publisher.publish(
-        'channel',
-        JSON.stringify({
+        'channel:random',
+        JSONJSON: JSON.stringify({
           user: 'charlie',
-          text: 'Coffee break time ☕',
-          timestamp: Date.now(),
+          text: 'Coffee break time! ☕',
+          Date.now(),
           thread_ts: null,
         })
       );
@@ -102,13 +98,13 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       assert.strictEqual(receivedMessages.length, 3);
 
       const generalMsg = receivedMessages.find(
-        m => m.channel === 'channel'
+        m => m.channel === 'channel:general'
       );
       const techMsg = receivedMessages.find(
-        m => m.channel === 'channel-discuss'
+        m => m.channel === 'channel:tech-discuss'
       );
       const randomMsg = receivedMessages.find(
-        m => m.channel === 'channel'
+        m => m.channel === 'channel:random'
       );
 
       assert.ok(generalMsg !== undefined);
@@ -116,25 +112,25 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       assert.ok(randomMsg !== undefined);
 
       // Verify message content
-      const generalData = JSON.parse(generalMsg.message);
+      const generalData = JSONJSON.parse(generalMsg!.message);
       assert.strictEqual(generalData.user, 'alice');
       assert.ok(generalData.text.includes('Good morning'));
 
-      const techData = JSON.parse(techMsg.message);
+      const techData = JSONJSON.parse(techMsg!.message);
       assert.strictEqual(techData.user, 'bob_dev');
       assert.ok(techData.text.includes('Redis features'));
     });
 
-    it('should handle direct message notifications', async () => {
+    test('should handle direct message notifications', async () => {
       const dmMessages = [];
 
       // Subscribe to direct message patterns (Slack DM format)
-      await subscriber.psubscribe('dm:*');
+      await subscriber.psubscribe('dm:user123:*', 'dm:*:user123');
 
       subscriber.on(
         'pmessage',
-        (pattern, channel, message) => {
-          dmMessages.push({ pattern, channel, message });
+        (_pattern, channel, message) => {
+          dmMessages.push({ channel, message });
         }
       );
 
@@ -142,24 +138,24 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Send DM from user456 to user123
       await publisher.publish(
-        'dm:user123',
-        JSON.stringify({
+        'dm:user456:user123',
+        JSONJSON: JSON.stringify({
           from: 'user456',
           to: 'user123',
           text: 'Hey, can you review my PR?',
-          timestamp: Date.now(),
+          Date.now(),
           is_dm: true,
         })
       );
 
       // Send DM from user123 to user789 (should also match pattern)
       await publisher.publish(
-        'dm:user789',
-        JSON.stringify({
+        'dm:user123:user789',
+        JSONJSON: JSON.stringify({
           from: 'user123',
           to: 'user789',
-          text: 'Sure, will check it out',
-          timestamp: Date.now(),
+          text: 'Sure, will check it out!',
+          Date.now(),
           is_dm: true,
         })
       );
@@ -169,11 +165,11 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       assert.ok(dmMessages.length >= 1);
 
       const incomingDM = dmMessages.find(
-        m => m.channel === 'dm:user123'
+        m => m.channel === 'dm:user456:user123'
       );
-      assert.ok(incomingDM);
+      assert.ok(incomingDM !== undefined);
 
-      const dmData = JSON.parse(incomingDM.message);
+      const dmData = JSONJSON.parse(incomingDM!.message);
       assert.strictEqual(dmData.from, 'user456');
       assert.strictEqual(dmData.to, 'user123');
       assert.strictEqual(dmData.is_dm, true);
@@ -181,16 +177,16 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
   });
 
   describe('Discord Real-Time Presence Pattern', () => {
-    it('should broadcast user presence updates', async () => {
+    test('should broadcast user presence updates', async () => {
       const presenceUpdates = [];
 
       // Subscribe to guild presence updates (Discord pattern)
-      await subscriber.psubscribe('presence:*');
+      await subscriber.psubscribe('presence:guild:*');
 
       subscriber.on(
         'pmessage',
-        (pattern, channel, message) => {
-          presenceUpdates.push({ pattern, channel, message });
+        (_pattern, channel, message) => {
+          presenceUpdates.push({ channel, message });
         }
       );
 
@@ -198,22 +194,22 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Simulate user coming online
       await publisher.publish(
-        'presence:guild123',
-        JSON.stringify({
+        'presence:guild:123456',
+        JSONJSON: JSON.stringify({
           user_id: 'user789',
           status: 'online',
           activity: {
             name: 'Visual Studio Code',
             type: 'PLAYING',
           },
-          timestamp: Date.now(),
+          Date.now(),
         })
       );
 
       // User starts playing a game
       await publisher.publish(
-        'presence:guild123',
-        JSON.stringify({
+        'presence:guild:123456',
+        JSONJSON: JSON.stringify({
           user_id: 'user789',
           status: 'dnd',
           activity: {
@@ -221,18 +217,18 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
             type: 'PLAYING',
             details: 'Night City',
           },
-          timestamp: Date.now(),
+          Date.now(),
         })
       );
 
       // Another user joins voice channel
       await publisher.publish(
-        'presence:guild123',
-        JSON.stringify({
+        'presence:guild:123456',
+        JSONJSON: JSON.stringify({
           user_id: 'user456',
           voice_channel: 'General',
           voice_state: 'joined',
-          timestamp: Date.now(),
+          Date.now(),
         })
       );
 
@@ -241,26 +237,26 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       assert.ok(presenceUpdates.length >= 3);
 
       const onlineUpdate = presenceUpdates.find(u => {
-        const data = JSON.parse(u.message);
+        const data = JSONJSON.parse(u.message);
         return data.user_id === 'user789' && data.status === 'online';
       });
-      assert.ok(onlineUpdate);
+      assert.ok(onlineUpdate !== undefined);
 
       const voiceUpdate = presenceUpdates.find(u => {
-        const data = JSON.parse(u.message);
+        const data = JSONJSON.parse(u.message);
         return data.voice_channel === 'General';
       });
-      assert.ok(voiceUpdate);
+      assert.ok(voiceUpdate !== undefined);
     });
 
-    it('should handle voice channel state changes', async () => {
-      const voiceUpdates = [];
+    test('should handle voice channel state changes', async () => {
+      const voiceUpdates[] = [];
 
       // Subscribe to voice channel events
-      await subscriber.subscribe('voice:updates');
+      await subscriber.subscribe('voice:channel:updates');
 
-      subscriber.on('message', (channel, message) => {
-        if (channel === 'voice:updates') {
+      subscriber.on('message', (_channel, message) => {
+        if (_channel === 'voice:channel:updates') {
           voiceUpdates.push(message);
         }
       });
@@ -269,35 +265,35 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // User joins voice channel
       await publisher.publish(
-        'voice:updates',
-        JSON.stringify({
+        'voice:channel:updates',
+        JSONJSON: JSON.stringify({
           action: 'user_joined',
           channel_id: 'voice_general',
           user_id: 'user123',
-          timestamp: Date.now(),
+          Date.now(),
         })
       );
 
       // User mutes microphone
       await publisher.publish(
-        'voice:updates',
-        JSON.stringify({
+        'voice:channel:updates',
+        JSONJSON: JSON.stringify({
           action: 'user_muted',
           channel_id: 'voice_general',
           user_id: 'user123',
           muted: true,
-          timestamp: Date.now(),
+          Date.now(),
         })
       );
 
       // User leaves voice channel
       await publisher.publish(
-        'voice:updates',
-        JSON.stringify({
+        'voice:channel:updates',
+        JSONJSON: JSON.stringify({
           action: 'user_left',
           channel_id: 'voice_general',
           user_id: 'user123',
-          timestamp: Date.now(),
+          Date.now(),
         })
       );
 
@@ -305,28 +301,28 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       assert.strictEqual(voiceUpdates.length, 3);
 
-      const joinEvent = JSON.parse(voiceUpdates[0]);
+      const joinEvent = JSONJSON.parse(voiceUpdates[0]!);
       assert.strictEqual(joinEvent.action, 'user_joined');
       assert.strictEqual(joinEvent.user_id, 'user123');
 
-      const muteEvent = JSON.parse(voiceUpdates[1]);
+      const muteEvent = JSONJSON.parse(voiceUpdates[1]!);
       assert.strictEqual(muteEvent.action, 'user_muted');
       assert.strictEqual(muteEvent.muted, true);
 
-      const leaveEvent = JSON.parse(voiceUpdates[2]);
+      const leaveEvent = JSONJSON.parse(voiceUpdates[2]!);
       assert.strictEqual(leaveEvent.action, 'user_left');
     });
   });
 
   describe('Twitch Live Chat Pattern', () => {
-    it('should handle high-frequency chat messages', async () => {
-      const chatMessages = [];
+    test('should handle high-frequency chat messages', async () => {
+      const chatMessages[] = [];
 
       // Subscribe to Twitch stream chat
-      await subscriber.subscribe('chat');
+      await subscriber.subscribe('chat:stream:12345');
 
       subscriber.on('message', (_channel, message) => {
-        if (_channel === 'chat') {
+        if (_channel === 'chat:stream:12345') {
           chatMessages.push(message);
         }
       });
@@ -335,25 +331,25 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Simulate rapid chat messages (Twitch pattern)
       const messages = [
-        { user: 'viewer1', text: 'First', badges: ['subscriber'] },
+        { user: 'viewer1', text: 'First!', badges: ['subscriber'] },
         { user: 'viewer2', text: 'PogChamp', badges: [] },
         {
           user: 'moderator1',
-          text: 'Welcome everyone',
+          text: 'Welcome everyone!',
           badges: ['moderator'],
         },
-        { user: 'viewer3', text: 'Amazing play', badges: ['vip'] },
+        { user: 'viewer3', text: 'Amazing play!', badges: ['vip'] },
         { user: 'viewer4', text: 'Kappa', badges: [] },
       ];
 
       for (const msg of messages) {
         await publisher.publish(
-          'chat',
-          JSON.stringify({
+          'chat:stream:12345',
+          JSONJSON: JSON.stringify({
             username: msg.user,
             message: msg.text,
             badges: msg.badges,
-            timestamp: Date.now(),
+            Date.now(),
             color: '#FF0000',
             emotes: [],
           })
@@ -365,23 +361,23 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       assert.strictEqual(chatMessages.length, 5);
 
       // Verify message structure
-      const firstMessage = JSON.parse(chatMessages[0]);
+      const firstMessage = JSONJSON.parse(chatMessages[0]!);
       assert.strictEqual(firstMessage.username, 'viewer1');
-      assert.strictEqual(firstMessage.message, 'First');
+      assert.strictEqual(firstMessage.message, 'First!');
       assert.ok(firstMessage.badges.includes('subscriber'));
 
-      const modMessage = JSON.parse(chatMessages[2]);
+      const modMessage = JSONJSON.parse(chatMessages[2]!);
       assert.ok(modMessage.badges.includes('moderator'));
     });
 
-    it('should handle stream event notifications', async () => {
-      const streamEvents = [];
+    test('should handle stream event notifications', async () => {
+      const streamEvents[] = [];
 
       // Subscribe to stream events
-      await subscriber.subscribe('stream');
+      await subscriber.subscribe('stream:events:12345');
 
       subscriber.on('message', (_channel, message) => {
-        if (_channel === 'stream') {
+        if (_channel === 'stream:events:12345') {
           streamEvents.push(message);
         }
       });
@@ -390,36 +386,36 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Stream goes live
       await publisher.publish(
-        'stream',
-        JSON.stringify({
+        'stream:events:12345',
+        JSONJSON: JSON.stringify({
           event: 'stream_online',
           streamer: 'pro_gamer',
           title: 'Speedrunning Portal 2!',
           game: 'Portal 2',
           viewers: 0,
-          timestamp: Date.now(),
+          Date.now(),
         })
       );
 
       // New follower
       await publisher.publish(
-        'stream',
-        JSON.stringify({
+        'stream:events:12345',
+        JSONJSON: JSON.stringify({
           event: 'new_follower',
           follower: 'new_viewer123',
           total_followers: 1543,
-          timestamp: Date.now(),
+          Date.now(),
         })
       );
 
       // Raid received
       await publisher.publish(
-        'stream',
-        JSON.stringify({
+        'stream:events:12345',
+        JSONJSON: JSON.stringify({
           event: 'raid_received',
           from_streamer: 'other_streamer',
           raiders: 250,
-          timestamp: Date.now(),
+          Date.now(),
         })
       );
 
@@ -427,28 +423,28 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       assert.strictEqual(streamEvents.length, 3);
 
-      const liveEvent = JSON.parse(streamEvents[0]);
+      const liveEvent = JSONJSON.parse(streamEvents[0]!);
       assert.strictEqual(liveEvent.event, 'stream_online');
       assert.strictEqual(liveEvent.game, 'Portal 2');
 
-      const followerEvent = JSON.parse(streamEvents[1]);
+      const followerEvent = JSONJSON.parse(streamEvents[1]!);
       assert.strictEqual(followerEvent.event, 'new_follower');
       assert.strictEqual(followerEvent.total_followers, 1543);
 
-      const raidEvent = JSON.parse(streamEvents[2]);
+      const raidEvent = JSONJSON.parse(streamEvents[2]!);
       assert.strictEqual(raidEvent.event, 'raid_received');
       assert.strictEqual(raidEvent.raiders, 250);
     });
   });
 
   describe('GitHub Webhook Event Distribution', () => {
-    it('should route repository events to subscribers', async () => {
+    test('should route repository events to subscribers', async () => {
       const webhookEvents = [];
 
       // Subscribe to GitHub webhook events by repository
       await subscriber.psubscribe(
-        'github/*/push',
-        'github/*/pull_request'
+        'github:repo:*/push',
+        'github:repo:*/pull_request'
       );
 
       subscriber.on(
@@ -462,8 +458,8 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Push event
       await publisher.publish(
-        'github/myproject/push',
-        JSON.stringify({
+        'github:repo:myorg/myproject/push',
+        JSONJSON: JSON.stringify({
           event: 'push',
           repository: 'myorg/myproject',
           pusher: 'developer1',
@@ -481,8 +477,8 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Pull request event
       await publisher.publish(
-        'github/myproject/pull_request',
-        JSON.stringify({
+        'github:repo:myorg/myproject/pull_request',
+        JSONJSON: JSON.stringify({
           event: 'pull_request',
           action: 'opened',
           repository: 'myorg/myproject',
@@ -498,8 +494,8 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Different repo push (should also be received due to pattern)
       await publisher.publish(
-        'github/otherproject/push',
-        JSON.stringify({
+        'github:repo:otherorg/otherproject/push',
+        JSONJSON: JSON.stringify({
           event: 'push',
           repository: 'otherorg/otherproject',
           pusher: 'maintainer1',
@@ -518,31 +514,31 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       assert.ok(webhookEvents.length >= 3);
 
       const pushEvent = webhookEvents.find(e =>
-        e.channel.includes('github/myproject/push')
+        e.channel.includes('myorg/myproject/push')
       );
       assert.ok(pushEvent !== undefined);
 
-      const pushData = JSON.parse(pushEvent.message);
+      const pushData = JSONJSON.parse(pushEvent!.message);
       assert.strictEqual(pushData.event, 'push');
       assert.strictEqual(pushData.pusher, 'developer1');
 
       const prEvent = webhookEvents.find(e =>
         e.channel.includes('pull_request')
       );
-      assert.ok(prEvent);
+      assert.ok(prEvent !== undefined);
 
-      const prData = JSON.parse(prEvent.message);
+      const prData = JSONJSON.parse(prEvent!.message);
       assert.strictEqual(prData.event, 'pull_request');
       assert.strictEqual(prData.pull_request.number, 42);
     });
   });
 
   describe('Trading Platform Real-Time Price Updates', () => {
-    it('should broadcast market data to subscribers', async () => {
+    test('should broadcast market data to subscribers', async () => {
       const priceUpdates = [];
 
       // Subscribe to cryptocurrency price feeds
-      await subscriber.psubscribe('market:*', 'market:*');
+      await subscriber.psubscribe('market:crypto:*', 'market:forex:*');
 
       subscriber.on(
         'pmessage',
@@ -555,39 +551,39 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Bitcoin price update
       await publisher.publish(
-        'market:BTC-USD',
-        JSON.stringify({
+        'market:crypto-USD',
+        JSONJSON: JSON.stringify({
           symbol: 'BTC-USD',
           price: 45230.5,
-          change_24h: -2.34,
-          volume_24h: 234567890,
-          timestamp: Date.now(),
+          change_24h: 2.34,
+          volume_24h: 28500000000,
+          Date.now(),
           exchange: 'binance',
         })
       );
 
       // Ethereum price update
       await publisher.publish(
-        'market:ETH-USD',
-        JSON.stringify({
+        'market:crypto-USD',
+        JSONJSON: JSON.stringify({
           symbol: 'ETH-USD',
-          price: 75,
+          price: 3125.75,
           change_24h: -1.23,
-          volume_24h: 234567890,
-          timestamp: Date.now(),
+          volume_24h: 15200000000,
+          Date.now(),
           exchange: 'coinbase',
         })
       );
 
       // Forex update
       await publisher.publish(
-        'market:EUR-USD',
-        JSON.stringify({
+        'market:forex-USD',
+        JSONJSON: JSON.stringify({
           symbol: 'EUR-USD',
           bid: 1.0842,
           ask: 1.0844,
           spread: 0.0002,
-          timestamp: Date.now(),
+          Date.now(),
           provider: 'reuters',
         })
       );
@@ -599,23 +595,23 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       const btcUpdate = priceUpdates.find(u => u.channel.includes('BTC-USD'));
       assert.ok(btcUpdate !== undefined);
 
-      const btcData = JSON.parse(btcUpdate.message);
+      const btcData = JSONJSON.parse(btcUpdate!.message);
       assert.strictEqual(btcData.symbol, 'BTC-USD');
       assert.strictEqual(btcData.price, 45230.5);
 
       const forexUpdate = priceUpdates.find(u => u.channel.includes('EUR-USD'));
       assert.ok(forexUpdate !== undefined);
 
-      const forexData = JSON.parse(forexUpdate.message);
+      const forexData = JSONJSON.parse(forexUpdate!.message);
       assert.strictEqual(forexData.bid, 1.0842);
       assert.strictEqual(forexData.ask, 1.0844);
     });
 
-    it('should handle trading alerts and notifications', async () => {
-      const alerts = [];
+    test('should handle trading alerts and notifications', async () => {
+      const alerts[] = [];
 
       // Subscribe to trading alerts
-      await subscriber.subscribe('alerts-USD', 'alerts');
+      await subscriber.subscribe('alerts:price-USD', 'alerts:volume:high');
 
       subscriber.on('message', (_channel, message) => {
         alerts.push(message);
@@ -625,28 +621,28 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Price alert triggered
       await publisher.publish(
-        'alerts-USD',
-        JSON.stringify({
+        'alerts:price-USD',
+        JSONJSON: JSON.stringify({
           type: 'price_alert',
           symbol: 'BTC-USD',
           condition: 'above',
           threshold: 45000,
           current_price: 45230.5,
           user_id: 'trader123',
-          timestamp: Date.now(),
+          Date.now(),
         })
       );
 
       // Volume spike alert
       await publisher.publish(
-        'alerts',
-        JSON.stringify({
+        'alerts:volume:high',
+        JSONJSON: JSON.stringify({
           type: 'volume_alert',
           symbol: 'ETH-USD',
-          volume_threshold: 45000,
-          current_volume: 152340,
+          volume_threshold: 10000000000,
+          current_volume: 15200000000,
           spike_percentage: 52,
-          timestamp: Date.now(),
+          Date.now(),
         })
       );
 
@@ -654,27 +650,27 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       assert.strictEqual(alerts.length, 2);
 
-      const priceAlert = JSON.parse(alerts[0]);
+      const priceAlert = JSONJSON.parse(alerts[0]!);
       assert.strictEqual(priceAlert.type, 'price_alert');
       assert.strictEqual(priceAlert.current_price, 45230.5);
       assert.strictEqual(priceAlert.condition, 'above');
 
-      const volumeAlert = JSON.parse(alerts[1]);
+      const volumeAlert = JSONJSON.parse(alerts[1]!);
       assert.strictEqual(volumeAlert.type, 'volume_alert');
       assert.strictEqual(volumeAlert.spike_percentage, 52);
     });
   });
 
   describe('Error Handling and Edge Cases', () => {
-    it('DEBUG subscription and publish test', async () => {
-      const messages = [];
+    test('DEBUG: core subscription and publish test', async () => {
+      const messages[] = [];
 
       console.log('\n🔍 DEBUG core pubsub test');
       console.log(
-        `Publisher config: ${JSON.stringify(await testUtils.getStandaloneConfig())}`
+        `Publisher config: ${JSONJSON: JSON.stringify(getStandaloneConfig())}`
       );
       console.log(
-        `Subscriber config: ${JSON.stringify(await testUtils.getStandaloneConfig())}`
+        `Subscriber config: ${JSONJSON: JSON.stringify(getStandaloneConfig())}`
       );
 
       // Test connection first
@@ -686,16 +682,16 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         console.log('📡 Testing subscriber connection...');
         const subscriberPing = await subscriber.ping();
         console.log(`Subscriber ping result: ${subscriberPing}`);
-      } catch {
-        console.error("❌ Connection test failed");
-        throw new Error("Connection failed");
+      } catch (error) {
+        console.error('❌ Connection test failed:', error);
+        throw error;
       }
 
       // Subscribe to channels that may not receive messages
       console.log('📞 Subscribing to channels...');
       const subResult = await subscriber.subscribe(
-        'debug',
-        'debug'
+        'debug:test:1',
+        'debug:test:2'
       );
       console.log(`Subscription result: ${subResult}`);
 
@@ -710,7 +706,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       // Now send a message to verify subscription works
       console.log('📤 Publishing test message...');
       const publishResult = await publisher.publish(
-        'debug',
+        'debug:test:1',
         'test message'
       );
       console.log(`Publish result: ${publishResult}`);
@@ -724,11 +720,11 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       assert.strictEqual(messages[0], 'test message');
     });
 
-    it('should handle subscription to non-existent channels', async () => {
-      const messages = [];
+    test('should handle subscription to non-existent channels', async () => {
+      const messages[] = [];
 
       // Subscribe to channels that may not receive messages
-      await subscriber.subscribe('empty', 'empty');
+      await subscriber.subscribe('empty:channel:1', 'empty:channel:2');
 
       subscriber.on('message', (_channel, message) => {
         messages.push(message);
@@ -741,18 +737,18 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       assert.strictEqual(messages.length, 0);
 
       // Now send a message to verify subscription works
-      await publisher.publish('empty', 'test message');
+      await publisher.publish('empty:channel:1', 'test message');
       await new Promise(resolve => setTimeout(resolve, 100));
 
       assert.strictEqual(messages.length, 1);
       assert.strictEqual(messages[0], 'test message');
     });
 
-    it('should handle pattern subscription with no matches', async () => {
+    test('should handle pattern subscription with no matches', async () => {
       const patternMessages = [];
 
       // Subscribe to pattern that won't match published channels
-      await subscriber.psubscribe('nomatch:*');
+      await subscriber.psubscribe('nomatch:*:test');
 
       subscriber.on(
         'pmessage',
@@ -764,8 +760,8 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Publish to channels that don't match the pattern
-      await publisher.publish('different', 'message1');
-      await publisher.publish('another', 'message2');
+      await publisher.publish('different:channel', 'message1');
+      await publisher.publish('another:format:channel', 'message2');
 
       await new Promise(resolve => setTimeout(resolve, 200));
 
@@ -773,17 +769,17 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       assert.strictEqual(patternMessages.length, 0);
 
       // Now publish to matching channel
-      await publisher.publish('nomatch:test', 'matching message');
+      await publisher.publish('nomatch:something:test', 'matching message');
       await new Promise(resolve => setTimeout(resolve, 100));
 
       assert.strictEqual(patternMessages.length, 1);
-      assert.strictEqual(patternMessages[0].message, 'matching message');
+      assert.strictEqual(patternMessages[0]?.message, 'matching message');
     });
 
-    it('should handle unsubscribe operations', async () => {
-      const messages = [];
+    test('should handle unsubscribe operations', async () => {
+      const messages[] = [];
 
-      await subscriber.subscribe('test', 'channel2');
+      await subscriber.subscribe('test:unsubscribe:1', 'test:unsubscribe:2');
 
       subscriber.on('message', (_channel, message) => {
         messages.push(`${_channel}:${message}`);
@@ -792,33 +788,33 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Send initial messages
-      await publisher.publish('test', 'msg1');
-      await publisher.publish('channel2', 'msg2');
+      await publisher.publish('test:unsubscribe:1', 'msg1');
+      await publisher.publish('test:unsubscribe:2', 'msg2');
 
       await new Promise(resolve => setTimeout(resolve, 100));
       assert.strictEqual(messages.length, 2);
 
       // Unsubscribe from one channel
-      await subscriber.unsubscribe('channel2');
+      await subscriber.unsubscribe('test:unsubscribe:1');
 
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Send more messages
-      await publisher.publish('test', 'msg3'); // Should receive
-      await publisher.publish('channel2', 'msg4'); // Should not receive
+      await publisher.publish('test:unsubscribe:1', 'msg3'); // Should not receive
+      await publisher.publish('test:unsubscribe:2', 'msg4'); // Should receive
 
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Should only have received 3 messages (not the 4th from unsubscribed channel)
       assert.strictEqual(messages.length, 3);
-      assert.ok(messages.some(m => m.includes('test:msg1')));
-      assert.ok(messages.some(m => m.includes('test:msg3')));
+      assert.ok(messages.includes('test:unsubscribe:2:msg4'));
+      assert.ok(!messages.includes('test:unsubscribe:1:msg3'));
     });
 
-    it('should handle large message payloads', async () => {
-      const largeMessages = [];
+    test('should handle large message payloads', async () => {
+      const largeMessages[] = [];
 
-      await subscriber.subscribe('large');
+      await subscriber.subscribe('large:message:test');
 
       subscriber.on('message', (_channel, message) => {
         largeMessages.push(message);
@@ -827,21 +823,21 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       await new Promise(resolve => setTimeout(resolve, 100));
 
       // Create a large message (1KB)
-      const largePayload = JSON.stringify({
+      const largePayload = JSONJSON: JSON.stringify({
         data: 'x'.repeat(1000),
-        timestamp: Date.now(),
+        Date.now(),
         metadata: {
           size: '1KB',
           type: 'large_payload_test',
         },
       });
 
-      await publisher.publish('large', largePayload);
+      await publisher.publish('large:message:test', largePayload);
       await new Promise(resolve => setTimeout(resolve, 200));
 
       assert.strictEqual(largeMessages.length, 1);
 
-      const received = JSON.parse(largeMessages[0]);
+      const received = JSONJSON.parse(largeMessages[0]!);
       assert.strictEqual(received.data.length, 1000);
       assert.strictEqual(received.metadata.type, 'large_payload_test');
     });

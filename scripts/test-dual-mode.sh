@@ -32,10 +32,18 @@ cleanup() {
     pkill -f "node --test" 2>/dev/null || true
     pkill -f "test-runner.sh" 2>/dev/null || true
     
-    # Clean up Docker if we started it
-    if [ "$DOCKER_CLEANUP" = true ] || [ "$CLUSTER_CLEANUP" = true ]; then
-        echo -e "${YELLOW}Cleaning up test infrastructure...${NC}"
+    # Clean up infrastructure if we started it
+    if [ "$DOCKER_CLEANUP" = true ]; then
+        echo -e "${YELLOW}Cleaning up standalone infrastructure...${NC}"
         docker compose -f docker-compose.test.yml down >/dev/null 2>&1 || true
+    fi
+    
+    if [ "$CLUSTER_CLEANUP" = "local" ]; then
+        echo -e "${YELLOW}Cleaning up local cluster...${NC}"
+        ./scripts/stop-test-cluster.sh >/dev/null 2>&1 || true
+    elif [ "$CLUSTER_CLEANUP" = "docker" ]; then
+        echo -e "${YELLOW}Cleaning up Docker cluster...${NC}"
+        docker compose -f docker-compose.cluster.yml down >/dev/null 2>&1 || true
     fi
     
     exit 130
@@ -69,7 +77,7 @@ if docker ps | grep -q test-valkey-standalone; then
 else
     # Try to use docker-compose.test.yml infrastructure
     echo -e "${YELLOW}Starting test infrastructure...${NC}"
-    docker compose -f docker-compose.test.yml up -d test-valkey-standalone >/dev/null 2>&1
+    docker compose -f docker-compose.test.yml up -d valkey-standalone >/dev/null 2>&1
     
     # Wait for container to be ready
     for i in {1..30}; do
@@ -88,12 +96,13 @@ fi
 # Run standalone tests
 echo -e "${YELLOW}Running standalone tests...${NC}"
 export DISABLE_CLUSTER_TESTS=true
+export SKIP_INFRA_MANAGEMENT=true
 
 if [ "$COVERAGE" = "1" ]; then
-    COVERAGE=1 JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS &
+    COVERAGE=1 JUNIT="$JUNIT" SKIP_INFRA_MANAGEMENT=true ./scripts/test-runner.sh $TEST_PATHS &
     CHILD_PID=$!
 else
-    JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS &
+    JUNIT="$JUNIT" SKIP_INFRA_MANAGEMENT=true ./scripts/test-runner.sh $TEST_PATHS &
     CHILD_PID=$!
 fi
 wait $CHILD_PID
@@ -104,28 +113,44 @@ CHILD_PID=""
 echo -e "\n${GREEN}=== Phase 2: Cluster Mode Tests ===${NC}"
 
 # Check for existing cluster infrastructure or start new
-if docker ps | grep -q test-valkey-cluster; then
+if nc -z localhost 17000 2>/dev/null; then
     echo -e "${YELLOW}Using existing cluster infrastructure${NC}"
     CLUSTER_CLEANUP=false
 else
-    # Try to use docker-compose.test.yml infrastructure
-    echo -e "${YELLOW}Starting cluster infrastructure...${NC}"
-    docker compose -f docker-compose.test.yml up -d test-valkey-cluster-1 test-valkey-cluster-2 test-valkey-cluster-3 test-valkey-cluster-4 test-valkey-cluster-5 test-valkey-cluster-6 >/dev/null 2>&1
-    
-    # Wait for cluster to be ready
-    for i in {1..30}; do
-        if docker exec test-valkey-cluster-1 valkey-cli ping 2>/dev/null | grep -q PONG; then
-            break
-        fi
-        sleep 1
-    done
-    
-    # Initialize cluster if needed
-    docker compose -f docker-compose.test.yml --profile cluster up -d cluster-init >/dev/null 2>&1
-    sleep 5
-    
-    CLUSTER_CLEANUP=true
-    echo -e "${GREEN}✓ Cluster infrastructure ready${NC}"
+    # Try to use local valkey-server if available
+    if command -v valkey-server &> /dev/null; then
+        echo -e "${YELLOW}Starting local cluster infrastructure...${NC}"
+        ./scripts/start-test-cluster.sh
+        
+        # Wait for cluster to be ready
+        for i in {1..10}; do
+            if nc -z localhost 17000 2>/dev/null && nc -z localhost 17001 2>/dev/null && nc -z localhost 17002 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        
+        CLUSTER_CLEANUP=local
+        echo -e "${GREEN}✓ Local cluster infrastructure ready${NC}"
+    else
+        # Fall back to Docker
+        echo -e "${YELLOW}Starting Docker cluster infrastructure...${NC}"
+        docker compose -f docker-compose.cluster.yml up -d valkey-cluster-all >/dev/null 2>&1
+        
+        # Wait for cluster to be ready (it self-initializes)
+        for i in {1..30}; do
+            if nc -z localhost 17000 2>/dev/null && nc -z localhost 17001 2>/dev/null && nc -z localhost 17002 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        
+        # Extra wait for cluster formation
+        sleep 3
+        
+        CLUSTER_CLEANUP=docker
+        echo -e "${GREEN}✓ Docker cluster infrastructure ready${NC}"
+    fi
 fi
 
 # Run cluster tests
@@ -134,12 +159,13 @@ unset DISABLE_CLUSTER_TESTS
 export ENABLE_CLUSTER_TESTS=true
 export DISABLE_STANDALONE_TESTS=true
 export VALKEY_CLUSTER_NODES="localhost:17000,localhost:17001,localhost:17002"
+export SKIP_INFRA_MANAGEMENT=true
 
 if [ "$COVERAGE" = "1" ]; then
-    COVERAGE=1 JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS &
+    COVERAGE=1 JUNIT="$JUNIT" SKIP_INFRA_MANAGEMENT=true ./scripts/test-runner.sh $TEST_PATHS &
     CHILD_PID=$!
 else
-    JUNIT="$JUNIT" ./scripts/test-runner.sh $TEST_PATHS &
+    JUNIT="$JUNIT" SKIP_INFRA_MANAGEMENT=true ./scripts/test-runner.sh $TEST_PATHS &
     CHILD_PID=$!
 fi
 wait $CHILD_PID
@@ -162,9 +188,17 @@ else
 fi
 
 # Cleanup if we started infrastructure (only if not interrupted)
-if [ "$DOCKER_CLEANUP" = true ] || [ "$CLUSTER_CLEANUP" = true ]; then
-    echo -e "\n${YELLOW}Cleaning up test infrastructure...${NC}"
+if [ "$DOCKER_CLEANUP" = true ]; then
+    echo -e "\n${YELLOW}Cleaning up standalone infrastructure...${NC}"
     docker compose -f docker-compose.test.yml down >/dev/null 2>&1 || true
+fi
+
+if [ "$CLUSTER_CLEANUP" = "local" ]; then
+    echo -e "\n${YELLOW}Cleaning up local cluster...${NC}"
+    ./scripts/stop-test-cluster.sh >/dev/null 2>&1 || true
+elif [ "$CLUSTER_CLEANUP" = "docker" ]; then
+    echo -e "\n${YELLOW}Cleaning up Docker cluster...${NC}"
+    docker compose -f docker-compose.cluster.yml down >/dev/null 2>&1 || true
 fi
 
 # Clear the trap to avoid double cleanup

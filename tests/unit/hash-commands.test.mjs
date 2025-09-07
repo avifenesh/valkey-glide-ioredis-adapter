@@ -1,30 +1,29 @@
-import { describe, it, beforeEach, afterEach } from 'node:test';
-import assert from 'node:assert';
 /**
  * Hash Commands Comprehensive Tests
- * Real-world patterns, shopping carts
+ * Real-world patterns storage, user profiles, object caching, shopping carts
  */
 
+import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
+import assert from 'node:assert';
 import pkg from '../../dist/index.js';
-const { Redis  } = pkg;
-import { testUtils } from '../setup/index.mjs';
+const { Redis } = pkg;
+import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('Hash Commands - Real-World Patterns', () => {
   let redis;
 
   beforeEach(async () => {
-    const config = testUtils.getStandaloneConfig();
+    const config = getStandaloneConfig();
     redis = new Redis(config);
-  });
+  
+    await redis.connect();});
 
   afterEach(async () => {
-    if (redis) {
-      await redis.quit();
-    }
+    await redis.quit();
   });
 
   describe('User Session Management', () => {
-    it('should manage user session data with HSET/HGET', async () => {
+    test('should manage user session data with HSET/HGET', async () => {
       const sessionKey = 'session:' + Math.random();
 
       // Create session
@@ -51,8 +50,8 @@ describe('Hash Commands - Real-World Patterns', () => {
       assert.strictEqual(nonexistent, null);
     });
 
-    it('should handle bulk session operations with HMGET/HMSET', async () => {
-      const sessionKey = 'session:' + Math.random();
+    test('should handle bulk session operations with HMGET/HMSET', async () => {
+      const sessionKey = 'session:bulk:' + Math.random();
 
       // Set multiple fields at once with object
       const sessionData = {
@@ -60,7 +59,7 @@ describe('Hash Commands - Real-World Patterns', () => {
         username: 'jane_doe',
         email: 'jane@example.com',
         role: 'admin',
-        lastLogin: '2024-01-01T12',
+        lastLogin: '2024-01-01T12:00:00Z',
       };
 
       const result = await redis.hmset(sessionKey, sessionData);
@@ -81,8 +80,8 @@ describe('Hash Commands - Real-World Patterns', () => {
       assert.deepStrictEqual(allData, sessionData);
     });
 
-    it('should update session counters with HINCRBY', async () => {
-      const sessionKey = 'session:' + Math.random();
+    test('should update session counters with HINCRBY', async () => {
+      const sessionKey = 'session:counter:' + Math.random();
 
       // Initialize session with login count
       await redis.hset(sessionKey, 'loginCount', '1');
@@ -101,15 +100,15 @@ describe('Hash Commands - Real-World Patterns', () => {
   });
 
   describe('User Profile Caching', () => {
-    it('should cache user profiles with HGETALL', async () => {
-      const profileKey = 'profile:' + Math.random();
+    test('should cache user profiles with HGETALL', async () => {
+      const profileKey = 'profile:user:' + Math.random();
 
       // Store user profile
       const profileData = {
         id: '123',
         name: 'Alice Johnson',
         email: 'alice@example.com',
-        preferences: JSON.stringify({ theme: "dark", notifications: true }),
+        preferencesJSON: JSON.stringify({ theme: 'dark', notifications: true }),
       };
 
       const result = await redis.hmset(profileKey, profileData);
@@ -120,13 +119,13 @@ describe('Hash Commands - Real-World Patterns', () => {
       assert.strictEqual(storedProfile.id, '123');
       assert.strictEqual(storedProfile.name, 'Alice Johnson');
 
-      const preferences = JSON.parse(storedProfile.preferences);
+      const preferences = JSONJSON.parse(storedProfile.preferences!);
       assert.strictEqual(preferences.theme, 'dark');
       assert.strictEqual(preferences.notifications, true);
     });
 
-    it('should handle profile field operations', async () => {
-      const profileKey = 'profile:' + Math.random();
+    test('should handle profile field operations', async () => {
+      const profileKey = 'profile:fields:' + Math.random();
 
       await redis.hset(profileKey, 'name', 'Bob Smith', 'age', '30');
 
@@ -143,23 +142,23 @@ describe('Hash Commands - Real-World Patterns', () => {
 
       // Get all field names
       const fieldNames = await redis.hkeys(profileKey);
-      assert.deepStrictEqual(fieldNames.sort(), ['age', 'name']);
+      assert.ok(fieldNames.sort()).toEqual(['age', 'name']);
 
       // Get all values
       const values = await redis.hvals(profileKey);
-      assert.deepStrictEqual(values.sort(), ['30', 'Bob Smith']);
+      assert.ok(values.sort()).toEqual(['30', 'Bob Smith']);
     });
   });
 
   describe('Shopping Cart Implementation', () => {
-    it('should manage shopping cart items', async () => {
-      const cartKey = 'cart:' + Math.random();
+    test('should manage shopping cart items', async () => {
+      const cartKey = 'cart:user:' + Math.random();
 
       // Add items to cart
       await redis.hset(
         cartKey,
         'item_1',
-        JSON.stringify({
+        JSONJSON: JSON.stringify({
           productId: 'PROD-001',
           name: 'Laptop',
           price: 999.99,
@@ -170,19 +169,19 @@ describe('Hash Commands - Real-World Patterns', () => {
       await redis.hset(
         cartKey,
         'item_2',
-        JSON.stringify({
+        JSONJSON: JSON.stringify({
           productId: 'PROD-002',
           name: 'Mouse',
-          price: 99,
-          quantity: 1,
+          price: 29.99,
+          quantity: 2,
         })
       );
 
       // Get cart contents
       const cartItems = await redis.hgetall(cartKey);
-      assert.strictEqual(Object.keys(cartItems).length, 2);
+      assert.ok(Object.keys(cartItems)).toHaveLength(2);
 
-      const item1 = JSON.parse(cartItems.item_1);
+      const item1 = JSONJSON.parse(cartItems.item_1!);
       assert.strictEqual(item1.productId, 'PROD-001');
       assert.strictEqual(item1.price, 999.99);
 
@@ -194,8 +193,8 @@ describe('Hash Commands - Real-World Patterns', () => {
       assert.strictEqual(remainingItems, 1);
     });
 
-    it('should handle cart item quantity updates', async () => {
-      const cartKey = 'cart:' + Math.random();
+    test('should handle cart item quantity updates', async () => {
+      const cartKey = 'cart:quantity:' + Math.random();
 
       // Add item with quantity
       await redis.hset(cartKey, 'item_quantity_1', '3');
@@ -215,7 +214,7 @@ describe('Hash Commands - Real-World Patterns', () => {
   });
 
   describe('Advanced Hash Operations', () => {
-    it('should handle floating point increments', async () => {
+    test('should handle floating point increments', async () => {
       const metricsKey = 'metrics:' + Math.random();
 
       // Initialize metrics
@@ -227,11 +226,19 @@ describe('Hash Commands - Real-World Patterns', () => {
         'cpu_usage',
         2.3
       );
-      assert.ok(Math.abs(parseFloat(newCpuUsage.toString()) - 47.8) < 0.1);
+      assert.ok(parseFloat(newCpuUsage.toString())).toBeCloseTo(47.8, 1);
+
+      // Initialize new field with float increment
+      const diskUsage = await redis.hincrbyfloat(
+        metricsKey,
+        'disk_usage',
+        33.7
+      );
+      assert.ok(parseFloat(diskUsage.toString())).toBeCloseTo(33.7, 1);
     });
 
-    it('should handle conditional field setting with HSETNX', async () => {
-      const configKey = 'config:' + Math.random();
+    test('should handle conditional field setting with HSETNX', async () => {
+      const configKey = 'config:app:' + Math.random();
 
       // Set default configuration
       const result1 = await redis.hsetnx(configKey, 'theme', 'light');
@@ -249,8 +256,8 @@ describe('Hash Commands - Real-World Patterns', () => {
       assert.strictEqual(result3, 1);
     });
 
-    it('should handle bulk field deletion', async () => {
-      const tempKey = 'temp:' + Math.random();
+    test('should handle bulk field deletion', async () => {
+      const tempKey = 'temp:data:' + Math.random();
 
       // Create hash with multiple fields
       await redis.hmset(tempKey, {
@@ -278,8 +285,8 @@ describe('Hash Commands - Real-World Patterns', () => {
   });
 
   describe('Error Handling and Edge Cases', () => {
-    it('should handle operations on non-existent hashes', async () => {
-      const nonExistentKey = 'nonexistent:' + Math.random();
+    test('should handle operations on non-existent hashes', async () => {
+      const nonExistentKey = 'nonexistent:hash:' + Math.random();
 
       // Operations on non-existent hash should return appropriate defaults
       const value = await redis.hget(nonExistentKey, 'field');
@@ -304,19 +311,19 @@ describe('Hash Commands - Real-World Patterns', () => {
       assert.deepStrictEqual(vals, []);
     });
 
-    it('should handle type conflicts gracefully', async () => {
-      const stringKey = 'string:' + Math.random();
+    test('should handle type conflicts gracefully', async () => {
+      const stringKey = 'string:key:' + Math.random();
 
       // Set a string value
       await redis.set(stringKey, 'not-a-hash');
 
       // Hash operations should fail on string keys
-      await assert.rejects(redis.hset(stringKey, 'field', 'value'));
-      await assert.rejects(redis.hget(stringKey, 'field'));
+      await assert.ok(redis.hset(stringKey, 'field', 'value')).rejects.toThrow();
+      await assert.ok(redis.hget(stringKey, 'field')).rejects.toThrow();
     });
 
-    it('should handle empty field names and values', async () => {
-      const edgeCaseKey = 'edge:' + Math.random();
+    test('should handle empty field names and values', async () => {
+      const edgeCaseKey = 'edge:case:' + Math.random();
 
       // Test empty value
       const result = await redis.hset(edgeCaseKey, 'empty_value', '');

@@ -116,7 +116,7 @@ describe('Simple Socket.IO Pattern Test', () => {
     await delay(100);
 
     // Publish a Socket.IO-style message
-    const testMessage = JSON.stringify({
+    const testMessage = JSONJSON: JSON.stringify({
       type: 'test',
       message: 'Hello from Node.js test',
       data: { framework: 'node:test' },

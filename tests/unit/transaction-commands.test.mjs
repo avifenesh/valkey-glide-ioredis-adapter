@@ -1,24 +1,24 @@
-
-import { describe, it, beforeEach, afterEach, before, after } from 'node:test';
+import { describe, it, test, beforeEach, afterEach, before, after } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
-const { Redis } = pkg;;
-import { testUtils } from '../setup/index.mjs';
+const { Redis } = pkg;
+import { testUtils } from '../../tests/setup';
 
 describe('Transaction Commands', () => {
   let redis;
 
   before(async () => {
     // Check if test servers are available
-    const serversAvailable = await testUtils.checkTestServers();
+    const serversAvailable = await checkTestServers();
     if (!serversAvailable) {
       throw new Error(
         'Test servers not available. Please start Redis server before running tests.'
       );
     }
 
-    const config = await testUtils.getStandaloneConfig();
+    const config = await getStandaloneConfig();
     redis = new Redis(config);
+    await redis.connect();
   });
 
   after(async () => {
@@ -29,7 +29,7 @@ describe('Transaction Commands', () => {
 
   it('should watch and unwatch keys', async () => {
     // Skip test if servers are not available
-    if (!(await testUtils.checkTestServers())) {
+    if (!(await checkTestServers())) {
       return;
     }
 
@@ -46,7 +46,7 @@ describe('Transaction Commands', () => {
 
   it('should execute transaction with multi/exec', async () => {
     // Skip test if servers are not available
-    if (!(await testUtils.checkTestServers())) {
+    if (!(await checkTestServers())) {
       return;
     }
 
@@ -60,7 +60,7 @@ describe('Transaction Commands', () => {
 
     const results = await multi.exec();
 
-    assert.ok(results);
+    assert.ok(results !== null);
     assert.ok(Array.isArray(results));
     if (results) {
       assert.strictEqual(results.length, 3);
@@ -72,11 +72,11 @@ describe('Transaction Commands', () => {
 
   it('should handle transaction with watched key modification', async () => {
     // Skip test if servers are not available
-    if (!(await testUtils.checkTestServers())) {
+    if (!(await checkTestServers())) {
       return;
     }
 
-    // This test is more complex requires simulating a transaction failure
+    // This test is more complex as it requires simulating a transaction failure
     // For now, we'll just test that the multi/exec flow works
     await redis.set('watchtestkey', 'initial');
 

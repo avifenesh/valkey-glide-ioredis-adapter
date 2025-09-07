@@ -10,7 +10,7 @@ import { testUtils } from '../setup/clean-setup.mjs';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
 
-describe('Clean Redis Basic Functionality', () => {
+describe('Clean Valkey Adapter Basic Functionality', () => {
   after(async () => {
     await testUtils.cleanupTestClients();
   });
@@ -36,7 +36,7 @@ describe('Clean Redis Basic Functionality', () => {
   });
 
   it('should work with lazy connection on first command', async () => {
-    const config = testUtils.getStandaloneConfig();
+    const config = getStandaloneConfig();
     const client = new Redis({ ...config, lazyConnect: true });
     
     // Should start disconnected
@@ -55,7 +55,7 @@ describe('Clean Redis Basic Functionality', () => {
   });
 
   it('should handle hash commands with lazy connection', async () => {
-    const config = testUtils.getStandaloneConfig();
+    const config = getStandaloneConfig();
     const client = new Redis({ ...config, lazyConnect: true });
     
     // Should start disconnected

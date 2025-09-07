@@ -9,7 +9,7 @@ describe('Connection Management (ioredis compatibility)', () => {
   let client;
 
   before(async () => {
-    const serversAvailable = testUtils.checkTestServers();
+    const serversAvailable = checkTestServers();
     if (!serversAvailable) {
       throw new Error('Test servers not available. Please start Redis server before running tests.');
     }
@@ -39,10 +39,10 @@ describe('Connection Management (ioredis compatibility)', () => {
 
   describe('Client creation patterns', () => {
     it('should create client with default options', async () => {
-      const serversAvailable = testUtils.checkTestServers();
+      const serversAvailable = checkTestServers();
       if (!serversAvailable) return;
 
-      const config = await testUtils.getStandaloneConfig();
+      const config = getStandaloneConfig();
       client = new Redis({
         ...config,
         connectTimeout: config.connectTimeout ?? 2000,
@@ -59,10 +59,10 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     it('should create client with port and host', async () => {
-      const serversAvailable = testUtils.checkTestServers();
+      const serversAvailable = checkTestServers();
       if (!serversAvailable) return;
 
-      const config = await testUtils.getStandaloneConfig();
+      const config = getStandaloneConfig();
       client = new Redis({
         port: config.port,
         host: config.host,
@@ -80,10 +80,10 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     it('should create client with options object', async () => {
-      const serversAvailable = testUtils.checkTestServers();
+      const serversAvailable = checkTestServers();
       if (!serversAvailable) return;
 
-      const config = await testUtils.getStandaloneConfig();
+      const config = getStandaloneConfig();
       client = new Redis({
         port: config.port,
         host: config.host,
@@ -102,10 +102,10 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     it('should create client with redis:// URL', async () => {
-      const serversAvailable = testUtils.checkTestServers();
+      const serversAvailable = checkTestServers();
       if (!serversAvailable) return;
 
-      const config = await testUtils.getStandaloneConfig();
+      const config = getStandaloneConfig();
       client = new Redis({
         port: config.port,
         host: config.host,
@@ -124,10 +124,10 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     it('should handle database selection', async () => {
-      const serversAvailable = testUtils.checkTestServers();
+      const serversAvailable = checkTestServers();
       if (!serversAvailable) return;
 
-      const config = await testUtils.getStandaloneConfig();
+      const config = getStandaloneConfig();
       const db = 0;
       client = new Redis({
         port: config.port,
@@ -148,10 +148,10 @@ describe('Connection Management (ioredis compatibility)', () => {
 
   describe('Connection lifecycle', () => {
     it('should emit ready event when connected', async () => {
-      const serversAvailable = testUtils.checkTestServers();
+      const serversAvailable = checkTestServers();
       if (!serversAvailable) return;
 
-      const config = await testUtils.getStandaloneConfig();
+      const config = getStandaloneConfig();
       client = new Redis({
         ...config,
         connectTimeout: config.connectTimeout ?? 2000,
@@ -170,10 +170,10 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     it('should emit connect event', async () => {
-      const serversAvailable = testUtils.checkTestServers();
+      const serversAvailable = checkTestServers();
       if (!serversAvailable) return;
 
-      const config = await testUtils.getStandaloneConfig();
+      const config = getStandaloneConfig();
       client = new Redis({
         ...config,
         connectTimeout: config.connectTimeout ?? 2000,
@@ -192,10 +192,10 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     it('should emit end event when disconnected', async () => {
-      const serversAvailable = testUtils.checkTestServers();
+      const serversAvailable = checkTestServers();
       if (!serversAvailable) return;
 
-      const config = await testUtils.getStandaloneConfig();
+      const config = getStandaloneConfig();
       client = new Redis({
         ...config,
         connectTimeout: config.connectTimeout ?? 2000,
