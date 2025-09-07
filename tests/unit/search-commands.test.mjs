@@ -27,7 +27,7 @@ import {
   checkAvailableModules,
   waitForValkeyBundle,
   TEST_DATA,
-} from '../utils/valkey-bundle-config';
+} from '../utils/valkey-bundle-config.mjs';
 import { SearchIndex, SearchQuery } from '../../src/BaseClient';
 
 describe('Search Commands - Valkey Search Compatibility', () => {
