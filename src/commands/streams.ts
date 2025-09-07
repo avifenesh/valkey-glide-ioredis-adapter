@@ -496,7 +496,10 @@ export async function xreadgroup(
         keysAndIds,
         options
       ),
-      new Promise(resolve => setTimeout(() => resolve(null), blockMs + 50)),
+      new Promise(resolve => {
+        const handle = setTimeout(() => resolve(null), blockMs + 50);
+        (handle as any).unref?.();
+      }),
     ]);
   } else {
     result = await (client as any).glideClient.xreadgroup(
