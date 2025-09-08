@@ -89,6 +89,7 @@ describe('Real-World Socket.IO Application', () => {
       ...config,
       keyPrefix: 'CHAT:',
       connectTimeout: 10000, // 10 seconds - ioredis default
+      enableEventBasedPubSub: true, // Required for Socket.IO binary compatibility
     };
 
     // Server 1 clients - use duplicate() pattern as per Socket.IO docs

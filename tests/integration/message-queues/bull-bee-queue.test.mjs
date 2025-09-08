@@ -847,7 +847,7 @@ describe('Message Queue Systems Integration', () => {
       // Create a shared Redis client with custom commands
       const sharedClient = new Redis({
         ...config,
-        keyPrefix: keyPrefix + 'shared:',
+        // Bull manages its own key namespacing
       });
       await sharedClient.connect();
 

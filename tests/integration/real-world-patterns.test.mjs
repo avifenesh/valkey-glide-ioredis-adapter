@@ -179,7 +179,7 @@ describe('Real-World ioredis Usage Patterns', () => {
         delay: '0',
       });
 
-      const storedData = await redis.hget('bull:email:12345', 'data');
+      const storedData = await redis.hget('bull:email:12345', 'dataJSON');
       const parsed = JSON.parse(storedData);
       assert.strictEqual(parsed.id, '12345');
       assert.strictEqual(parsed.type, 'email');
