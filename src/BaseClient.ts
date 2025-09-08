@@ -77,8 +77,13 @@ export abstract class BaseClient extends EventEmitter {
   protected options: RedisOptions;
   // Track shutdown/teardown state to avoid racing auto-connect
   protected isClosing: boolean = false;
+  // Track active disconnect operation to prevent duplicates
+  private disconnectPromise?: Promise<void>;
   // Track an in-flight connect so we can coordinate teardown
   private pendingConnect?: Promise<void>;
+  // Track if GLIDE clients have been closed to make close() idempotent
+  private mainClientClosed: boolean = false;
+  private subscriberClientClosed: boolean = false;
   // ioredis compatibility properties
   public blocked: boolean = false;
 
@@ -173,12 +178,15 @@ export abstract class BaseClient extends EventEmitter {
 
   // Connection method for ioredis compatibility - idempotent and safe
   async connect(): Promise<void> {
-    // If a prior shutdown completed, allow reconnection by clearing closing flag
+    // If a prior shutdown completed, allow reconnection by clearing closing flags
     if (
       this.connectionStatus === 'end' ||
       this.connectionStatus === 'disconnected'
     ) {
       this.isClosing = false;
+      // Reset close tracking flags for reconnection
+      this.mainClientClosed = false;
+      this.subscriberClientClosed = false;
     }
     // If already connected, return immediately
     if (this.connectionStatus === 'connected' && this.glideClient) {
@@ -236,19 +244,39 @@ export abstract class BaseClient extends EventEmitter {
    * Internal cleanup helper - closes all connections and clears resources
    */
   private async cleanupConnections(): Promise<void> {
-    // Close main GLIDE client
-    try {
-      this.glideClient?.close?.();
-    } catch (error) {
-      // Ignore errors when closing - connection might already be closed
+    // Close main GLIDE client (idempotent)
+    if (this.glideClient && !this.mainClientClosed) {
+      try {
+        if (typeof this.glideClient.close === 'function') {
+          this.glideClient.close();
+          this.mainClientClosed = true;
+        }
+      } catch (error: any) {
+        // Mark as closed even on error to prevent retry
+        this.mainClientClosed = true;
+        // Ignore ClosingError - it means cleanup is already in progress
+        if (error?.name !== 'ClosingError') {
+          // Log other errors but don't throw
+          console.debug('Error closing main client:', error?.message);
+        }
+      }
     }
 
-    // Close subscriber client
-    if (this.subscriberClient) {
+    // Close subscriber client (idempotent)
+    if (this.subscriberClient && !this.subscriberClientClosed) {
       try {
-        (this.subscriberClient as any)?.close?.();
-      } catch (error) {
-        // Ignore errors when closing - connection might already be closed
+        if (typeof (this.subscriberClient as any).close === 'function') {
+          (this.subscriberClient as any).close();
+          this.subscriberClientClosed = true;
+        }
+      } catch (error: any) {
+        // Mark as closed even on error to prevent retry
+        this.subscriberClientClosed = true;
+        // Ignore ClosingError - it means cleanup is already in progress
+        if (error?.name !== 'ClosingError') {
+          // Log other errors but don't throw
+          console.debug('Error closing subscriber client:', error?.message);
+        }
       }
       // Do not recreate a subscriber client during cleanup
       this.subscriberClient = undefined as unknown as GlideClientType;
@@ -274,12 +302,27 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   async disconnect(): Promise<void> {
-    if (
-      this.connectionStatus === 'end' ||
-      this.connectionStatus === 'disconnected'
-    )
+    // If already disconnected or disconnecting, return existing promise or nothing
+    if (this.connectionStatus === 'end' || this.connectionStatus === 'disconnected') {
       return;
+    }
+    
+    // If we're already disconnecting, return the existing promise
+    if (this.disconnectPromise) {
+      return this.disconnectPromise;
+    }
 
+    // Start the disconnect process
+    this.disconnectPromise = this.performDisconnect();
+    
+    try {
+      await this.disconnectPromise;
+    } finally {
+      delete this.disconnectPromise;
+    }
+  }
+
+  private async performDisconnect(): Promise<void> {
     // Wait for any pending auto-connect promise before disconnecting
     if ((this as any)._autoConnectPromise) {
       try {
@@ -2909,6 +2952,9 @@ export abstract class BaseClient extends EventEmitter {
       GlideClientConfiguration,
       PubSubMsg,
     } = require('@valkey/valkey-glide');
+
+    // Reset the closed flag when creating a new subscriber
+    this.subscriberClientClosed = false;
 
     // Create subscriber config with callback mechanism
     const subscriberConfig = await this.getBaseSubscriberConfig();
