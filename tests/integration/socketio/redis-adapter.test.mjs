@@ -100,13 +100,13 @@ describe('Socket.IO Valkey Adapter Integration', () => {
 
     valkeyClient1 = new Redis({
       ...config,
-      keyPrefix: keyPrefix + 'pub:',
+      keyPrefix: keyPrefix, // Same prefix for all clients to enable cross-instance communication
       enableEventBasedPubSub: true, // Enable binary-safe pub/sub for Socket.IO
     });
 
     valkeyClient2 = new Redis({
       ...config,
-      keyPrefix: keyPrefix + 'sub:',
+      keyPrefix: keyPrefix, // Same prefix for all clients to enable cross-instance communication
       enableEventBasedPubSub: true, // Enable binary-safe pub/sub for Socket.IO
     });
 

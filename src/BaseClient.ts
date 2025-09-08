@@ -2586,6 +2586,51 @@ export abstract class BaseClient extends EventEmitter {
   // === Pub/Sub Commands - Dual Architecture ===
 
   /**
+   * Setup event forwarding from IoredisPubSubClient (only once)
+   * @private
+   */
+  private setupPubSubEventForwarding(): void {
+    if (!this.ioredisCompatiblePubSub) return;
+    
+    // Check if we've already set up forwarding
+    if ((this.ioredisCompatiblePubSub as any)._forwardingSetup) return;
+    
+    // Forward events from IoredisPubSubClient to this client
+    this.ioredisCompatiblePubSub.on(
+      'message',
+      (channel: string, message: string) => {
+        this.emit('message', channel, message);
+      }
+    );
+    
+    // Forward binary message events for Socket.IO compatibility
+    this.ioredisCompatiblePubSub.on(
+      'messageBuffer',
+      (channel: string, message: Buffer) => {
+        this.emit('messageBuffer', channel, message);
+      }
+    );
+    
+    // Forward pattern message events
+    this.ioredisCompatiblePubSub.on(
+      'pmessage',
+      (pattern: string, channel: string, message: string) => {
+        this.emit('pmessage', pattern, channel, message);
+      }
+    );
+    
+    this.ioredisCompatiblePubSub.on(
+      'pmessageBuffer',
+      (pattern: string, channel: string, message: Buffer) => {
+        this.emit('pmessageBuffer', pattern, channel, message);
+      }
+    );
+    
+    // Mark as set up to prevent duplicate forwarding
+    (this.ioredisCompatiblePubSub as any)._forwardingSetup = true;
+  }
+
+  /**
    * Subscribe to channels using dual pub/sub architecture:
    *
    * 1. Direct GLIDE Mode (default): High-performance native callbacks, text messages only
@@ -2612,13 +2657,7 @@ export abstract class BaseClient extends EventEmitter {
           this.ioredisCompatiblePubSub = new IoredisPubSubClient(this.options);
           await this.ioredisCompatiblePubSub.connect();
 
-          // Forward events from IoredisPubSubClient to this client
-          this.ioredisCompatiblePubSub.on(
-            'message',
-            (channel: string, message: string) => {
-              this.emit('message', channel, message);
-            }
-          );
+          this.setupPubSubEventForwarding();
         }
 
         // Subscribe to each new channel
@@ -2663,32 +2702,7 @@ export abstract class BaseClient extends EventEmitter {
           this.ioredisCompatiblePubSub = new IoredisPubSubClient(this.options);
           await this.ioredisCompatiblePubSub.connect();
 
-          // Forward events from IoredisPubSubClient to this client
-          this.ioredisCompatiblePubSub.on(
-            'message',
-            (channel: string, message: string) => {
-              this.emit('message', channel, message);
-            }
-          );
-          this.ioredisCompatiblePubSub.on(
-            'pmessage',
-            (pattern: string, channel: string, message: string) => {
-              this.emit('pmessage', pattern, channel, message);
-            }
-          );
-          // Forward Socket.IO Buffer events
-          this.ioredisCompatiblePubSub.on(
-            'messageBuffer',
-            (channel: string, message: Buffer) => {
-              this.emit('messageBuffer', channel, message);
-            }
-          );
-          this.ioredisCompatiblePubSub.on(
-            'pmessageBuffer',
-            (pattern: string, channel: string, message: Buffer) => {
-              this.emit('pmessageBuffer', pattern, channel, message);
-            }
-          );
+          this.setupPubSubEventForwarding();
         }
 
         // Subscribe to each new pattern
