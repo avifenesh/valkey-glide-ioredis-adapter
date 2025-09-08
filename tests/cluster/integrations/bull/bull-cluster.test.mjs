@@ -358,7 +358,7 @@ describe('Bull Integration with Cluster', () => {
   });
 
   describe('Event Handling', () => {
-    it('should emit connection events', done => {
+    it('should emit connection events', async () => {
       const client = Cluster.createClient('client', {
         ...clusterConfig,
         lazyConnect: true,
@@ -367,27 +367,29 @@ describe('Bull Integration with Cluster', () => {
       let eventCount = 0;
       const expectedEvents = ['connecting', 'connect', 'ready', 'error', 'end'];
 
-      expectedEvents.forEach(event => {
-        client.on(event, () => {
-          eventCount++;
-          if (eventCount === expectedEvents.length) {
-            client
-              .disconnect()
-              .then(() => done())
-              .catch(done);
-          }
-        });
-      });
-
-      // Simulate events
-      setTimeout(() => {
+      return new Promise((resolve, reject) => {
         expectedEvents.forEach(event => {
-          client.emit(event);
+          client.on(event, () => {
+            eventCount++;
+            if (eventCount === expectedEvents.length) {
+              client
+                .disconnect()
+                .then(() => resolve())
+                .catch(reject);
+            }
+          });
         });
-      }, 10);
+
+        // Simulate events
+        setTimeout(() => {
+          expectedEvents.forEach(event => {
+            client.emit(event);
+          });
+        }, 10);
+      });
     });
 
-    it('should forward pub/sub events', done => {
+    it('should forward pub/sub events', async () => {
       const subscriber = Cluster.createClient('subscriber', {
         ...clusterConfig,
         lazyConnect: true,
@@ -396,24 +398,26 @@ describe('Bull Integration with Cluster', () => {
       let eventCount = 0;
       const pubsubEvents = ['message', 'pmessage', 'subscribe', 'unsubscribe'];
 
-      pubsubEvents.forEach(event => {
-        subscriber.on(event, () => {
-          eventCount++;
-          if (eventCount === pubsubEvents.length) {
-            subscriber
-              .disconnect()
-              .then(() => done())
-              .catch(done);
-          }
-        });
-      });
-
-      // Simulate pub/sub events
-      setTimeout(() => {
+      return new Promise((resolve, reject) => {
         pubsubEvents.forEach(event => {
-          subscriber.emit(event, 'test-channel', 'test-message');
+          subscriber.on(event, () => {
+            eventCount++;
+            if (eventCount === pubsubEvents.length) {
+              subscriber
+                .disconnect()
+                .then(() => resolve())
+                .catch(reject);
+            }
+          });
         });
-      }, 10);
+
+        // Simulate pub/sub events
+        setTimeout(() => {
+          pubsubEvents.forEach(event => {
+            subscriber.emit(event, 'test-channel', 'test-message');
+          });
+        }, 10);
+      });
     });
   });
 

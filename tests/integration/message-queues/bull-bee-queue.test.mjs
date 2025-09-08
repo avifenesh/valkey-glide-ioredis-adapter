@@ -23,6 +23,9 @@ import pkg from '../../../dist/index.js';
 const { Redis } = pkg;
 import { getStandaloneConfig } from '../../utils/test-config.mjs';
 
+// Track test completion
+let allTestsComplete = false;
+
 describe('Message Queue Systems Integration', () => {
   let redisClient;
   const keyPrefix = 'TEST:queues:';
@@ -74,10 +77,22 @@ describe('Message Queue Systems Integration', () => {
     // This helps prevent event loop warnings
     if (redisClient && redisClient.status !== 'disconnected') {
       await redisClient.disconnect();
+      redisClient = null;
     }
     
-    // Small delay to allow any pending operations to complete
+    // Mark tests as complete
+    allTestsComplete = true;
+    
+    // Small cleanup delay
     await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Force exit after cleanup to prevent hanging
+    // This is a workaround for Bull/GLIDE interaction issues
+    setTimeout(() => {
+      if (allTestsComplete) {
+        process.exit(0);
+      }
+    }, 500);
   });
 
   describe('Bull Queue Integration', () => {
@@ -696,6 +711,7 @@ describe('Message Queue Systems Integration', () => {
     let queue;
     let customRedisClient;
     let additionalClients = []; // Track additional clients created for cleanup
+    let pendingConnections = []; // Track pending connection promises
 
     beforeEach(async () => {
       const config = await getStandaloneConfig();
@@ -728,6 +744,13 @@ describe('Message Queue Systems Integration', () => {
         // Give Bull some time to complete internal cleanup
         await new Promise(resolve => setTimeout(resolve, 100));
       }
+      
+      // Wait for any pending connections to complete
+      if (pendingConnections.length > 0) {
+        await Promise.allSettled(pendingConnections);
+        pendingConnections = [];
+      }
+      
       if (customRedisClient) {
         await customRedisClient.disconnect();
       }
@@ -742,6 +765,9 @@ describe('Message Queue Systems Integration', () => {
         }
       }
       additionalClients = [];
+      
+      // Small delay to ensure all connections are fully closed
+      await new Promise(resolve => setTimeout(resolve, 50));
     });
 
     test('should support defineCommand for custom Lua scripts', async () => {
@@ -800,15 +826,13 @@ describe('Message Queue Systems Integration', () => {
 
           // Enhanced connection pattern: start connecting immediately
           // Store the promise so we can handle it properly
-          const connectPromise = client.connect();
-          connectPromise.then(() => {
-            // Connection successful
-          }).catch(err => {
+          const connectPromise = client.connect().catch(err => {
             // Only emit error if client is not closing
             if (!client.isClosing) {
               client.emit('error', err);
             }
           });
+          pendingConnections.push(connectPromise);
 
           return client;
         },
@@ -943,11 +967,13 @@ describe('Message Queue Systems Integration', () => {
               maxRetriesPerRequest: null, // Bull requirement for subscriber
             });
             additionalClients.push(subClient); // Track for cleanup
-            subClient.connect().catch(err => {
+            // Store the connection promise for cleanup
+            const connectPromise = subClient.connect().catch(err => {
               if (!subClient.isClosing) {
                 console.error('Subscriber connect error:', err);
               }
             });
+            pendingConnections.push(connectPromise);
             return subClient;
           }
           
@@ -959,11 +985,13 @@ describe('Message Queue Systems Integration', () => {
               maxRetriesPerRequest: null, // Bull requirement for bclient
             });
             additionalClients.push(bClient); // Track for cleanup
-            bClient.connect().catch(err => {
+            // Store the connection promise for cleanup
+            const connectPromise = bClient.connect().catch(err => {
               if (!bClient.isClosing) {
                 console.error('Blocking client connect error:', err);
               }
             });
+            pendingConnections.push(connectPromise);
             return bClient;
           }
 
