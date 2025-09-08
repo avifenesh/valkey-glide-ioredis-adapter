@@ -365,27 +365,45 @@ describe('Bull Integration with Cluster', () => {
       });
 
       let eventCount = 0;
+      let resolved = false;
       const expectedEvents = ['connecting', 'connect', 'ready', 'error', 'end'];
 
       return new Promise((resolve, reject) => {
+        const eventHandler = () => {
+          if (resolved) return; // Prevent multiple resolutions
+          eventCount++;
+          if (eventCount === expectedEvents.length) {
+            resolved = true;
+            // Remove all event listeners to prevent late firing
+            expectedEvents.forEach(event => {
+              client.removeAllListeners(event);
+            });
+            client
+              .disconnect()
+              .then(() => resolve())
+              .catch(reject);
+          }
+        };
+
         expectedEvents.forEach(event => {
-          client.on(event, () => {
-            eventCount++;
-            if (eventCount === expectedEvents.length) {
-              client
-                .disconnect()
-                .then(() => resolve())
-                .catch(reject);
-            }
-          });
+          client.on(event, eventHandler);
         });
 
         // Simulate events
-        setTimeout(() => {
-          expectedEvents.forEach(event => {
-            client.emit(event);
-          });
+        const timeout = setTimeout(() => {
+          if (!resolved) {
+            expectedEvents.forEach(event => {
+              client.emit(event);
+            });
+          }
         }, 10);
+
+        // Cleanup timeout if test resolves early
+        const originalResolve = resolve;
+        resolve = (...args) => {
+          clearTimeout(timeout);
+          originalResolve(...args);
+        };
       });
     });
 
@@ -396,27 +414,45 @@ describe('Bull Integration with Cluster', () => {
       });
 
       let eventCount = 0;
+      let resolved = false;
       const pubsubEvents = ['message', 'pmessage', 'subscribe', 'unsubscribe'];
 
       return new Promise((resolve, reject) => {
+        const eventHandler = () => {
+          if (resolved) return; // Prevent multiple resolutions
+          eventCount++;
+          if (eventCount === pubsubEvents.length) {
+            resolved = true;
+            // Remove all event listeners to prevent late firing
+            pubsubEvents.forEach(event => {
+              subscriber.removeAllListeners(event);
+            });
+            subscriber
+              .disconnect()
+              .then(() => resolve())
+              .catch(reject);
+          }
+        };
+
         pubsubEvents.forEach(event => {
-          subscriber.on(event, () => {
-            eventCount++;
-            if (eventCount === pubsubEvents.length) {
-              subscriber
-                .disconnect()
-                .then(() => resolve())
-                .catch(reject);
-            }
-          });
+          subscriber.on(event, eventHandler);
         });
 
         // Simulate pub/sub events
-        setTimeout(() => {
-          pubsubEvents.forEach(event => {
-            subscriber.emit(event, 'test-channel', 'test-message');
-          });
+        const timeout = setTimeout(() => {
+          if (!resolved) {
+            pubsubEvents.forEach(event => {
+              subscriber.emit(event, 'test-channel', 'test-message');
+            });
+          }
         }, 10);
+
+        // Cleanup timeout if test resolves early
+        const originalResolve = resolve;
+        resolve = (...args) => {
+          clearTimeout(timeout);
+          originalResolve(...args);
+        };
       });
     });
   });
