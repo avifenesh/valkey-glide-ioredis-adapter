@@ -91,13 +91,13 @@ describe('Real-World Socket.IO Application', () => {
       connectTimeout: 10000, // 10 seconds - ioredis default
     };
 
-    // Server 1 clients
+    // Server 1 clients - use duplicate() pattern as per Socket.IO docs
     valkeyPubClient1 = new Redis(clientConfig);
-    valkeySubClient1 = new Redis(clientConfig);
+    valkeySubClient1 = valkeyPubClient1.duplicate();
 
-    // Server 2 clients
+    // Server 2 clients - use duplicate() pattern as per Socket.IO docs
     valkeyPubClient2 = new Redis(clientConfig);
-    valkeySubClient2 = new Redis(clientConfig);
+    valkeySubClient2 = valkeyPubClient2.duplicate();
 
     // Like real ioredis, connections are lazy - no explicit connect() needed
 
