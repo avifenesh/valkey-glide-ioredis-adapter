@@ -37,6 +37,7 @@ describe('Clean Valkey Adapter Basic Functionality', () => {
 
     // Clean up test data
     await client.del('test:key');
+    await client.quit();
   });
 
   it('should work with lazy connection on first command', async () => {

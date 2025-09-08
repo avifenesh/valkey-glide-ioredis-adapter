@@ -107,6 +107,14 @@ describe('Socket.IO Redis Adapter Pattern', () => {
       enableEventBasedPubSub: true, // Socket.IO needs direct TCP pub/sub
     });
 
+    // Ensure all Redis clients are connected before proceeding
+    await Promise.all([
+      valkeyPubClient1.connect(),
+      valkeySubClient1.connect(),
+      valkeyPubClient2.connect(),
+      valkeySubClient2.connect()
+    ]);
+
     // Create HTTP servers
     chatServer1 = createServer();
     chatServer2 = createServer();
@@ -169,19 +177,50 @@ describe('Socket.IO Redis Adapter Pattern', () => {
   });
 
   after(async () => {
-    // Close Socket.IO servers
-    if (io1) io1.close();
-    if (io2) io2.close();
+    // Close Socket.IO servers first (they depend on HTTP servers)
+    if (io1) {
+      await new Promise(resolve => {
+        io1.close(() => resolve());
+      });
+    }
+    if (io2) {
+      await new Promise(resolve => {
+        io2.close(() => resolve());
+      });
+    }
 
     // Close HTTP servers
-    if (chatServer1) chatServer1.close();
-    if (chatServer2) chatServer2.close();
+    if (chatServer1) {
+      await new Promise(resolve => {
+        chatServer1.close(() => resolve());
+      });
+    }
+    if (chatServer2) {
+      await new Promise(resolve => {
+        chatServer2.close(() => resolve());
+      });
+    }
 
-    // Close Redis connections
-    await valkeyPubClient1.disconnect();
-    await valkeySubClient1.disconnect();
-    await valkeyPubClient2.disconnect();
-    await valkeySubClient2.disconnect();
+    // Close Redis connections with error handling
+    const closeRedis = async (client) => {
+      try {
+        if (client && typeof client.disconnect === 'function') {
+          await client.disconnect();
+        }
+      } catch (err) {
+        // Ignore closing errors
+      }
+    };
+
+    await Promise.all([
+      closeRedis(valkeyPubClient1),
+      closeRedis(valkeySubClient1),
+      closeRedis(valkeyPubClient2),
+      closeRedis(valkeySubClient2)
+    ]);
+    
+    // Add delay to ensure all async operations complete
+    await new Promise(resolve => setTimeout(resolve, 100));
   });
 
   test('Socket.IO Redis adapter enables cross-server broadcasting', async () => {

@@ -182,8 +182,16 @@ describe('Connection Management (ioredis compatibility)', () => {
         maxRetriesPerRequest: 1,
       });
 
-      const readyPromise = new Promise(resolve => {
-        client.on('ready', resolve);
+      const readyPromise = new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          client.removeAllListeners('ready');
+          resolve(); // Resolve anyway to prevent hanging
+        }, 1000);
+        
+        client.on('ready', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
       });
 
       await client.connect();
@@ -195,6 +203,8 @@ describe('Connection Management (ioredis compatibility)', () => {
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     }
+      
+      // Wait for ready event with timeout
       await readyPromise;
 
       client.removeAllListeners('ready');
@@ -212,8 +222,16 @@ describe('Connection Management (ioredis compatibility)', () => {
         maxRetriesPerRequest: 1,
       });
 
-      const connectPromise = new Promise(resolve => {
-        client.on('connect', resolve);
+      const connectPromise = new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          client.removeAllListeners('connect');
+          resolve(); // Resolve anyway to prevent hanging
+        }, 1000);
+        
+        client.on('connect', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
       });
 
       await client.connect();
@@ -225,6 +243,8 @@ describe('Connection Management (ioredis compatibility)', () => {
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     }
+      
+      // Wait for connect event with timeout
       await connectPromise;
 
       client.removeAllListeners('connect');

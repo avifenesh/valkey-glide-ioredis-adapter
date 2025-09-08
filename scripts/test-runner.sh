@@ -200,14 +200,14 @@ else
   fi
 
   if [ "$COVERAGE" = "1" ] && command -v c8 &> /dev/null; then
-    c8 node --test --test-concurrency=1 $OPT_IMPORT \
+    c8 node --test $OPT_IMPORT \
       $REPORTER_ARGS \
       $TEST_FILES &
     TEST_PID=$!
     wait $TEST_PID
     TEST_EXIT=$?
   else
-    node --test --test-concurrency=1 $OPT_IMPORT \
+    node --test $OPT_IMPORT \
       $REPORTER_ARGS \
       $TEST_FILES &
     TEST_PID=$!

@@ -248,17 +248,33 @@ export abstract class BaseClient extends EventEmitter {
     if (this.glideClient && !this.mainClientClosed) {
       try {
         if (typeof this.glideClient.close === 'function') {
-          this.glideClient.close();
+          // Check if already closed to prevent double-close ClosingError
+          try {
+            this.glideClient.close();
+          } catch (closeError: any) {
+            // Suppress ClosingError that happens during close() call itself
+            if (closeError?.constructor?.name === 'ClosingError' || 
+                closeError?.name === 'ClosingError' || 
+                closeError?.message?.includes('ClosingError')) {
+              // ClosingError means cleanup is already in progress - that's fine
+            } else {
+              throw closeError; // Re-throw other errors
+            }
+          }
           this.mainClientClosed = true;
         }
       } catch (error: any) {
         // Mark as closed even on error to prevent retry
         this.mainClientClosed = true;
-        // Ignore ClosingError - it means cleanup is already in progress
-        if (error?.name !== 'ClosingError') {
-          // Log other errors but don't throw
-          console.debug('Error closing main client:', error?.message);
+        // Suppress ClosingError - it's expected when cleanup is already in progress
+        if (error?.constructor?.name === 'ClosingError' || 
+            error?.name === 'ClosingError' || 
+            error?.message?.includes('ClosingError')) {
+          // ClosingError is expected during cleanup - silently ignore
+          return;
         }
+        // Log other unexpected errors but don't throw
+        console.debug('Error closing main client:', error?.message);
       }
     }
 
@@ -266,17 +282,33 @@ export abstract class BaseClient extends EventEmitter {
     if (this.subscriberClient && !this.subscriberClientClosed) {
       try {
         if (typeof (this.subscriberClient as any).close === 'function') {
-          (this.subscriberClient as any).close();
+          // Check if already closed to prevent double-close ClosingError
+          try {
+            (this.subscriberClient as any).close();
+          } catch (closeError: any) {
+            // Suppress ClosingError that happens during close() call itself
+            if (closeError?.constructor?.name === 'ClosingError' || 
+                closeError?.name === 'ClosingError' || 
+                closeError?.message?.includes('ClosingError')) {
+              // ClosingError means cleanup is already in progress - that's fine
+            } else {
+              throw closeError; // Re-throw other errors
+            }
+          }
           this.subscriberClientClosed = true;
         }
       } catch (error: any) {
         // Mark as closed even on error to prevent retry
         this.subscriberClientClosed = true;
-        // Ignore ClosingError - it means cleanup is already in progress
-        if (error?.name !== 'ClosingError') {
-          // Log other errors but don't throw
-          console.debug('Error closing subscriber client:', error?.message);
+        // Suppress ClosingError - it's expected when cleanup is already in progress
+        if (error?.constructor?.name === 'ClosingError' || 
+            error?.name === 'ClosingError' || 
+            error?.message?.includes('ClosingError')) {
+          // ClosingError is expected during cleanup - silently ignore
+          return;
         }
+        // Log other unexpected errors but don't throw
+        console.debug('Error closing subscriber client:', error?.message);
       }
       // Do not recreate a subscriber client during cleanup
       this.subscriberClient = undefined as unknown as GlideClientType;
