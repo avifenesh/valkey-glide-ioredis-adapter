@@ -202,6 +202,7 @@ export abstract class BaseClient extends EventEmitter {
 
     // Start new connection
     this.connectionStatus = 'connecting';
+    this.isClosing = false; // Reset closing flag when explicitly connecting
     this.emit('connecting');
 
     this.pendingConnect = (async () => {
@@ -279,6 +280,16 @@ export abstract class BaseClient extends EventEmitter {
     )
       return;
 
+    // Wait for any pending auto-connect promise before disconnecting
+    if ((this as any)._autoConnectPromise) {
+      try {
+        await (this as any)._autoConnectPromise;
+      } catch {
+        // Ignore errors from auto-connect
+      }
+      delete (this as any)._autoConnectPromise;
+    }
+
     // Signal that we are shutting down to avoid racing with auto-connect
     this.isClosing = true;
     this.connectionStatus = 'disconnecting';
@@ -307,7 +318,8 @@ export abstract class BaseClient extends EventEmitter {
     // Set final status and emit end event
     this.connectionStatus = 'end';
     this.emit('end');
-    this.isClosing = false;
+    // Keep isClosing = true to prevent any reconnection attempts
+    // Only reset isClosing when explicitly calling connect()
   }
 
   async quit(): Promise<void> {
@@ -339,7 +351,8 @@ export abstract class BaseClient extends EventEmitter {
     // Set final status and emit end event
     this.connectionStatus = 'end';
     this.emit('end');
-    this.isClosing = false;
+    // Keep isClosing = true to prevent any reconnection attempts
+    // Only reset isClosing when explicitly calling connect()
   }
 
   async close(): Promise<void> {

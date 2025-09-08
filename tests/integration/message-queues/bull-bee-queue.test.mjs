@@ -69,6 +69,17 @@ describe('Message Queue Systems Integration', () => {
     }
   });
 
+  after(async () => {
+    // Global cleanup - ensure all connections are closed
+    // This helps prevent event loop warnings
+    if (redisClient && redisClient.status !== 'disconnected') {
+      await redisClient.disconnect();
+    }
+    
+    // Small delay to allow any pending operations to complete
+    await new Promise(resolve => setTimeout(resolve, 100));
+  });
+
   describe('Bull Queue Integration', () => {
     let queue;
     let processor;
@@ -493,9 +504,13 @@ describe('Message Queue Systems Integration', () => {
         });
 
         // Wait for job to be processed with more lenient timeout and error handling
+        // Create handler function so we can remove it later
+        let successHandler;
+        let timeoutId;
+        
         const processed = await Promise.race([
           new Promise(resolve => {
-            queue.on('succeeded', () => {
+            successHandler = () => {
               const actualDelay = processedAt - startTime;
               if (actualDelay >= delayMs - 100) {
                 // Allow some tolerance
@@ -503,14 +518,23 @@ describe('Message Queue Systems Integration', () => {
               } else {
                 resolve(false);
               }
-            });
+            };
+            queue.on('succeeded', successHandler);
           }),
           new Promise(resolve => {
-            setTimeout(() => {
+            timeoutId = setTimeout(() => {
               resolve(false);
             }, delayMs + 3000); // More generous timeout
           }),
         ]);
+        
+        // Clean up event listener and timeout
+        if (successHandler) {
+          queue.removeListener('succeeded', successHandler);
+        }
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
 
         if (processed && processedAt > 0) {
           assert.ok(processedAt - startTime >= delayMs - 100);
@@ -671,6 +695,7 @@ describe('Message Queue Systems Integration', () => {
   describe('Advanced Bull Integration - defineCommand & createClient', () => {
     let queue;
     let customRedisClient;
+    let additionalClients = []; // Track additional clients created for cleanup
 
     beforeEach(async () => {
       const config = await getStandaloneConfig();
@@ -700,10 +725,23 @@ describe('Message Queue Systems Integration', () => {
     afterEach(async () => {
       if (queue) {
         await queue.close();
+        // Give Bull some time to complete internal cleanup
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
       if (customRedisClient) {
         await customRedisClient.disconnect();
       }
+      // Clean up any additional clients created during tests
+      for (const client of additionalClients) {
+        if (client && client.status !== 'disconnected') {
+          try {
+            await client.disconnect();
+          } catch (err) {
+            // Ignore cleanup errors
+          }
+        }
+      }
+      additionalClients = [];
     });
 
     test('should support defineCommand for custom Lua scripts', async () => {
@@ -758,14 +796,19 @@ describe('Message Queue Systems Integration', () => {
           }
           
           const client = new Redis(options);
+          additionalClients.push(client); // Track for cleanup
 
           // Enhanced connection pattern: start connecting immediately
-          client
-            .connect()
-            .then(() => {})
-            .catch(err => {
+          // Store the promise so we can handle it properly
+          const connectPromise = client.connect();
+          connectPromise.then(() => {
+            // Connection successful
+          }).catch(err => {
+            // Only emit error if client is not closing
+            if (!client.isClosing) {
               client.emit('error', err);
-            });
+            }
+          });
 
           return client;
         },
@@ -791,28 +834,46 @@ describe('Message Queue Systems Integration', () => {
       assert.ok(job.id !== undefined);
 
       // Wait for job processing with enhanced error handling
+      // Create handler functions so we can remove them later
+      let completedHandler;
+      let failedHandler;
+      let timeoutId;
+      
       const processed = await Promise.race([
         new Promise(resolve => {
-          queue.on('completed', completedJob => {
+          completedHandler = completedJob => {
             if (completedJob.id === job.id) {
               resolve(true);
             }
-          });
+          };
+          queue.on('completed', completedHandler);
 
           // Also listen for failures
-          queue.on('failed', (failedJob, err) => {
+          failedHandler = (failedJob, err) => {
             if (failedJob.id === job.id) {
               console.error(`❌ Job failed:`, err.message);
               resolve(false);
             }
-          });
+          };
+          queue.on('failed', failedHandler);
         }),
         new Promise(resolve => {
-          setTimeout(() => {
+          timeoutId = setTimeout(() => {
             resolve(false);
           }, 8000); // Increased timeout for better reliability
         }),
       ]);
+      
+      // Clean up event listeners and timeout
+      if (completedHandler) {
+        queue.removeListener('completed', completedHandler);
+      }
+      if (failedHandler) {
+        queue.removeListener('failed', failedHandler);
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
 
       if (processed) {
         assert.strictEqual(processedJobs.length, 1);
@@ -881,7 +942,12 @@ describe('Message Queue Systems Integration', () => {
               // Bull manages its own key namespacing
               maxRetriesPerRequest: null, // Bull requirement for subscriber
             });
-            subClient.connect().catch(console.error);
+            additionalClients.push(subClient); // Track for cleanup
+            subClient.connect().catch(err => {
+              if (!subClient.isClosing) {
+                console.error('Subscriber connect error:', err);
+              }
+            });
             return subClient;
           }
           
@@ -892,7 +958,12 @@ describe('Message Queue Systems Integration', () => {
               // Bull manages its own key namespacing
               maxRetriesPerRequest: null, // Bull requirement for bclient
             });
-            bClient.connect().catch(console.error);
+            additionalClients.push(bClient); // Track for cleanup
+            bClient.connect().catch(err => {
+              if (!bClient.isClosing) {
+                console.error('Blocking client connect error:', err);
+              }
+            });
             return bClient;
           }
 

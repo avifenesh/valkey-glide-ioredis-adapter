@@ -82,18 +82,29 @@ export class Redis extends StandaloneClient {
     // ioredis auto-connects duplicated instances if the source is connected
     // This is critical for BullMQ which expects duplicate() to return a connected instance
     if (this.status === 'ready' || this.status === 'connecting') {
-      // Use process.nextTick instead of setImmediate to avoid event loop issues
-      // Also check if the duplicated instance is already closing
-      process.nextTick(() => {
-        if (!duplicated.isClosing && duplicated.status === 'disconnected') {
-          duplicated.connect().catch(err => {
-            // Only emit error if not closing
-            if (!duplicated.isClosing) {
-              duplicated.emit('error', err);
-            }
-          });
-        }
+      // Store auto-connect promise to prevent event loop warnings
+      const autoConnectPromise = new Promise<void>((resolve) => {
+        // Use process.nextTick instead of setImmediate to avoid event loop issues
+        // Also check if the duplicated instance is already closing
+        process.nextTick(() => {
+          if (!duplicated.isClosing && duplicated.status === 'disconnected') {
+            duplicated.connect()
+              .then(() => resolve())
+              .catch(err => {
+                // Only emit error if not closing
+                if (!duplicated.isClosing) {
+                  duplicated.emit('error', err);
+                }
+                resolve(); // Resolve even on error to prevent hanging
+              });
+          } else {
+            resolve(); // Already closing or connected
+          }
+        });
       });
+      
+      // Store the promise so it can be awaited if needed
+      (duplicated as any)._autoConnectPromise = autoConnectPromise;
     }
 
     return duplicated;
