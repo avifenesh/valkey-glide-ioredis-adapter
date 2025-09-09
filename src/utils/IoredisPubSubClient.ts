@@ -156,19 +156,32 @@ export class IoredisPubSubClient extends EventEmitter {
   /**
    * Gracefully disconnect from server and clean up resources
    */
-  disconnect(): void {
-    this.cleanup();
+  async disconnect(): Promise<void> {
+    await this.cleanup();
   }
 
   /**
    * Internal cleanup method for connection resources
    */
-  private cleanup(): void {
+  private async cleanup(): Promise<void> {
     if (this.socket) {
       this.socket.removeAllListeners();
       if (!this.socket.destroyed) {
-        this.socket.end();
-        this.socket.destroy();
+        // Properly close the socket with a promise
+        await new Promise<void>((resolve) => {
+          const onClose = () => {
+            resolve();
+          };
+          this.socket!.once('close', onClose);
+          this.socket!.end();
+          this.socket!.destroy();
+          // Fallback timeout in case close event doesn't fire
+          const t = setTimeout(() => {
+            this.socket?.removeListener('close', onClose);
+            resolve();
+          }, 100);
+          (t as any).unref?.();
+        });
       }
       this.socket = null;
     }
@@ -588,6 +601,7 @@ export class IoredisPubSubClient extends EventEmitter {
         new Promise<void>(r => {
           const t = setTimeout(r, 500);
           (t as any).unref?.();
+          (t as any).unref?.();
         }),
       ]);
     } else {
@@ -601,12 +615,14 @@ export class IoredisPubSubClient extends EventEmitter {
         new Promise<void>(r => {
           const t = setTimeout(r, 500);
           (t as any).unref?.();
+          (t as any).unref?.();
         }),
       ]);
     }
     // Auto-close socket when nothing is subscribed
     if (this.subscriptions.size === 0 && this.patternSubscriptions.size === 0) {
-      this.disconnect();
+      // Don't await disconnect here to avoid blocking
+      this.disconnect().catch(() => {});
     }
   }
 
@@ -637,6 +653,7 @@ export class IoredisPubSubClient extends EventEmitter {
         new Promise<void>(r => {
           const t = setTimeout(r, 500);
           (t as any).unref?.();
+          (t as any).unref?.();
         }),
       ]);
     } else {
@@ -650,12 +667,14 @@ export class IoredisPubSubClient extends EventEmitter {
         new Promise<void>(r => {
           const t = setTimeout(r, 500);
           (t as any).unref?.();
+          (t as any).unref?.();
         }),
       ]);
     }
     // Auto-close socket when nothing is subscribed
     if (this.subscriptions.size === 0 && this.patternSubscriptions.size === 0) {
-      this.disconnect();
+      // Don't await disconnect here to avoid blocking
+      this.disconnect().catch(() => {});
     }
   }
 

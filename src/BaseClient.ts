@@ -244,13 +244,17 @@ export abstract class BaseClient extends EventEmitter {
    * Internal cleanup helper - closes all connections and clears resources
    */
   private async cleanupConnections(): Promise<void> {
+    // Remove all event listeners to prevent event loop from staying alive
+    this.removeAllListeners();
+    
     // Close main GLIDE client (idempotent)
     if (this.glideClient && !this.mainClientClosed) {
       try {
         if (typeof this.glideClient.close === 'function') {
           // Check if already closed to prevent double-close ClosingError
           try {
-            this.glideClient.close();
+            // IMPORTANT: await the close() method as it returns a Promise
+            await this.glideClient.close();
           } catch (closeError: any) {
             // Suppress ClosingError that happens during close() call itself
             if (closeError?.constructor?.name === 'ClosingError' || 
@@ -284,7 +288,8 @@ export abstract class BaseClient extends EventEmitter {
         if (typeof (this.subscriberClient as any).close === 'function') {
           // Check if already closed to prevent double-close ClosingError
           try {
-            (this.subscriberClient as any).close();
+            // IMPORTANT: await the close() method as it returns a Promise
+            await (this.subscriberClient as any).close();
           } catch (closeError: any) {
             // Suppress ClosingError that happens during close() call itself
             if (closeError?.constructor?.name === 'ClosingError' || 
@@ -316,7 +321,7 @@ export abstract class BaseClient extends EventEmitter {
 
     // Clean up ioredis-compatible pub/sub client
     if (this.ioredisCompatiblePubSub) {
-      this.ioredisCompatiblePubSub.disconnect();
+      await this.ioredisCompatiblePubSub.disconnect();
       this.ioredisCompatiblePubSub =
         undefined as unknown as IoredisPubSubClient;
     }
@@ -3890,11 +3895,8 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
     // Close subscriber client
     if (this.directSubscriberClient) {
       try {
-        await new Promise<void>(resolve => {
-          this.directSubscriberClient!.close();
-          const t = setTimeout(resolve, 0);
-          (t as any).unref?.();
-        });
+        // Properly await the close() promise
+        await this.directSubscriberClient.close();
       } catch {}
       this.directSubscriberClient = null;
     }
@@ -3902,7 +3904,11 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
     // Close publisher client
     if (this.directPublisherClient) {
       try {
-        (this.directPublisherClient as any)?.close?.();
+        // Properly await the close() promise if it exists
+        const closeMethod = (this.directPublisherClient as any)?.close;
+        if (typeof closeMethod === 'function') {
+          await closeMethod.call(this.directPublisherClient);
+        }
       } catch {}
       this.directPublisherClient = null;
     }
@@ -4084,11 +4090,8 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
     // Close existing client
     if (this.directSubscriberClient) {
       try {
-        await new Promise<void>(resolve => {
-          this.directSubscriberClient!.close();
-          const t = setTimeout(resolve, 0);
-          (t as any).unref?.();
-        });
+        // Properly await the close() promise
+        await this.directSubscriberClient.close();
       } catch (error) {
         // Ignore close errors
       }

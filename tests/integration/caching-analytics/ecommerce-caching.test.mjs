@@ -548,6 +548,9 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       const onlineUsersKey = 'users:online';
       const users = ['user1', 'user2', 'user3', 'user4'];
 
+      // Ensure clean state
+      await redisClient.del(onlineUsersKey);
+      
       // Simulate users coming online
       for (const user of users) {
         await redisClient.setex(
@@ -560,17 +563,18 @@ describe('Caching, Analytics & E-commerce Integration', () => {
 
       // Get online user count
       const onlineCount = await redisClient.scard(onlineUsersKey);
-      assert.strictEqual(onlineCount, 4);
+      assert.strictEqual(onlineCount, 4, `Expected 4 online users, got ${onlineCount}`);
 
       // Get list of online users
       const onlineUsers = await redisClient.smembers(onlineUsersKey);
-      assert.strictEqual(onlineUsers.length, 4);
-      assert.ok(onlineUsers.includes('user1'));
+      assert.ok(Array.isArray(onlineUsers), 'smembers should return an array');
+      assert.strictEqual(onlineUsers.length, 4, `Expected 4 users in array, got ${onlineUsers.length}`);
+      assert.ok(onlineUsers.includes('user1'), 'user1 should be in the set');
 
       // Simulate user going offline
       await redisClient.srem(onlineUsersKey, 'user1');
       const updatedCount = await redisClient.scard(onlineUsersKey);
-      assert.strictEqual(updatedCount, 3);
+      assert.strictEqual(updatedCount, 3, `Expected 3 users after removal, got ${updatedCount}`);
     });
   });
 
@@ -604,12 +608,18 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       console.log('Sample pipeline results:', pipelineResults?.slice(0, 3));
 
       // Verify pipeline execution succeeded
-      assert.ok(pipelineResults);
-      assert.ok(Array.isArray(pipelineResults));
-      assert.strictEqual(pipelineResults.length, itemCount);
+      assert.ok(pipelineResults, 'Pipeline results should exist');
+      assert.ok(Array.isArray(pipelineResults), 'Pipeline results should be an array');
+      assert.strictEqual(pipelineResults.length, itemCount, `Expected ${itemCount} results, got ${pipelineResults.length}`);
 
       // Check for any errors in pipeline results
-      const errors = pipelineResults.filter(([err]) => err !== null);
+      const errors = pipelineResults.filter(result => {
+        // Check if this is an error result
+        if (Array.isArray(result) && result.length >= 2) {
+          return result[0] !== null; // result[0] is the error
+        }
+        return false;
+      });
       if (errors.length > 0) {
         console.log('Pipeline errors:', errors.slice(0, 3));
         throw new Error(`Pipeline had ${errors.length} errors`);

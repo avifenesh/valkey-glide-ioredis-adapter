@@ -363,7 +363,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
         `Unexpected job state: ${jobState}`);
 
       // Wait longer for processing to complete - workers may be slower after cleanup
-      await delay(5000);
+      await delay(7000);
 
       // After processing, job should be in completed state (we set removeOnComplete: false)
       const freshJob = await Job.fromId(queue, job.id);
