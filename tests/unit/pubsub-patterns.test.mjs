@@ -547,7 +547,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Bitcoin price update
       await publisher.publish(
-        'market:crypto-USD',
+        'market:crypto:BTC-USD',
         JSON.stringify({
           symbol: 'BTC-USD',
           price: 45230.5,
@@ -560,7 +560,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Ethereum price update
       await publisher.publish(
-        'market:crypto-USD',
+        'market:crypto:ETH-USD',
         JSON.stringify({
           symbol: 'ETH-USD',
           price: 3125.75,
@@ -573,7 +573,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Forex update
       await publisher.publish(
-        'market:forex-USD',
+        'market:forex:EUR-USD',
         JSON.stringify({
           symbol: 'EUR-USD',
           bid: 1.0842,

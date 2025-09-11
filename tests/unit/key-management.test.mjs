@@ -465,7 +465,7 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       const ttl2 = await redis.ttl(concurrentKey);
 
       // TTL values should be close (within a few seconds)
-      assert.ok(Math.abs(ttl1 - ttl2))(5);
+      assert.ok(Math.abs(ttl1 - ttl2) <= 5);
       assert.ok(ttl1 > 3500);
       assert.ok(ttl2 > 3500);
     });
