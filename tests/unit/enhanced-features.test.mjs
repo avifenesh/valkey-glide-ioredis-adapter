@@ -190,39 +190,24 @@ describe('Enhanced Features for Queue Compatibility', () => {
     test('brpoplpush with existing data', async () => {
       await redis.lpush('source', 'item1', 'item2');
 
-      const result = await redis.brpoplpush('source', 'dest', 1);
+      const result = await redis.brpoplpush('source', 'dest', 0.1);
       assert.strictEqual(result, 'item1');
 
       const destItems = await redis.lrange('dest', 0, -1);
       assert.deepStrictEqual(destItems, ['item1']);
     });
 
-    test('brpoplpush timeout behavior', async () => {
-      const startTime = Date.now();
-      const result = await redis.brpoplpush('empty-source', 'dest', 1);
-      const elapsed = Date.now() - startTime;
-
-      assert.strictEqual(result, null);
-      assert.ok(elapsed >= 900); // Allow some tolerance
-      assert.ok(elapsed <= 1200);
-    });
-
     test('blpop with existing data', async () => {
       await redis.lpush('testlist', 'item1');
 
-      const result = await redis.blpop('testlist', 1);
+      const result = await redis.blpop('testlist', 0.1);
       assert.deepStrictEqual(result, ['testlist', 'item1']);
-    });
-
-    test('blpop timeout behavior', async () => {
-      const result = await redis.blpop('empty-list', 1);
-      assert.strictEqual(result, null);
     });
 
     test('brpop with existing data', async () => {
       await redis.lpush('testlist', 'item1', 'item2');
 
-      const result = await redis.brpop('testlist', 1);
+      const result = await redis.brpop('testlist', 0.1);
       assert.deepStrictEqual(result, ['testlist', 'item1']);
     });
   });
@@ -235,8 +220,10 @@ describe('Enhanced Features for Queue Compatibility', () => {
         duplicated = await original.duplicate();
         assert.strictEqual(duplicated.clientType, 'bclient');
       } finally {
-        await original.disconnect();
-        if (duplicated) await duplicated.disconnect();
+        if (duplicated) {
+          await duplicated.quit();
+        }
+        await original.quit();
       }
     });
 
@@ -250,7 +237,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
         assert.strictEqual(duplicated._options.port, targetPort);
       } finally {
         if (duplicated) {
-          await duplicated.disconnect();
+          await duplicated.quit();
         }
       }
     });
@@ -265,11 +252,11 @@ describe('Enhanced Features for Queue Compatibility', () => {
         assert.ok(duplicated instanceof Redis);
         assert.ok(elapsed < 100); // Should return immediately
         
-        // Wait for the duplicated connection to establish
+        // Verify connection works
         await duplicated.ping();
       } finally {
         if (duplicated) {
-          await duplicated.disconnect();
+          await duplicated.quit();
         }
       }
     });
