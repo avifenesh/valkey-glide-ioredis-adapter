@@ -160,6 +160,10 @@ describe('Express Session Store Integration', () => {
   });
 
   afterEach(async () => {
+    // Clean up the app and request objects
+    app = null;
+    request = null;
+    
     if (redisClient) {
       try {
         // Clean up session data
@@ -171,9 +175,11 @@ describe('Express Session Store Integration', () => {
         // Ignore cleanup errors
       }
       await redisClient.disconnect();
+      redisClient = null;
     }
     if (storeClient) {
       await storeClient.disconnect();
+      storeClient = null;
     }
   });
 
