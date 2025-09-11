@@ -5,7 +5,6 @@
 
 import {
   describe,
-  it,
   test,
   beforeEach,
   afterEach,
@@ -18,7 +17,6 @@ const { Redis } = pkg;
 import {
   getStandaloneConfig,
   checkTestServers,
-  delay,
 } from '../utils/test-config.mjs';
 
 describe('Enhanced Features for Queue Compatibility', () => {
@@ -47,6 +45,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
   afterEach(async () => {
     if (redis) {
       await redis.quit();
+      redis = null;
     }
   });
 
@@ -96,21 +95,33 @@ describe('Enhanced Features for Queue Compatibility', () => {
   describe('Static createClient factory', () => {
     test('creates client type', async () => {
       const client = Redis.createClient('client', config);
-      assert.ok(client instanceof Redis);
-      assert.strictEqual(client.clientType, 'client');
+      try {
+        assert.ok(client instanceof Redis);
+        assert.strictEqual(client.clientType, 'client');
+      } finally {
+        await client.disconnect();
+      }
     });
 
     test('creates subscriber type', async () => {
       const subscriber = Redis.createClient('subscriber', config);
-      assert.ok(subscriber instanceof Redis);
-      assert.strictEqual(subscriber.clientType, 'subscriber');
+      try {
+        assert.ok(subscriber instanceof Redis);
+        assert.strictEqual(subscriber.clientType, 'subscriber');
+      } finally {
+        await subscriber.disconnect();
+      }
     });
 
     test('creates bclient type with blocking ops enabled', async () => {
       const bclient = Redis.createClient('bclient', config);
-      assert.ok(bclient instanceof Redis);
-      assert.strictEqual(bclient.clientType, 'bclient');
-      assert.strictEqual(bclient.enableBlockingOps, true);
+      try {
+        assert.ok(bclient instanceof Redis);
+        assert.strictEqual(bclient.clientType, 'bclient');
+        assert.strictEqual(bclient.enableBlockingOps, true);
+      } finally {
+        await bclient.disconnect();
+      }
     });
 
     test('returns client immediately (Bull compatibility)', async () => {
@@ -118,8 +129,12 @@ describe('Enhanced Features for Queue Compatibility', () => {
       const client = Redis.createClient('client', config);
       const elapsed = Date.now() - start;
 
-      assert.ok(client instanceof Redis);
-      assert.ok(elapsed < 100); // Should return immediately
+      try {
+        assert.ok(client instanceof Redis);
+        assert.ok(elapsed < 100); // Should return immediately
+      } finally {
+        await client.disconnect();
+      }
     });
   });
 
@@ -215,26 +230,48 @@ describe('Enhanced Features for Queue Compatibility', () => {
   describe('Enhanced duplicate method', () => {
     test('preserves client type when duplicating', async () => {
       const original = Redis.createClient('bclient', config);
-      const duplicated = await original.duplicate();
-
-      assert.strictEqual(duplicated.clientType, 'bclient');
+      let duplicated;
+      try {
+        duplicated = await original.duplicate();
+        assert.strictEqual(duplicated.clientType, 'bclient');
+      } finally {
+        await original.disconnect();
+        if (duplicated) await duplicated.disconnect();
+      }
     });
 
     test('allows override options', async () => {
       const targetPort = process.env.REDIS_PORT
         ? Number(process.env.REDIS_PORT)
         : 6383;
-      const duplicated = await redis.duplicate({ port: targetPort });
-      assert.strictEqual(duplicated._options.port, targetPort);
+      let duplicated;
+      try {
+        duplicated = await redis.duplicate({ port: targetPort });
+        assert.strictEqual(duplicated._options.port, targetPort);
+      } finally {
+        if (duplicated) {
+          await duplicated.disconnect();
+        }
+      }
     });
 
     test('connects in background (Bull compatibility)', async () => {
       const start = Date.now();
-      const duplicated = await redis.duplicate();
-      const elapsed = Date.now() - start;
+      let duplicated;
+      try {
+        duplicated = await redis.duplicate();
+        const elapsed = Date.now() - start;
 
-      assert.ok(duplicated instanceof Redis);
-      assert.ok(elapsed < 100); // Should return immediately
+        assert.ok(duplicated instanceof Redis);
+        assert.ok(elapsed < 100); // Should return immediately
+        
+        // Wait for the duplicated connection to establish
+        await duplicated.ping();
+      } finally {
+        if (duplicated) {
+          await duplicated.disconnect();
+        }
+      }
     });
   });
 });
