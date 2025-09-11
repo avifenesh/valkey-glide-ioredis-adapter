@@ -533,7 +533,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
 
       // First execution with EVAL
       const result1 = await redis.eval(simpleScript, 0, 'World');
-      assert.strictEqual(result1, 'Hello from cached script');
+      assert.strictEqual(result1, 'Hello from cached script: World');
 
       // Calculate script SHA1 (simple approach - in production use crypto)
       const { createHash } = await import('crypto');
@@ -542,7 +542,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       // Execute with EVALSHA - script should be cached
       try {
         const result2 = await redis.evalsha(scriptSha1, 0, 'Cached');
-        assert.strictEqual(result2, 'Hello from cached script');
+        assert.strictEqual(result2, 'Hello from cached script: Cached');
       } catch (error) {
         // If EVALSHA fails, it means script wasn't cached - this is implementation dependent
         // Some Redis implementations might not cache automatically

@@ -34,7 +34,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
       );
     }
 
-    config = await getStandaloneConfig();
+    config = getStandaloneConfig();
   });
 
   beforeEach(async () => {

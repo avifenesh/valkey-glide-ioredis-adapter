@@ -42,11 +42,7 @@ describe('Connection Management (ioredis compatibility)', () => {
 
   describe('Client creation patterns', () => {
     test('should create client with default options', async () => {
-      const serversAvailable = await checkTestServers();
-      if (!serversAvailable) {
-        this.skip('Test servers not available');
-        return;
-      }
+      // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
       redis = new Redis(config);
@@ -66,11 +62,7 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     test('should create client with port and host', async () => {
-      const serversAvailable = await checkTestServers();
-      if (!serversAvailable) {
-        this.skip('Test servers not available');
-        return;
-      }
+      // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
       redis = new Redis(config.port, config.host);
@@ -89,11 +81,7 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     test('should create client with options object', async () => {
-      const serversAvailable = await checkTestServers();
-      if (!serversAvailable) {
-        this.skip('Test servers not available');
-        return;
-      }
+      // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
       redis = new Redis({
@@ -117,11 +105,7 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     test('should create client with redis:// URL', async () => {
-      const serversAvailable = await checkTestServers();
-      if (!serversAvailable) {
-        this.skip('Test servers not available');
-        return;
-      }
+      // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
       redis = new Redis(`redis://${config.host}:${config.port}/0`);
@@ -140,11 +124,7 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     test('should handle database selection', async () => {
-      const serversAvailable = await checkTestServers();
-      if (!serversAvailable) {
-        this.skip('Test servers not available');
-        return;
-      }
+      // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
       redis = new Redis({ port: config.port, host: config.host, db: 1 });
@@ -166,11 +146,7 @@ describe('Connection Management (ioredis compatibility)', () => {
 
   describe('Connection lifecycle', () => {
     test('should emit ready event when connected', async () => {
-      const serversAvailable = await checkTestServers();
-      if (!serversAvailable) {
-        this.skip('Test servers not available');
-        return;
-      }
+      // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
       redis = new Redis(config);
@@ -202,11 +178,7 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     test('should emit connect event', async () => {
-      const serversAvailable = await checkTestServers();
-      if (!serversAvailable) {
-        this.skip('Test servers not available');
-        return;
-      }
+      // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
       redis = new Redis(config);
@@ -236,11 +208,7 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     test('should emit end event when disconnected', async () => {
-      const serversAvailable = await checkTestServers();
-      if (!serversAvailable) {
-        this.skip('Test servers not available');
-        return;
-      }
+      // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
       redis = new Redis(config);
@@ -265,11 +233,7 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     test('should handle reconnection', async () => {
-      const serversAvailable = await checkTestServers();
-      if (!serversAvailable) {
-        this.skip('Test servers not available');
-        return;
-      }
+      // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
       redis = new Redis({ ...config, retryDelayOnFailover: 10 });
@@ -339,11 +303,7 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     test('should handle command errors gracefully', async () => {
-      const serversAvailable = await checkTestServers();
-      if (!serversAvailable) {
-        this.skip('Test servers not available');
-        return;
-      }
+      // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
       redis = new Redis(config);

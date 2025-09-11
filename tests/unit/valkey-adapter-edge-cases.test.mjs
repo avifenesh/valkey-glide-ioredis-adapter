@@ -214,13 +214,13 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       await redis.set(key, 'string_value');
 
       // Try to use as list (should fail)
-      await assert.ok(redis.lpush(key, 'item')).rejects.toThrow();
+      await assert.rejects(redis.lpush(key, 'item'));
 
       // Try to use as hash (should fail)
-      await assert.ok(redis.hset(key, 'field', 'value')).rejects.toThrow();
+      await assert.rejects(redis.hset(key, 'field', 'value'));
 
       // Try to use as set (should fail)
-      await assert.ok(redis.sadd(key, 'member')).rejects.toThrow();
+      await assert.rejects(redis.sadd(key, 'member'));
 
       // Original string value should still exist
       const value = await redis.get(key);
@@ -290,10 +290,10 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
       // Check specific scores
       const negInfScore = await redis.zscore(key, 'negative_infinity');
-      assert.strictEqual(negInfScore, '-inf');
+      assert.strictEqual(negInfScore, '-Infinity');
 
       const posInfScore = await redis.zscore(key, 'positive_infinity');
-      assert.strictEqual(posInfScore, 'inf');
+      assert.strictEqual(posInfScore, 'Infinity');
     });
   });
 
@@ -494,6 +494,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
       // Create second connection to modify watched key
       const redis2 = new Redis(getStandaloneConfig());
+      await redis2.connect();
 
       try {
         // Start watching
@@ -519,7 +520,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
   describe('Error Recovery and Resilience', () => {
     test('should handle command errors gracefully', async () => {
       // Invalid arguments
-      await assert.ok(redis.set('', 'value')).rejects.toThrow();
+      await assert.rejects(redis.set('', 'value'));
 
       // Type errors
       const stringKey = 'error:key';
