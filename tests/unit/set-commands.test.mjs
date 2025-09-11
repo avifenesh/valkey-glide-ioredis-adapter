@@ -442,7 +442,7 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
     });
 
     test('should implement A/B testing cohorts', async () => {
-      const experimentId = 'experiment_' + Math.random();
+      const experimentId = 'experiment_' + Date.now() + '_' + Math.random();
       const controlGroupKey = `experiment:${experimentId}:control`;
       const variantAKey = `experiment:${experimentId}:variant_a`;
       const variantBKey = `experiment:${experimentId}:variant_b`;
