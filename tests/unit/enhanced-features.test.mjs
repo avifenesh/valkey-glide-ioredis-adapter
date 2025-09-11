@@ -25,9 +25,9 @@ describe('Enhanced Features for Queue Compatibility', () => {
   let redis;
   let config;
 
-  before(async () => {
+  before(() => {
     // Check if test servers are available
-    const serversAvailable = await checkTestServers();
+    const serversAvailable = checkTestServers();
     if (!serversAvailable) {
       throw new Error(
         'Test servers not available. Please start Redis server before running tests.'
