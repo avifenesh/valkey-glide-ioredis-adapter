@@ -378,9 +378,22 @@ describe('Message Queue Systems Integration (No Workers)', () => {
         Redis.forceCloseAllClients(500),
         new Promise(resolve => {
           const t = setTimeout(resolve, 1000);
-          t.unref?.();
+          if (typeof t.unref === 'function') t.unref();
         })
       ]);
+    }
+    
+    // Force unref all remaining timers created by Bull/BeeQueue
+    // This is a workaround for libraries that don't properly clean up
+    if (global._unrefTimer) {
+      const handles = process._getActiveHandles?.() || [];
+      handles.forEach(handle => {
+        if (handle.constructor.name === 'Timeout' || handle.constructor.name === 'Timer') {
+          if (typeof handle.unref === 'function') {
+            handle.unref();
+          }
+        }
+      });
     }
   });
 });

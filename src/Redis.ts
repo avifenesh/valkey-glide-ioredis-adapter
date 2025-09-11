@@ -83,7 +83,7 @@ export class Redis extends StandaloneClient {
     // This is critical for BullMQ which expects duplicate() to return a connected instance
     if (this.status === 'ready' || this.status === 'connecting') {
       // Don't create unresolved promises - use setImmediate with unref to not block event loop
-      setImmediate(() => {
+      const immediate = setImmediate(() => {
         if (!duplicated.isClosing && duplicated.status === 'disconnected') {
           duplicated.connect().catch(err => {
             // Only emit error if not closing
@@ -92,7 +92,10 @@ export class Redis extends StandaloneClient {
             }
           });
         }
-      }).unref?.();
+      });
+      if (typeof (immediate as any).unref === 'function') {
+        (immediate as any).unref();
+      }
     }
 
     return duplicated;
@@ -162,7 +165,7 @@ export class Redis extends StandaloneClient {
           client.disconnect(),
           new Promise((_, reject) => {
             const t = setTimeout(() => reject(new Error('Graceful disconnect timeout')), timeout);
-            (t as any).unref?.();
+            if (typeof (t as any).unref === 'function') (t as any).unref();
           })
         ]);
       } catch (error) {
@@ -218,7 +221,7 @@ export class Redis extends StandaloneClient {
     // Give Node.js event loop a moment to process the closures
     await new Promise(resolve => {
       const t = setTimeout(resolve, 50);
-      (t as any).unref?.();
+      if (typeof (t as any).unref === 'function') (t as any).unref();
     });
   }
 

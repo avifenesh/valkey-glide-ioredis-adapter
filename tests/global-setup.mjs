@@ -15,11 +15,42 @@ after(async () => {
         Redis.forceCloseAllClients(500),
         new Promise(resolve => {
           const t = setTimeout(resolve, 1000);
-          t.unref?.();
+          if (typeof t.unref === 'function') t.unref();
         })
       ]);
     }
   } catch (error) {
     // Ignore errors during cleanup
+  }
+  
+  // Force unref all remaining timers to prevent hanging
+  // This handles timers from Bull, BeeQueue, ioredis, and other libraries
+  try {
+    if (process._getActiveHandles) {
+      const handles = process._getActiveHandles();
+      handles.forEach(handle => {
+        // Unref any timer handles
+        if (handle && (handle.constructor.name === 'Timeout' || 
+                      handle.constructor.name === 'Timer' ||
+                      handle.constructor.name === 'Immediate')) {
+          if (typeof handle.unref === 'function') {
+            handle.unref();
+          }
+        }
+        
+        // Also try to close TCP sockets that aren't stdin/stdout/stderr
+        if (handle && handle.constructor.name === 'Socket' && handle.fd > 2) {
+          if (typeof handle.destroy === 'function') {
+            try {
+              handle.destroy();
+            } catch (e) {
+              // Ignore errors
+            }
+          }
+        }
+      });
+    }
+  } catch (error) {
+    // Ignore cleanup errors
   }
 });
