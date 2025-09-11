@@ -24,9 +24,9 @@ import {
 describe('Connection Management (ioredis compatibility)', () => {
   let redis;
 
-  before(async () => {
+  before(() => {
     // Check if test servers are available
-    const serversAvailable = await checkTestServers();
+    const serversAvailable = checkTestServers();
     if (!serversAvailable) {
       throw new Error(
         'Test servers not available. Please start Redis server before running tests.'
@@ -330,9 +330,9 @@ describe('Connection Management (ioredis compatibility)', () => {
 describe('Pipeline Operations (ioredis compatibility)', () => {
   let redis;
 
-  before(async () => {
+  before(() => {
     // Check if test servers are available
-    const serversAvailable = await checkTestServers();
+    const serversAvailable = checkTestServers();
     if (!serversAvailable) {
       throw new Error(
         'Test servers not available. Please start Redis server before running tests.'

@@ -115,11 +115,9 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       invalidRedis.on('error', errorHandler);
 
       // Should handle connection errors gracefully
-      await assert
-        .ok(async () => {
-          await invalidRedis.set('test', 'value');
-        })
-        .rejects.toThrow();
+      await assert.rejects(
+        invalidRedis.set('test', 'value')
+      );
 
       // Wait for any async errors and then clean up
       await new Promise(resolve => setTimeout(resolve, 100).unref());
