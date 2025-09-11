@@ -20,7 +20,7 @@ import {
 } from '../utils/test-config.mjs';
 
 describe('Enhanced Features for Queue Compatibility', () => {
-  let redis;
+  let client;
   let config;
 
   before(() => {
@@ -36,58 +36,58 @@ describe('Enhanced Features for Queue Compatibility', () => {
   });
 
   beforeEach(async () => {
-    redis = new Redis(config);
-    await redis.connect();
+    client = new Redis(config);
+    await client.connect();
     // Clear all databases to ensure clean state for each test
-    await redis.flushall();
+    await client.flushall();
   });
 
   afterEach(async () => {
-    if (redis) {
-      await redis.quit();
-      redis = null;
+    if (client) {
+      await client.quit();
+      client = null;
     }
   });
 
   describe('Enhanced defineCommand', () => {
     test('supports variadic arguments (ioredis style)', async () => {
-      redis.defineCommand('testCmd', {
+      client.defineCommand('testCmd', {
         lua: 'return {KEYS[1], ARGV[1]}',
         numberOfKeys: 1,
       });
 
-      const result = await redis.testCmd('key1', 'arg1');
+      const result = await client.testCmd('key1', 'arg1');
       assert.deepStrictEqual(result, ['key1', 'arg1']);
     });
 
     test('supports array arguments (BullMQ style)', async () => {
-      redis.defineCommand('testCmd', {
+      client.defineCommand('testCmd', {
         lua: 'return {KEYS[1], ARGV[1]}',
         numberOfKeys: 1,
       });
 
-      const result = await redis.testCmd(['key1', 'arg1']);
+      const result = await client.testCmd(['key1', 'arg1']);
       assert.deepStrictEqual(result, ['key1', 'arg1']);
     });
 
     test('returns empty array instead of null for empty results', async () => {
-      redis.defineCommand('emptyCmd', {
+      client.defineCommand('emptyCmd', {
         lua: 'return {}',
         numberOfKeys: 0,
       });
 
-      const result = await redis.emptyCmd();
+      const result = await client.emptyCmd();
       assert.deepStrictEqual(result, []);
       assert.ok(result !== null);
     });
 
     test('handles complex argument types', async () => {
-      redis.defineCommand('complexCmd', {
+      client.defineCommand('complexCmd', {
         lua: 'return {KEYS[1], ARGV[1], ARGV[2]}',
         numberOfKeys: 1,
       });
 
-      const result = await redis.complexCmd('key1', { data: 'test' }, 42);
+      const result = await client.complexCmd('key1', { data: 'test' }, 42);
       assert.deepStrictEqual(result, ['key1', '{"data":"test"}', '42']);
     });
   });
@@ -141,21 +141,21 @@ describe('Enhanced Features for Queue Compatibility', () => {
   describe('Enhanced ZSET operations', () => {
     beforeEach(async () => {
       // Set up test data
-      await redis.zadd('testzset', 1, 'one', 2, 'two', 3, 'three', 4, 'four');
+      await client.zadd('testzset', 1, 'one', 2, 'two', 3, 'three', 4, 'four');
     });
 
     test('zrangebyscore basic functionality', async () => {
-      const result = await redis.zrangebyscore('testzset', 1, 3);
+      const result = await client.zrangebyscore('testzset', 1, 3);
       assert.deepStrictEqual(result, ['one', 'two', 'three']);
     });
 
     test('zrangebyscore with WITHSCORES', async () => {
-      const result = await redis.zrangebyscore('testzset', 1, 2, 'WITHSCORES');
+      const result = await client.zrangebyscore('testzset', 1, 2, 'WITHSCORES');
       assert.deepStrictEqual(result, ['one', '1', 'two', '2']);
     });
 
     test('zrangebyscore with LIMIT', async () => {
-      const result = await redis.zrangebyscore(
+      const result = await client.zrangebyscore(
         'testzset',
         1,
         4,
@@ -167,19 +167,19 @@ describe('Enhanced Features for Queue Compatibility', () => {
     });
 
     test('zrevrangebyscore functionality', async () => {
-      const result = await redis.zrevrangebyscore('testzset', 3, 1);
+      const result = await client.zrevrangebyscore('testzset', 3, 1);
       assert.deepStrictEqual(result, ['three', 'two', 'one']);
     });
 
     test('zpopmin functionality', async () => {
-      const result = await redis.zpopmin('testzset', 2);
+      const result = await client.zpopmin('testzset', 2);
       assert.strictEqual(result.length, 4); // member, score, member, score
       assert.strictEqual(result[0], 'one');
       assert.strictEqual(result[1], '1');
     });
 
     test('zpopmax functionality', async () => {
-      const result = await redis.zpopmax('testzset', 1);
+      const result = await client.zpopmax('testzset', 1);
       assert.strictEqual(result.length, 2); // member, score
       assert.strictEqual(result[0], 'four');
       assert.strictEqual(result[1], '4');
@@ -188,26 +188,26 @@ describe('Enhanced Features for Queue Compatibility', () => {
 
   describe('Blocking operations', () => {
     test('brpoplpush with existing data', async () => {
-      await redis.lpush('source', 'item1', 'item2');
+      await client.lpush('source', 'item1', 'item2');
 
-      const result = await redis.brpoplpush('source', 'dest', 0.1);
+      const result = await client.brpoplpush('source', 'dest', 0.1);
       assert.strictEqual(result, 'item1');
 
-      const destItems = await redis.lrange('dest', 0, -1);
+      const destItems = await client.lrange('dest', 0, -1);
       assert.deepStrictEqual(destItems, ['item1']);
     });
 
     test('blpop with existing data', async () => {
-      await redis.lpush('testlist', 'item1');
+      await client.lpush('testlist', 'item1');
 
-      const result = await redis.blpop('testlist', 0.1);
+      const result = await client.blpop('testlist', 0.1);
       assert.deepStrictEqual(result, ['testlist', 'item1']);
     });
 
     test('brpop with existing data', async () => {
-      await redis.lpush('testlist', 'item1', 'item2');
+      await client.lpush('testlist', 'item1', 'item2');
 
-      const result = await redis.brpop('testlist', 0.1);
+      const result = await client.brpop('testlist', 0.1);
       assert.deepStrictEqual(result, ['testlist', 'item1']);
     });
   });
@@ -233,7 +233,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
         : 6383;
       let duplicated;
       try {
-        duplicated = await redis.duplicate({ port: targetPort });
+        duplicated = await client.duplicate({ port: targetPort });
         assert.strictEqual(duplicated._options.port, targetPort);
       } finally {
         if (duplicated) {
@@ -246,7 +246,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
       const start = Date.now();
       let duplicated;
       try {
-        duplicated = await redis.duplicate();
+        duplicated = await client.duplicate();
         const elapsed = Date.now() - start;
 
         assert.ok(duplicated instanceof Redis);
