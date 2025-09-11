@@ -222,7 +222,7 @@ export abstract class BaseClient extends EventEmitter {
     if (this.isClosing) {
       await new Promise(resolve => {
         const t = setTimeout(resolve, 20);
-        (t as any).unref?.();
+        if (typeof (t as any).unref === 'function') (t as any).unref();
       });
       if (this.isClosing) return; // still closing; caller can retry
     }
@@ -411,7 +411,7 @@ export abstract class BaseClient extends EventEmitter {
           this.pendingConnect.catch(() => {}),
           new Promise(resolve => {
             const t = setTimeout(resolve, 50);
-            (t as any).unref?.();
+            if (typeof (t as any).unref === 'function') (t as any).unref();
           }),
         ]);
       }
@@ -420,7 +420,7 @@ export abstract class BaseClient extends EventEmitter {
     // Give underlying transports a short moment to finish closing
     await new Promise<void>(resolve => {
       const t = setTimeout(resolve, 100);
-      (t as any).unref?.();
+      if (typeof (t as any).unref === 'function') (t as any).unref();
     });
 
     // Set final status and emit end event
@@ -445,7 +445,7 @@ export abstract class BaseClient extends EventEmitter {
           this.pendingConnect.catch(() => {}),
           new Promise(resolve => {
             const t = setTimeout(resolve, 50);
-            (t as any).unref?.();
+            if (typeof (t as any).unref === 'function') (t as any).unref();
           }),
         ]);
       }
@@ -453,7 +453,7 @@ export abstract class BaseClient extends EventEmitter {
     await this.cleanupConnections();
     await new Promise<void>(resolve => {
       const t = setTimeout(resolve, 100);
-      (t as any).unref?.();
+      if (typeof (t as any).unref === 'function') (t as any).unref();
     });
 
     // Set final status and emit end event
@@ -3076,7 +3076,7 @@ export abstract class BaseClient extends EventEmitter {
         await new Promise<void>(resolve => {
           this.subscriberClient!.close();
           const t = setTimeout(resolve, 0);
-          (t as any).unref?.();
+          if (typeof (t as any).unref === 'function') (t as any).unref();
         });
       } catch (error) {
         // Ignore close errors
@@ -4364,7 +4364,7 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
           client.disconnect(),
           new Promise((_, reject) => {
             const t = setTimeout(() => reject(new Error('Graceful disconnect timeout')), timeout);
-            (t as any).unref?.();
+            if (typeof (t as any).unref === 'function') (t as any).unref();
           })
         ]);
       } catch (error) {

@@ -171,7 +171,8 @@
     "socket.io-client": "^4.8.1",
     "supertest": "^7.1.4",
     "ts-jest": "^29.4.1",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "why-is-node-running": "^3.2.2"
   },
   "peerDependencies": {
     "ioredis": "^5.0.0"
