@@ -397,6 +397,7 @@ describe('Bull Integration with Cluster', () => {
             });
           }
         }, 10);
+        timeout.unref();
 
         // Cleanup timeout if test resolves early
         const originalResolve = resolve;
@@ -446,6 +447,7 @@ describe('Bull Integration with Cluster', () => {
             });
           }
         }, 10);
+        timeout.unref();
 
         // Cleanup timeout if test resolves early
         const originalResolve = resolve;

@@ -291,7 +291,7 @@ describe('Cluster - Basic Tests', () => {
         expectedEvents.forEach(event => {
           cluster.emit(event, 'test-channel', 'test-message');
         });
-      }, 10);
+      }, 10).unref();
 
       await eventPromise;
     });
@@ -391,7 +391,7 @@ describe('Cluster - Basic Tests', () => {
       if (!errorEmitted) {
         await Promise.race([
           errorPromise,
-          new Promise(resolve => setTimeout(resolve, 1000)), // 1 second max wait
+          new Promise(resolve => setTimeout(resolve, 1000).unref()), // 1 second max wait
         ]);
       }
 

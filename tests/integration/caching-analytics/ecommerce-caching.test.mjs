@@ -32,7 +32,7 @@ async function checkTestServers() {
   }
 }
 function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms).unref());
 }
 describe('Caching, Analytics & E-commerce Integration', () => {
   let redisClient;

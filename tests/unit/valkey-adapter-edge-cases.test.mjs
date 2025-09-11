@@ -122,7 +122,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
         .rejects.toThrow();
 
       // Wait for any async errors and then clean up
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Cleanup attempt should not throw
       try {
@@ -132,7 +132,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       }
 
       // Wait for final async cleanup
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Remove error listener
       invalidRedis.off('error', errorHandler);
@@ -596,7 +596,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       assert.strictEqual(existsCount, 50);
 
       // Wait for expiration (TTL test)
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      await new Promise(resolve => setTimeout(resolve, 1500).unref());
 
       // Verify keys are expired
       const expiredCount = await redis.exists(...tempKeys);

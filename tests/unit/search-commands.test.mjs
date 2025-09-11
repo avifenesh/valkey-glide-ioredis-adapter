@@ -60,7 +60,7 @@ describe('Search Commands - Valkey Search Compatibility', () => {
       try {
         // Valkey Search doesn't support FT.DROP, so we can't clean up indexes
         // Instead we'll use unique index names or handle "already exists" errors
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 100).unref());
       } catch (error) {
         // Ignore cleanup errors
       }

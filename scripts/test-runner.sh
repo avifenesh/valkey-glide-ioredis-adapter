@@ -181,11 +181,8 @@ if [ -z "$TEST_FILES" ]; then
   TEST_EXIT=0
 else
   set +e
-  # Conditionally include global diagnostics import
-  OPT_IMPORT=""
-  if [ "$ADAPTER_DIAG_HANDLES" = "1" ]; then
-    OPT_IMPORT="--import ./tests/global-setup.mjs"
-  fi
+  # Always include global setup for proper cleanup
+  OPT_IMPORT="--import ./tests/global-setup.mjs"
 
   # Configure test reporter based on JUNIT environment variable
   if [ "$JUNIT" = "1" ]; then
@@ -204,15 +201,23 @@ else
       $REPORTER_ARGS \
       $TEST_FILES &
     TEST_PID=$!
+    # Wait with timeout to prevent hanging
+    ( sleep 90 && kill -TERM $TEST_PID 2>/dev/null && sleep 2 && kill -KILL $TEST_PID 2>/dev/null ) &
+    TIMEOUT_PID=$!
     wait $TEST_PID
     TEST_EXIT=$?
+    kill $TIMEOUT_PID 2>/dev/null || true
   else
     node --test --test-concurrency=1 $OPT_IMPORT \
       $REPORTER_ARGS \
       $TEST_FILES &
     TEST_PID=$!
+    # Wait with timeout to prevent hanging
+    ( sleep 90 && kill -TERM $TEST_PID 2>/dev/null && sleep 2 && kill -KILL $TEST_PID 2>/dev/null ) &
+    TIMEOUT_PID=$!
     wait $TEST_PID
     TEST_EXIT=$?
+    kill $TIMEOUT_PID 2>/dev/null || true
   fi
   TEST_PID=""
   set -e

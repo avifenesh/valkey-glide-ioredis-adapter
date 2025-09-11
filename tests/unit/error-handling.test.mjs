@@ -330,7 +330,7 @@ describe('Error Handling and Edge Cases', () => {
       assert.strictEqual(beforeExpiry, 'temporary');
 
       // Wait for expiry
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise(resolve => setTimeout(resolve, 1100).unref());
 
       // Should be gone
       const afterExpiry = await redis.get(key);

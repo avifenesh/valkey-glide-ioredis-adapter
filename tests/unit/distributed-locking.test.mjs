@@ -106,7 +106,7 @@ describe('Distributed Locking Patterns', () => {
       assert.strictEqual(beforeExpiry, lockValue);
 
       // Wait for expiration
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise(resolve => setTimeout(resolve, 1100).unref());
 
       // Verify lock expired
       const afterExpiry = await redis.get(lockKey);
@@ -141,7 +141,7 @@ describe('Distributed Locking Patterns', () => {
             const newValue = parseInt(current || '0') + 1;
 
             // Simulate some processing time
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise(resolve => setTimeout(resolve, 10).unref());
 
             await redis.set(counterKey, newValue.toString());
 
@@ -265,7 +265,7 @@ describe('Distributed Locking Patterns', () => {
           await redis.set(jobKey, JSON.stringify(jobData));
 
           // Simulate work
-          await new Promise(resolve => setTimeout(resolve, 50));
+          await new Promise(resolve => setTimeout(resolve, 50).unref());
 
           // Complete job
           jobData.status = 'completed';
@@ -324,7 +324,7 @@ describe('Distributed Locking Patterns', () => {
         if (job) {
           try {
             // Process job
-            await new Promise(resolve => setTimeout(resolve, 20));
+            await new Promise(resolve => setTimeout(resolve, 20).unref());
 
             // Mark as completed
             await redis.srem(processingSetKey, job);
@@ -449,7 +449,7 @@ describe('Distributed Locking Patterns', () => {
           }
 
           // Wait a bit and check again
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise(resolve => setTimeout(resolve, 10).unref());
 
           // Timeout check (prevent infinite loop in tests)
           const queueLength = await redis.llen(queueKey);
@@ -586,7 +586,7 @@ describe('Distributed Locking Patterns', () => {
       assert.strictEqual(beforeTimeout, clientId);
 
       // Wait for timeout
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise(resolve => setTimeout(resolve, 1100).unref());
 
       // Lock should be expired
       const afterTimeout = await redis.get(lockKey);

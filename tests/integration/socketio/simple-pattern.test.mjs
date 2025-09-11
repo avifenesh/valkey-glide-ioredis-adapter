@@ -81,7 +81,7 @@ describe('Simple Socket.IO Pattern Test', () => {
         }
 
         // Allow time for connections to fully close
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 100).unref());
 
         // Force close any remaining handles
         const handles = process._getActiveHandles?.() || [];

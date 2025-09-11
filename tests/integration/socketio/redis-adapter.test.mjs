@@ -36,7 +36,7 @@ async function checkTestServers() {
   }
 }
 function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms).unref());
 }
 describe('Socket.IO Valkey Adapter Integration', () => {
   let valkeyClient1;

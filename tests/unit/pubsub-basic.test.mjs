@@ -132,12 +132,12 @@ describe('Basic Pub/Sub Functionality', () => {
       await subscriber.subscribe('test-channel');
 
       // Give subscription time to establish
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       await publisher.publish('test-channel', 'hello world');
 
       // Give message time to be received
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // This will currently fail because we don't handle message reception
       // This test documents what we need to fix
@@ -166,11 +166,11 @@ describe('Basic Pub/Sub Functionality', () => {
 
       await subscriber.psubscribe('test.*');
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       await publisher.publish('test.news', 'breaking news');
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       if (patternMessageReceived) {
         assert.strictEqual(receivedPattern, 'test.*');

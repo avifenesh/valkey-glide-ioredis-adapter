@@ -24,8 +24,15 @@ import * as hashCommands from './commands/hashes';
 import * as listCommands from './commands/lists';
 import * as setCommands from './commands/sets';
 import * as zsetCommands from './commands/zsets';
+// import { Packr } from 'msgpackr'; // Disabled for now due to GLIDE Buffer issues
 
 export type GlideClientType = GlideClient | GlideClusterClient;
+
+// msgpack packer for Bull script compatibility (disabled for now due to GLIDE Buffer issues)
+// const packer = new Packr({
+//   useRecords: false,
+//   encodeUndefinedAsNil: true
+// });
 
 // Direct GLIDE Pub/Sub Interface - High-Performance Native Callbacks
 export interface DirectPubSubMessage {
@@ -69,6 +76,14 @@ export interface DirectGlidePubSubInterface {
   };
 }
 
+// Global registry for tracking all active client instances  
+const globalClientRegistry = new Set<BaseClient>();
+
+// Export function to access global registry (for cross-module access)
+export function getGlobalClientRegistry(): Set<BaseClient> {
+  return globalClientRegistry;
+}
+
 export abstract class BaseClient extends EventEmitter {
   protected glideClient!: GlideClientType; // Always initialized in constructor
   protected subscriberClient?: GlideClientType; // Only created when needed for subscriptions
@@ -86,6 +101,13 @@ export abstract class BaseClient extends EventEmitter {
   private subscriberClientClosed: boolean = false;
   // ioredis compatibility properties
   public blocked: boolean = false;
+  // Instance identifier for tracking
+  private readonly instanceId: string = `client_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  
+  // Getter for instanceId to allow access from static methods
+  public get instanceIdentifier(): string {
+    return this.instanceId;
+  }
 
   // All command families are now function-based
 
@@ -108,6 +130,9 @@ export abstract class BaseClient extends EventEmitter {
 
     // ioredis compatibility - expose options as _options
     (this as any)._options = this.options;
+
+    // Register this instance in global registry for force close functionality
+    globalClientRegistry.add(this);
 
     // Initialize Direct GLIDE Pub/Sub (High-Performance Architecture)
     this.directPubSub = new DirectGlidePubSub(this);
@@ -244,6 +269,9 @@ export abstract class BaseClient extends EventEmitter {
    * Internal cleanup helper - closes all connections and clears resources
    */
   private async cleanupConnections(): Promise<void> {
+    // Remove from global registry when cleaning up
+    globalClientRegistry.delete(this);
+    
     // Remove all event listeners to prevent event loop from staying alive
     this.removeAllListeners();
     
@@ -524,38 +552,45 @@ export abstract class BaseClient extends EventEmitter {
       }
       const numkeys = Number(numberOfKeys) || 0;
 
-      // BullMQ calls with single array: client[commandName]([...args])
-      // Need to handle both BullMQ pattern and regular ioredis pattern
+      // Handle both single array argument and variadic arguments (standard ioredis behavior)
       let allArgs: any[];
       if (args.length === 1 && Array.isArray(args[0])) {
-        // BullMQ pattern: single array argument
+        // Single array argument (used by some libraries like BullMQ)
         allArgs = args[0];
       } else {
-        // Regular ioredis pattern: variadic arguments
+        // Regular variadic arguments
         allArgs = args;
       }
 
-      // Split into keys and args based on numberOfKeys (same as ioredis EVAL)
+      // Standard ioredis behavior: split into keys and args based on numberOfKeys
       const keys = allArgs.slice(0, numkeys);
       const scriptArgs = allArgs.slice(numkeys);
 
-      // Normalize parameters for GLIDE - apply keyPrefix to keys
+      // Normalize keys (apply keyPrefix like ioredis)
       const normalizedKeys = keys.map(k => {
         if (k === null || k === undefined) return '';
-        // Apply keyPrefix to keys for Lua scripts (ioredis behavior)
         const keyStr = k instanceof Buffer ? k.toString() : String(k);
         return this.normalizeKey(keyStr);
       });
 
+      // Normalize args for GLIDE compatibility
       const normalizedArgs = scriptArgs.map(a => {
         if (a === null || a === undefined) return '';
-        // Keep Buffer as is for msgpack - GLIDE handles Buffer conversion
-        if (a instanceof Buffer) return a;
+        
+        // GLIDE can handle binary data - keep Buffers as-is for binary data
+        if (a instanceof Buffer) {
+          // Return the Buffer - GLIDE will handle it as binary string
+          return a;
+        }
+        
+        // Convert other types to string
         if (typeof a === 'object') {
-          // JSON stringify objects for compatibility with ioredis
           return JSON.stringify(a);
         }
-        return String(a);
+        if (typeof a === 'number') {
+          return String(a);
+        }
+        return a;
       });
 
       try {
@@ -567,6 +602,7 @@ export abstract class BaseClient extends EventEmitter {
             keys: normalizedKeys,
             args: normalizedArgs,
           });
+          
           return result === null && lua.includes('return {}') ? [] : result;
         } else {
           // Fallback to EVAL command
@@ -582,9 +618,10 @@ export abstract class BaseClient extends EventEmitter {
           );
           return result === null && lua.includes('return {}') ? [] : result;
         }
-      } catch (error) {
+      } catch (error: any) {
         // If invokeScript fails, try EVAL fallback
         try {
+
           const commandArgs = [
             'EVAL',
             lua,
@@ -595,8 +632,9 @@ export abstract class BaseClient extends EventEmitter {
           const result = await (this.glideClient as any).customCommand(
             commandArgs
           );
+
           return result === null && lua.includes('return {}') ? [] : result;
-        } catch (fallbackError) {
+        } catch (fallbackError: any) {
           // Script execution failed - throw the fallback error
           throw fallbackError;
         }
@@ -1767,6 +1805,9 @@ export abstract class BaseClient extends EventEmitter {
     const batch = isTransaction ? new BatchClass() : new BatchClass(false);
     let commandCount = 0;
     let discarded = false;
+    
+    // Store custom commands that were registered via defineCommand
+    const customCommands: Array<{ name: string; args: any[] }> = [];
 
     const adapter = {
       // String commands
@@ -1848,6 +1889,14 @@ export abstract class BaseClient extends EventEmitter {
         return adapter;
       },
 
+      // Key commands
+      keys: (pattern: string) => {
+        // For multi/pipeline, add keys command to the batch
+        batch.customCommand(['KEYS', pattern]);
+        commandCount++;
+        return adapter;
+      },
+      
       // Hash commands
       hset: (key: RedisKey, ...args: any[]) => {
         const normalizedKey = this.normalizeKey(key);
@@ -2122,6 +2171,52 @@ export abstract class BaseClient extends EventEmitter {
         return adapter;
       },
 
+      // Bull-specific methods for job queue management
+      saveStacktrace: () => {
+        // Bull uses this for debugging - just return the adapter for chaining
+        // We don't actually need to save stacktraces as it's for Bull's internal debugging
+        return adapter;
+      },
+      
+      // These Bull methods will be dynamically created by defineCommand,
+      // We need to handle them properly in multi/pipeline by storing the command
+      moveToFinished: (args: any[]) => {
+        // Store the custom command to be executed via the registered handler
+        customCommands.push({ name: 'moveToFinished', args: [args] });
+        commandCount++;
+        return adapter;
+      },
+      
+      moveToDelayed: (args: any[]) => {
+        customCommands.push({ name: 'moveToDelayed', args: [args] });
+        commandCount++;
+        return adapter;
+      },
+      
+      retryJob: (args: any[]) => {
+        customCommands.push({ name: 'retryJob', args: [args] });
+        commandCount++;
+        return adapter;
+      },
+      
+      retryJobs: (args: any[]) => {
+        customCommands.push({ name: 'retryJobs', args: [args] });
+        commandCount++;
+        return adapter;
+      },
+      
+      addLog: (args: any[]) => {
+        customCommands.push({ name: 'addLog', args: [args] });
+        commandCount++;
+        return adapter;
+      },
+      
+      isJobInList: (args: any[]) => {
+        customCommands.push({ name: 'isJobInList', args: [args] });
+        commandCount++;
+        return adapter;
+      },
+      
       // Execute batch
       exec: async () => {
         try {
@@ -2138,23 +2233,41 @@ export abstract class BaseClient extends EventEmitter {
             return []; // ioredis returns empty array for empty pipeline
           }
 
-          const result = await this.glideClient.exec(batch, false); // Don't raise on error
+          // Execute the batch commands first
+          const batchResults = await this.glideClient.exec(batch, false); // Don't raise on error
 
-          // Convert results to ioredis format: Array<[Error | null, any]>
-          if (result === null) return null; // Transaction was discarded
-          if (!Array.isArray(result)) return [];
-
-          // Note: Database transactions don't rollback on runtime errors
-          // They only return null for WATCH violations or DISCARD
-          // Runtime errors are returned in the results array
-
-          return result.map((res: any) => {
-            if (res instanceof Error) {
-              return [res, null];
-            } else {
-              return [null, res];
+          // Execute custom commands that were registered via defineCommand
+          const customResults: Array<[Error | null, any]> = [];
+          for (const cmd of customCommands) {
+            try {
+              // Check if the custom command exists on this client
+              if (typeof (this as any)[cmd.name] === 'function') {
+                const result = await (this as any)[cmd.name](...cmd.args);
+                customResults.push([null, result]);
+              } else {
+                // If command doesn't exist, add a placeholder result
+                customResults.push([null, undefined]);
+              }
+            } catch (error: any) {
+              customResults.push([error, null]);
             }
-          });
+          }
+
+          // Convert batch results to ioredis format: Array<[Error | null, any]>
+          if (batchResults === null) return null; // Transaction was discarded
+          
+          const formattedBatchResults = Array.isArray(batchResults) 
+            ? batchResults.map((res: any) => {
+                if (res instanceof Error) {
+                  return [res, null];
+                } else {
+                  return [null, res];
+                }
+              })
+            : [];
+
+          // Combine batch and custom command results
+          return [...formattedBatchResults, ...customResults];
         } catch (error) {
           throw error;
         }
@@ -4202,5 +4315,126 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
     } else {
       throw new Error('sendCommand expects array format: [command, ...args]');
     }
+  }
+
+  /**
+   * Static methods for emergency cleanup - Bull worker compatibility
+   */
+
+  /**
+   * Gets count of active client instances in the registry
+   * @returns Number of tracked active clients
+   */
+  static getActiveClientCount(): number {
+    return globalClientRegistry.size;
+  }
+
+  /**
+   * Lists all active client instances with basic info
+   * @returns Array of client info objects
+   */
+  static getActiveClients(): Array<{ id: string; status: string; host?: string; port?: number }> {
+    return Array.from(globalClientRegistry).map(client => ({
+      id: client.instanceIdentifier,
+      status: client.status, // Use public status property
+      host: (client as any).options.host,
+      port: (client as any).options.port
+    }));
+  }
+
+  /**
+   * Force close all Redis client instances - emergency cleanup for hanging tests
+   * This method is designed for Bull/BullMQ worker compatibility when normal 
+   * queue.close() doesn't terminate all background connections.
+   * 
+   * @param timeout - Maximum time to wait for graceful shutdown (default: 1000ms)
+   * @returns Promise that resolves when all clients are forcefully closed
+   */
+  static async forceCloseAllClients(timeout: number = 1000): Promise<void> {
+    const clients = Array.from(globalClientRegistry);
+    if (clients.length === 0) {
+      return; // No clients to close
+    }
+
+    // First, try graceful shutdown with timeout
+    const gracefulPromises = clients.map(async (client) => {
+      try {
+        // Race between graceful disconnect and timeout
+        await Promise.race([
+          client.disconnect(),
+          new Promise((_, reject) => {
+            const t = setTimeout(() => reject(new Error('Graceful disconnect timeout')), timeout);
+            (t as any).unref?.();
+          })
+        ]);
+      } catch (error) {
+        // If graceful fails, we'll handle it in the aggressive phase
+      }
+    });
+
+    // Wait for all graceful disconnects or timeout
+    await Promise.allSettled(gracefulPromises);
+
+    // Aggressive cleanup for any remaining clients
+    const remainingClients = Array.from(globalClientRegistry);
+    if (remainingClients.length > 0) {
+      await Promise.all(remainingClients.map(async (client) => {
+        try {
+          // Force immediate cleanup using private method access
+          (client as any).isClosing = true;
+          (client as any).connectionStatus = 'end';
+          
+          // Remove all listeners to prevent event loop hanging
+          client.removeAllListeners();
+          
+          // Force close underlying GLIDE clients without waiting
+          const glideClient = (client as any).glideClient;
+          if (glideClient && typeof glideClient.close === 'function') {
+            // Don't await - force immediate close
+            glideClient.close().catch(() => {});
+          }
+          
+          const subscriberClient = (client as any).subscriberClient;
+          if (subscriberClient && typeof subscriberClient.close === 'function') {
+            // Don't await - force immediate close
+            subscriberClient.close().catch(() => {});
+          }
+
+          // Force close pub/sub clients
+          const pubSubClient = (client as any).ioredisCompatiblePubSub;
+          if (pubSubClient) {
+            pubSubClient.disconnect().catch(() => {});
+          }
+
+          // Remove from registry immediately
+          globalClientRegistry.delete(client);
+        } catch (error) {
+          // Ignore all errors during force close
+        }
+      }));
+    }
+
+    // Clear the entire registry as a final step
+    globalClientRegistry.clear();
+
+    // Give Node.js event loop a moment to process the closures
+    await new Promise(resolve => {
+      const t = setTimeout(resolve, 50);
+      (t as any).unref?.();
+    });
+  }
+
+  /**
+   * Emergency client termination with process cleanup
+   * Use only in test environments when forceCloseAllClients isn't sufficient
+   * 
+   * @param exitCode - Process exit code (default: 0)
+   */
+  static forceTerminate(exitCode: number = 0): never {
+    // Immediate cleanup without waiting
+    globalClientRegistry.clear();
+    
+    // Force immediate process termination
+    process.exit(exitCode);
   }
 }

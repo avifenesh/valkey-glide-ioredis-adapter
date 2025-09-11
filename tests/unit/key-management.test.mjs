@@ -86,7 +86,7 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       await redis.setex(sessionKey, 900, 'session_data'); // 15 minutes
 
       // Simulate user activity - refresh TTL
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
       await redis.expire(sessionKey, 900); // Reset to 15 minutes
 
       const ttl = await redis.ttl(sessionKey);
@@ -388,7 +388,7 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       assert.ok((await redis.ttl(shortKey)) <= 2);
 
       // Wait for expiration
-      await new Promise(resolve => setTimeout(resolve, 2500));
+      await new Promise(resolve => setTimeout(resolve, 2500).unref());
 
       // Should be expired
       assert.strictEqual(await redis.exists(shortKey), 0);

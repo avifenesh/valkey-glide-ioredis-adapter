@@ -87,7 +87,7 @@ describe('GLIDE Pub/Sub Polling Approach', () => {
             }
           }
           // Small delay to prevent tight loop
-          await new Promise(resolve => setTimeout(resolve, 10));
+          await new Promise(resolve => setTimeout(resolve, 10).unref());
         }
       } catch (error) {
         console.error('❌ Polling error:', error);
@@ -95,7 +95,7 @@ describe('GLIDE Pub/Sub Polling Approach', () => {
     })();
 
     // Wait a moment for subscription to be established
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 100).unref());
 
     // Publish a message
     console.log('📤 Publishing message...');
@@ -106,7 +106,7 @@ describe('GLIDE Pub/Sub Polling Approach', () => {
     console.log('📊 Publish result:', publishResult, 'subscribers');
 
     // Wait for message to be received (with timeout)
-    const timeoutPromise = new Promise(resolve => setTimeout(resolve, 2000));
+    const timeoutPromise = new Promise(resolve => setTimeout(resolve, 2000).unref());
     await Promise.race([pollingPromise, timeoutPromise]);
 
     // Verify results
