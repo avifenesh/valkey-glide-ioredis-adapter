@@ -85,7 +85,7 @@ export const testUtils = {
           if (client && typeof client.quit === 'function') {
             await Promise.race([
               client.quit(),
-              new Promise(resolve => setTimeout(resolve, 1000)), // 1s timeout
+              new Promise(resolve => setTimeout(resolve, 1000).unref()), // 1s timeout
             ]);
           }
         } catch {

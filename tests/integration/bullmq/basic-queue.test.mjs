@@ -35,7 +35,7 @@ async function checkTestServers() {
   }
 }
 function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms).unref());
 }
 
 // Suppress ClosingError console output during test cleanup
@@ -119,7 +119,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
 
     // Establish connections with timeout
     const connectionTimeout = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Connection timeout')), 5000)
+      setTimeout(() => reject(new Error('Connection timeout')), 5000).unref()
     );
 
     try {

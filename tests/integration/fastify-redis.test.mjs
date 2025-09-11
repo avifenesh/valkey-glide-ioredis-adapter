@@ -208,7 +208,7 @@ describe('Fastify Redis Plugin Compatibility', () => {
       });
 
       await subscriber.subscribe(channel);
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
       await publisher.publish(channel, message);
 
       const received = await messagePromise;

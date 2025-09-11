@@ -42,7 +42,7 @@ async function checkTestServers() {
   }
 }
 function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms).unref());
 }
 describe('Socket.IO Redis Adapter Pattern', () => {
   // Production pattern: 2 Socket.IO servers with separate pub/sub clients each
@@ -220,7 +220,7 @@ describe('Socket.IO Redis Adapter Pattern', () => {
     ]);
     
     // Add delay to ensure all async operations complete
-    await new Promise(resolve => setTimeout(resolve, 100));
+    await new Promise(resolve => setTimeout(resolve, 100).unref());
   });
 
   test('Socket.IO Redis adapter enables cross-server broadcasting', async () => {

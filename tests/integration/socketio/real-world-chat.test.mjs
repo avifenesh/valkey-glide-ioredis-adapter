@@ -39,7 +39,7 @@ async function checkTestServers() {
   }
 }
 function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms).unref());
 }
 describe('Real-World Socket.IO Application', () => {
   // Production pattern pub/sub clients for each Socket.IO server

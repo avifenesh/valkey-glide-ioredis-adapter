@@ -331,7 +331,7 @@ describe('Scripting Commands', () => {
       assert.strictEqual(result, 'OK');
 
       // May need to wait for async flush
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       const exists = await client.script('exists', sha);
       assert.deepStrictEqual(exists, [0]);

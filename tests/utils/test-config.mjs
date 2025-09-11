@@ -53,7 +53,7 @@ export function checkTestServers() {
  * @returns {Promise} Promise that resolves after the delay
  */
 export function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms).unref());
 }
 
 /**

@@ -67,7 +67,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       });
 
       // Wait for subscription to be established
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Simulate Slack messages to different channels
       await publisher.publish(
@@ -101,7 +101,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       );
 
       // Wait for messages to be received
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 200).unref());
 
       assert.strictEqual(receivedMessages.length, 3);
 
@@ -139,7 +139,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         dmMessages.push({ channel, message });
       });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Send DM from user456 to user123
       await publisher.publish(
@@ -165,7 +165,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         })
       );
 
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 200).unref());
 
       assert.ok(dmMessages.length >= 1);
 
@@ -192,7 +192,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         presenceUpdates.push({ channel, message });
       });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Simulate user coming online
       await publisher.publish(
@@ -234,7 +234,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         })
       );
 
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 200).unref());
 
       assert.ok(presenceUpdates.length >= 3);
 
@@ -263,7 +263,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         }
       });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // User joins voice channel
       await publisher.publish(
@@ -299,7 +299,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         })
       );
 
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 200).unref());
 
       assert.strictEqual(voiceUpdates.length, 3);
 
@@ -329,7 +329,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         }
       });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Simulate rapid chat messages (Twitch pattern)
       const messages = [
@@ -358,7 +358,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         );
       }
 
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 300).unref());
 
       assert.strictEqual(chatMessages.length, 5);
 
@@ -384,7 +384,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         }
       });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Stream goes live
       await publisher.publish(
@@ -421,7 +421,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         })
       );
 
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 200).unref());
 
       assert.strictEqual(streamEvents.length, 3);
 
@@ -453,7 +453,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         webhookEvents.push({ channel, message });
       });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Push event
       await publisher.publish(
@@ -508,7 +508,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         })
       );
 
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 200).unref());
 
       assert.ok(webhookEvents.length >= 3);
 
@@ -543,7 +543,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         priceUpdates.push({ channel, message });
       });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Bitcoin price update
       await publisher.publish(
@@ -584,7 +584,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         })
       );
 
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 200).unref());
 
       assert.strictEqual(priceUpdates.length, 3);
 
@@ -613,7 +613,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         alerts.push(message);
       });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Price alert triggered
       await publisher.publish(
@@ -642,7 +642,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         })
       );
 
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 200).unref());
 
       assert.strictEqual(alerts.length, 2);
 
@@ -695,7 +695,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       });
 
       // Wait for subscription to settle
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 200).unref());
 
       // Now send a message to verify subscription works
       console.log('📤 Publishing test message...');
@@ -705,7 +705,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       );
       console.log(`Publish result: ${publishResult}`);
 
-      await new Promise(resolve => setTimeout(resolve, 300));
+      await new Promise(resolve => setTimeout(resolve, 300).unref());
 
       console.log(`Final messages received: ${messages.length}`);
       console.log('Messages:', messages);
@@ -725,14 +725,14 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       });
 
       // Wait without sending any messages
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 200).unref());
 
       // Should not have received any messages
       assert.strictEqual(messages.length, 0);
 
       // Now send a message to verify subscription works
       await publisher.publish('empty:channel:1', 'test message');
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       assert.strictEqual(messages.length, 1);
       assert.strictEqual(messages[0], 'test message');
@@ -748,20 +748,20 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         patternMessages.push({ pattern: _pattern, channel, message });
       });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Publish to channels that don't match the pattern
       await publisher.publish('different:channel', 'message1');
       await publisher.publish('another:format:channel', 'message2');
 
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 200).unref());
 
       // Should not receive any messages
       assert.strictEqual(patternMessages.length, 0);
 
       // Now publish to matching channel
       await publisher.publish('nomatch:something:test', 'matching message');
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       assert.strictEqual(patternMessages.length, 1);
       assert.strictEqual(patternMessages[0]?.message, 'matching message');
@@ -776,25 +776,25 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         messages.push(`${_channel}:${message}`);
       });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Send initial messages
       await publisher.publish('test:unsubscribe:1', 'msg1');
       await publisher.publish('test:unsubscribe:2', 'msg2');
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
       assert.strictEqual(messages.length, 2);
 
       // Unsubscribe from one channel
       await subscriber.unsubscribe('test:unsubscribe:1');
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Send more messages
       await publisher.publish('test:unsubscribe:1', 'msg3'); // Should not receive
       await publisher.publish('test:unsubscribe:2', 'msg4'); // Should receive
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Should only have received 3 messages (not the 4th from unsubscribed channel)
       assert.strictEqual(messages.length, 3);
@@ -811,7 +811,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
         largeMessages.push(message);
       });
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Create a large message (1KB)
       const largePayload = JSON.stringify({
@@ -824,7 +824,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       });
 
       await publisher.publish('large:message:test', largePayload);
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await new Promise(resolve => setTimeout(resolve, 200).unref());
 
       assert.strictEqual(largeMessages.length, 1);
 

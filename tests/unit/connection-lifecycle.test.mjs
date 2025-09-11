@@ -33,7 +33,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       try {
         client.removeAllListeners();
         await client.quit();
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 100).unref());
       } catch {}
       client = null;
     }
@@ -44,7 +44,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       try {
         client.removeAllListeners();
         await client.quit();
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 200).unref());
       } catch {}
       client = null;
     }
@@ -65,7 +65,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       await Promise.race([
         client.connect(),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('connect timeout in test')), 4000)
+          setTimeout(() => reject(new Error('connect timeout in test')), 4000).unref()
         ),
       ]);
 
@@ -88,7 +88,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       await Promise.race([
         client.connect(),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('connect timeout in test')), 4000)
+          setTimeout(() => reject(new Error('connect timeout in test')), 4000).unref()
         ),
       ]);
 
@@ -112,7 +112,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       await Promise.race([
         client.connect(),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('connect timeout in test')), 4000)
+          setTimeout(() => reject(new Error('connect timeout in test')), 4000).unref()
         ),
       ]);
 
@@ -136,7 +136,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       await Promise.race([
         client.connect(),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('connect timeout in test')), 4000)
+          setTimeout(() => reject(new Error('connect timeout in test')), 4000).unref()
         ),
       ]);
 
@@ -161,7 +161,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       await Promise.race([
         client.connect(),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('connect timeout in test')), 4000)
+          setTimeout(() => reject(new Error('connect timeout in test')), 4000).unref()
         ),
       ]);
 

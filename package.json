@@ -129,7 +129,8 @@
   },
   "dependencies": {
     "@valkey/valkey-glide": "2.0.1",
-    "events": "^3.3.0"
+    "events": "^3.3.0",
+    "msgpackr": "^1.11.5"
   },
   "devDependencies": {
     "@semantic-release/changelog": "^6.0.3",

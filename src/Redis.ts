@@ -82,32 +82,161 @@ export class Redis extends StandaloneClient {
     // ioredis auto-connects duplicated instances if the source is connected
     // This is critical for BullMQ which expects duplicate() to return a connected instance
     if (this.status === 'ready' || this.status === 'connecting') {
-      // Store auto-connect promise to prevent event loop warnings
-      const autoConnectPromise = new Promise<void>((resolve) => {
-        // Use process.nextTick instead of setImmediate to avoid event loop issues
-        // Also check if the duplicated instance is already closing
-        process.nextTick(() => {
-          if (!duplicated.isClosing && duplicated.status === 'disconnected') {
-            duplicated.connect()
-              .then(() => resolve())
-              .catch(err => {
-                // Only emit error if not closing
-                if (!duplicated.isClosing) {
-                  duplicated.emit('error', err);
-                }
-                resolve(); // Resolve even on error to prevent hanging
-              });
-          } else {
-            resolve(); // Already closing or connected
-          }
-        });
-      });
-      
-      // Store the promise so it can be awaited if needed
-      (duplicated as any)._autoConnectPromise = autoConnectPromise;
+      // Don't create unresolved promises - use setImmediate with unref to not block event loop
+      setImmediate(() => {
+        if (!duplicated.isClosing && duplicated.status === 'disconnected') {
+          duplicated.connect().catch(err => {
+            // Only emit error if not closing
+            if (!duplicated.isClosing) {
+              duplicated.emit('error', err);
+            }
+          });
+        }
+      }).unref?.();
     }
 
     return duplicated;
+  }
+
+  /**
+   * Static methods for emergency cleanup - Bull/BullMQ worker compatibility
+   * These methods provide force close functionality when normal queue.close() 
+   * doesn't terminate all background connections.
+   */
+
+  /**
+   * Get the count of all active Redis client instances
+   * @returns Number of active client instances
+   */
+  static getActiveClientCount(): number {
+    // Access the global registry through the module system
+    const { getGlobalClientRegistry } = require('./BaseClient');
+    return getGlobalClientRegistry ? getGlobalClientRegistry().size : 0;
+  }
+
+  /**
+   * Get details of all active Redis client instances
+   * @returns Array of client information objects
+   */
+  static getActiveClients(): Array<{ id: string; status: string; host?: string; port?: number }> {
+    const { getGlobalClientRegistry } = require('./BaseClient');
+    if (!getGlobalClientRegistry) return [];
+    
+    return Array.from(getGlobalClientRegistry()).map((client: any) => ({
+      id: client.instanceIdentifier,
+      status: client.status,
+      host: client.options?.host,
+      port: client.options?.port
+    }));
+  }
+
+  /**
+   * Force close all Redis client instances
+   * Emergency cleanup method for test environments when Bull workers hang.
+   * 
+   * Usage in test cleanup:
+   * ```typescript
+   * after(async () => {
+   *   await Redis.forceCloseAllClients();
+   * });
+   * ```
+   * 
+   * @param timeout Maximum time to wait for graceful shutdown (default: 1000ms)
+   * @returns Promise that resolves when all clients are closed
+   */
+  static async forceCloseAllClients(timeout: number = 1000): Promise<void> {
+    const { getGlobalClientRegistry } = require('./BaseClient');
+    if (!getGlobalClientRegistry) return;
+
+    const registry = getGlobalClientRegistry();
+    const clients = Array.from(registry);
+    if (clients.length === 0) {
+      return; // No clients to close
+    }
+
+    // First, try graceful shutdown with timeout
+    const gracefulPromises = clients.map(async (client: any) => {
+      try {
+        // Race between graceful disconnect and timeout
+        await Promise.race([
+          client.disconnect(),
+          new Promise((_, reject) => {
+            const t = setTimeout(() => reject(new Error('Graceful disconnect timeout')), timeout);
+            (t as any).unref?.();
+          })
+        ]);
+      } catch (error) {
+        // If graceful fails, we'll handle it in the aggressive phase
+      }
+    });
+
+    // Wait for all graceful disconnects or timeout
+    await Promise.allSettled(gracefulPromises);
+
+    // Aggressive cleanup for any remaining clients
+    const remainingClients = Array.from(registry);
+    if (remainingClients.length > 0) {
+      await Promise.all(remainingClients.map(async (client: any) => {
+        try {
+          // Force immediate cleanup
+          client.isClosing = true;
+          client.connectionStatus = 'end';
+          
+          // Remove all listeners to prevent event loop hanging
+          client.removeAllListeners();
+          
+          // Force close underlying GLIDE clients without waiting
+          const glideClient = client.glideClient;
+          if (glideClient && typeof glideClient.close === 'function') {
+            // Don't await - force immediate close
+            glideClient.close().catch(() => {});
+          }
+          
+          const subscriberClient = client.subscriberClient;
+          if (subscriberClient && typeof subscriberClient.close === 'function') {
+            // Don't await - force immediate close
+            subscriberClient.close().catch(() => {});
+          }
+
+          // Force close pub/sub clients
+          const pubSubClient = client.ioredisCompatiblePubSub;
+          if (pubSubClient) {
+            pubSubClient.disconnect().catch(() => {});
+          }
+
+          // Remove from registry immediately
+          registry.delete(client);
+        } catch (error) {
+          // Ignore all errors during force close
+        }
+      }));
+    }
+
+    // Clear the entire registry as a final step
+    registry.clear();
+
+    // Give Node.js event loop a moment to process the closures
+    await new Promise(resolve => {
+      const t = setTimeout(resolve, 50);
+      (t as any).unref?.();
+    });
+  }
+
+  /**
+   * Emergency process termination - use only in test environments
+   * when forceCloseAllClients() isn't sufficient for hanging processes.
+   * 
+   * @param exitCode Process exit code (default: 0)
+   */
+  static forceTerminate(exitCode: number = 0): never {
+    // Immediate cleanup without waiting
+    const { getGlobalClientRegistry } = require('./BaseClient');
+    if (getGlobalClientRegistry) {
+      getGlobalClientRegistry().clear();
+    }
+    
+    // Force immediate process termination
+    process.exit(exitCode);
   }
 }
 

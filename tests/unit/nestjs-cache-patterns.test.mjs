@@ -275,7 +275,7 @@ describe('NestJS Cache Integration Patterns', () => {
             if (cached) {
               return JSON.parse(cached);
             }
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise(resolve => setTimeout(resolve, 100).unref());
             retries++;
           }
           throw new Error('Cache generation timeout');
@@ -497,7 +497,7 @@ describe('NestJS Cache Integration Patterns', () => {
       assert.ok(cached);
 
       // Wait for expiration
-      await new Promise(resolve => setTimeout(resolve, 1100));
+      await new Promise(resolve => setTimeout(resolve, 1100).unref());
 
       // Verify it's expired
       cached = await redis.get(expiringKey);
