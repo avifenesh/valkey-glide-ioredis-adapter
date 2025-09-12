@@ -112,28 +112,22 @@ jobs:
           sleep 2
         done
 
-    - name: Run all tests (including JSON/Search modules)
-      run: npm test -- --testPathIgnorePatterns="/tests/cluster/"
+    - name: Run all tests (including JSON/Search modules and cluster tests)
+      run: npm test
       env:
         CI: true
         VALKEY_HOST: localhost
         VALKEY_PORT: 6379
         VALKEY_BUNDLE_HOST: localhost
         VALKEY_BUNDLE_PORT: 6379
-        VALKEY_HOST: localhost
-        VALKEY_PORT: 6379
-        VALKEY_CLUSTER_PORT_1: 17000
-        VALKEY_CLUSTER_PORT_2: 17001
-        VALKEY_CLUSTER_PORT_3: 17002
-        VALKEY_CLUSTER_PORT_4: 17003
-        VALKEY_CLUSTER_PORT_5: 17004
-        VALKEY_CLUSTER_PORT_6: 17005
+        VALKEY_CLUSTER_NODES: localhost:17000,localhost:17001,localhost:17002
+        ENABLE_CLUSTER_TESTS: true
 
     - name: Upload coverage to Codecov
       if: matrix.node == '20'
       uses: codecov/codecov-action@v5
       with:
-        file: ./coverage/lcov.info
+        files: ./coverage/lcov.info
         flags: unittests
         name: codecov-umbrella
 
