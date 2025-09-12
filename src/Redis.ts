@@ -103,7 +103,7 @@ export class Redis extends StandaloneClient {
 
   /**
    * Static methods for emergency cleanup - Bull/BullMQ worker compatibility
-   * These methods provide force close functionality when normal queue.close() 
+   * These methods provide force close functionality when normal queue.close()
    * doesn't terminate all background connections.
    */
 
@@ -121,29 +121,34 @@ export class Redis extends StandaloneClient {
    * Get details of all active Redis client instances
    * @returns Array of client information objects
    */
-  static getActiveClients(): Array<{ id: string; status: string; host?: string; port?: number }> {
+  static getActiveClients(): Array<{
+    id: string;
+    status: string;
+    host?: string;
+    port?: number;
+  }> {
     const { getGlobalClientRegistry } = require('./BaseClient');
     if (!getGlobalClientRegistry) return [];
-    
+
     return Array.from(getGlobalClientRegistry()).map((client: any) => ({
       id: client.instanceIdentifier,
       status: client.status,
       host: client.options?.host,
-      port: client.options?.port
+      port: client.options?.port,
     }));
   }
 
   /**
    * Force close all Redis client instances
    * Emergency cleanup method for test environments when Bull workers hang.
-   * 
+   *
    * Usage in test cleanup:
    * ```typescript
    * after(async () => {
    *   await Redis.forceCloseAllClients();
    * });
    * ```
-   * 
+   *
    * @param timeout Maximum time to wait for graceful shutdown (default: 1000ms)
    * @returns Promise that resolves when all clients are closed
    */
@@ -164,9 +169,12 @@ export class Redis extends StandaloneClient {
         await Promise.race([
           client.disconnect(),
           new Promise((_, reject) => {
-            const t = setTimeout(() => reject(new Error('Graceful disconnect timeout')), timeout);
+            const t = setTimeout(
+              () => reject(new Error('Graceful disconnect timeout')),
+              timeout
+            );
             if (typeof (t as any).unref === 'function') (t as any).unref();
-          })
+          }),
         ]);
       } catch (error) {
         // If graceful fails, we'll handle it in the aggressive phase
@@ -179,40 +187,45 @@ export class Redis extends StandaloneClient {
     // Aggressive cleanup for any remaining clients
     const remainingClients = Array.from(registry);
     if (remainingClients.length > 0) {
-      await Promise.all(remainingClients.map(async (client: any) => {
-        try {
-          // Force immediate cleanup
-          client.isClosing = true;
-          client.connectionStatus = 'end';
-          
-          // Remove all listeners to prevent event loop hanging
-          client.removeAllListeners();
-          
-          // Force close underlying GLIDE clients without waiting
-          const glideClient = client.glideClient;
-          if (glideClient && typeof glideClient.close === 'function') {
-            // Don't await - force immediate close
-            glideClient.close().catch(() => {});
-          }
-          
-          const subscriberClient = client.subscriberClient;
-          if (subscriberClient && typeof subscriberClient.close === 'function') {
-            // Don't await - force immediate close
-            subscriberClient.close().catch(() => {});
-          }
+      await Promise.all(
+        remainingClients.map(async (client: any) => {
+          try {
+            // Force immediate cleanup
+            client.isClosing = true;
+            client.connectionStatus = 'end';
 
-          // Force close pub/sub clients
-          const pubSubClient = client.ioredisCompatiblePubSub;
-          if (pubSubClient) {
-            pubSubClient.disconnect().catch(() => {});
-          }
+            // Remove all listeners to prevent event loop hanging
+            client.removeAllListeners();
 
-          // Remove from registry immediately
-          registry.delete(client);
-        } catch (error) {
-          // Ignore all errors during force close
-        }
-      }));
+            // Force close underlying GLIDE clients without waiting
+            const glideClient = client.glideClient;
+            if (glideClient && typeof glideClient.close === 'function') {
+              // Don't await - force immediate close
+              glideClient.close().catch(() => {});
+            }
+
+            const subscriberClient = client.subscriberClient;
+            if (
+              subscriberClient &&
+              typeof subscriberClient.close === 'function'
+            ) {
+              // Don't await - force immediate close
+              subscriberClient.close().catch(() => {});
+            }
+
+            // Force close pub/sub clients
+            const pubSubClient = client.ioredisCompatiblePubSub;
+            if (pubSubClient) {
+              pubSubClient.disconnect().catch(() => {});
+            }
+
+            // Remove from registry immediately
+            registry.delete(client);
+          } catch (error) {
+            // Ignore all errors during force close
+          }
+        })
+      );
     }
 
     // Clear the entire registry as a final step
@@ -228,7 +241,7 @@ export class Redis extends StandaloneClient {
   /**
    * Emergency process termination - use only in test environments
    * when forceCloseAllClients() isn't sufficient for hanging processes.
-   * 
+   *
    * @param exitCode Process exit code (default: 0)
    */
   static forceTerminate(exitCode: number = 0): never {
@@ -237,7 +250,7 @@ export class Redis extends StandaloneClient {
     if (getGlobalClientRegistry) {
       getGlobalClientRegistry().clear();
     }
-    
+
     // Force immediate process termination
     process.exit(exitCode);
   }

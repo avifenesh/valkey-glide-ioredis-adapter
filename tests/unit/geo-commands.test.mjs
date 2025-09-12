@@ -18,7 +18,7 @@ describe('GEO Commands', () => {
       port: parseInt(process.env.VALKEY_PORT || '6383'),
     });
     await client.connect();
-    
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {

@@ -6,39 +6,31 @@
  */
 
 // Using Jest expect instead of chai to match our test framework
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
 import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
-  let redis;
+  let client;
 
   beforeEach(async () => {
     const config = getStandaloneConfig();
-    redis = new Redis(config);
-    await redis.connect();
-    await redis.flushall();
+    client = new Redis(config);
+    await client.connect();
+    await client.flushall();
   });
 
   afterEach(async () => {
-    if (redis) {
-      await redis.quit();
+    if (client) {
+      await client.quit();
     }
   });
 
   describe('Basic ioredis compatibility', () => {
     it('should have defineCommand method', async () => {
-      assert.strictEqual(typeof redis.defineCommand, 'function');
+      assert.strictEqual(typeof client.defineCommand, 'function');
     });
 
     it('should register custom commands via defineCommand', async () => {
@@ -46,20 +38,20 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
       const script = `
         local key = KEYS[1]
         local value = ARGV[1]
-        redis.call("SET", key, value)
-        return redis.call("GET", key)
+        server.call("SET", key, value)
+        return server.call("GET", key)
       `;
 
-      redis.defineCommand('testScript', {
+      client.defineCommand('testScript', {
         lua: script,
         numberOfKeys: 1,
       });
 
       // The command should now exist on the redis instance
-      assert.strictEqual(typeof redis.testScript, 'function');
+      assert.strictEqual(typeof client.testScript, 'function');
 
       // Test execution
-      const result = await redis.testScript('test:key', 'hello');
+      const result = await client.testScript('test:key', 'hello');
       assert.strictEqual(result, 'hello');
     });
 
@@ -68,17 +60,17 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
       const script = `
         local key = KEYS[1]
         local value = ARGV[1]
-        redis.call("SET", key, value)
-        return redis.call("GET", key)
+        server.call("SET", key, value)
+        return server.call("GET", key)
       `;
 
-      redis.defineCommand('arrayTest', {
+      client.defineCommand('arrayTest', {
         lua: script,
         numberOfKeys: 1,
       });
 
       // Test with array-style arguments (BullMQ pattern)
-      const result = await redis.arrayTest(['test:array', 'array-value']);
+      const result = await client.arrayTest(['test:array', 'array-value']);
       assert.strictEqual(result, 'array-value');
     });
   });
@@ -90,12 +82,12 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
         return {}
       `;
 
-      redis.defineCommand('emptyReturn', {
+      client.defineCommand('emptyReturn', {
         lua: script,
         numberOfKeys: 0,
       });
 
-      const result = await redis.emptyReturn();
+      const result = await client.emptyReturn();
       assert.deepStrictEqual(result, []);
     });
 
@@ -107,15 +99,15 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
         local jobData = ARGV[2]
         
         -- Add job to waiting list
-        redis.call("LPUSH", queueKey .. ":waiting", jobId)
+        server.call("LPUSH", queueKey .. ":waiting", jobId)
         
         -- Store job data
-        redis.call("HSET", queueKey .. ":jobs:" .. jobId, "data", jobData, "id", jobId)
+        server.call("HSET", queueKey .. ":jobs:" .. jobId, "data", jobData, "id", jobId)
         
         return jobId
       `;
 
-      redis.defineCommand('addJob', {
+      client.defineCommand('addJob', {
         lua: addJobScript,
         numberOfKeys: 1,
       });
@@ -123,14 +115,14 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
       const jobId = 'job:1';
       const jobData = '{"message": "test job"}';
 
-      const result = await redis.addJob('test:queue', jobId, jobData);
+      const result = await client.addJob('test:queue', jobId, jobData);
       assert.strictEqual(result, jobId);
 
       // Verify job was actually added
-      const waitingJobs = await redis.lrange('test:queue:waiting', 0, -1);
+      const waitingJobs = await client.lrange('test:queue:waiting', 0, -1);
       assert.ok(waitingJobs.includes(jobId));
 
-      const storedData = await redis.hget(`test:queue:jobs:${jobId}`, 'data');
+      const storedData = await client.hget(`test:queue:jobs:${jobId}`, 'data');
       assert.strictEqual(storedData, jobData);
     });
 
@@ -139,12 +131,12 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
       const script = `return "version-test"`;
 
       const commandName = 'versionedCommand:5.58.4';
-      redis.defineCommand(commandName, {
+      client.defineCommand(commandName, {
         lua: script,
         numberOfKeys: 0,
       });
 
-      const result = await redis[commandName]();
+      const result = await client[commandName]();
       assert.strictEqual(result, 'version-test');
     });
   });
@@ -153,17 +145,17 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
     it('should handle Lua script errors gracefully', async () => {
       // Test script with intentional error
       const errorScript = `
-        redis.call("BADCOMMAND")
+        server.call("BADCOMMAND")
         return "should not reach here"
       `;
 
-      redis.defineCommand('errorCommand', {
+      client.defineCommand('errorCommand', {
         lua: errorScript,
         numberOfKeys: 0,
       });
 
       await assert.rejects(async () => {
-        await redis.errorCommand();
+        await client.errorCommand();
       });
     });
 
@@ -171,17 +163,17 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
       // This tests the EVALSHA -> EVAL fallback mechanism
       const script = `return "evalsha-test"`;
 
-      redis.defineCommand('evalshaTest', {
+      client.defineCommand('evalshaTest', {
         lua: script,
         numberOfKeys: 0,
       });
 
       // First call should work (might use EVALSHA or EVAL)
-      const result1 = await redis.evalshaTest();
+      const result1 = await client.evalshaTest();
       assert.strictEqual(result1, 'evalsha-test');
 
       // Second call should also work (should use cached EVALSHA)
-      const result2 = await redis.evalshaTest();
+      const result2 = await client.evalshaTest();
       assert.strictEqual(result2, 'evalsha-test');
     });
   });
@@ -189,26 +181,26 @@ describe('BullMQ Connection Tests - Adapted for ioredis-adapter', () => {
   describe('Connection Features', () => {
     it('should support basic Redis commands needed by BullMQ', async () => {
       // BullMQ uses these commands extensively
-      await redis.set('test:key', 'value');
-      const value = await redis.get('test:key');
+      await client.set('test:key', 'value');
+      const value = await client.get('test:key');
       assert.strictEqual(value, 'value');
 
-      await redis.hset('test:hash', 'field', 'hashvalue');
-      const hashValue = await redis.hget('test:hash', 'field');
+      await client.hset('test:hash', 'field', 'hashvalue');
+      const hashValue = await client.hget('test:hash', 'field');
       assert.strictEqual(hashValue, 'hashvalue');
 
-      await redis.lpush('test:list', 'item1', 'item2');
-      const listLength = await redis.llen('test:list');
+      await client.lpush('test:list', 'item1', 'item2');
+      const listLength = await client.llen('test:list');
       assert.strictEqual(listLength, 2);
     });
 
     it('should handle blocking operations (bclient compatibility)', async () => {
       // BullMQ uses blocking operations for job processing
-      assert.strictEqual(typeof redis.blocked, 'boolean');
+      assert.strictEqual(typeof client.blocked, 'boolean');
 
       // Test that we can enable blocking mode
-      redis.blocked = true;
-      assert.strictEqual(redis.blocked, true);
+      client.blocked = true;
+      assert.strictEqual(client.blocked, true);
     });
   });
 });

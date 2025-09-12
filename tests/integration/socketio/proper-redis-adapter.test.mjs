@@ -112,7 +112,7 @@ describe('Socket.IO Redis Adapter Pattern', () => {
       valkeyPubClient1.connect(),
       valkeySubClient1.connect(),
       valkeyPubClient2.connect(),
-      valkeySubClient2.connect()
+      valkeySubClient2.connect(),
     ]);
 
     // Create HTTP servers
@@ -202,7 +202,7 @@ describe('Socket.IO Redis Adapter Pattern', () => {
     }
 
     // Close Redis connections with error handling
-    const closeRedis = async (client) => {
+    const closeRedis = async client => {
       try {
         if (client && typeof client.disconnect === 'function') {
           await client.disconnect();
@@ -216,9 +216,9 @@ describe('Socket.IO Redis Adapter Pattern', () => {
       closeRedis(valkeyPubClient1),
       closeRedis(valkeySubClient1),
       closeRedis(valkeyPubClient2),
-      closeRedis(valkeySubClient2)
+      closeRedis(valkeySubClient2),
     ]);
-    
+
     // Add delay to ensure all async operations complete
     await new Promise(resolve => setTimeout(resolve, 100).unref());
   });

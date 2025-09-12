@@ -44,7 +44,7 @@ describe('Simple Adapter Integration Test', () => {
     const config = await getStandaloneConfig();
     adapter = new Redis(config);
     await adapter.connect();
-    
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {

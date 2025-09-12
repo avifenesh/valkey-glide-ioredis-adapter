@@ -20,7 +20,7 @@ describe('Clean Valkey Adapter Basic Functionality', () => {
     const config = getStandaloneConfig();
     const client = new Redis(config);
     await client.connect();
-    
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {

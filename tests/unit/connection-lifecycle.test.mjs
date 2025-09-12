@@ -65,7 +65,10 @@ describe('Connection Management (ioredis compatibility)', () => {
       await Promise.race([
         client.connect(),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('connect timeout in test')), 4000).unref()
+          setTimeout(
+            () => reject(new Error('connect timeout in test')),
+            4000
+          ).unref()
         ),
       ]);
 
@@ -88,7 +91,10 @@ describe('Connection Management (ioredis compatibility)', () => {
       await Promise.race([
         client.connect(),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('connect timeout in test')), 4000).unref()
+          setTimeout(
+            () => reject(new Error('connect timeout in test')),
+            4000
+          ).unref()
         ),
       ]);
 
@@ -112,7 +118,10 @@ describe('Connection Management (ioredis compatibility)', () => {
       await Promise.race([
         client.connect(),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('connect timeout in test')), 4000).unref()
+          setTimeout(
+            () => reject(new Error('connect timeout in test')),
+            4000
+          ).unref()
         ),
       ]);
 
@@ -136,7 +145,10 @@ describe('Connection Management (ioredis compatibility)', () => {
       await Promise.race([
         client.connect(),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('connect timeout in test')), 4000).unref()
+          setTimeout(
+            () => reject(new Error('connect timeout in test')),
+            4000
+          ).unref()
         ),
       ]);
 
@@ -161,7 +173,10 @@ describe('Connection Management (ioredis compatibility)', () => {
       await Promise.race([
         client.connect(),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('connect timeout in test')), 4000).unref()
+          setTimeout(
+            () => reject(new Error('connect timeout in test')),
+            4000
+          ).unref()
         ),
       ]);
 
@@ -187,7 +202,7 @@ describe('Connection Management (ioredis compatibility)', () => {
           client.removeAllListeners('ready');
           resolve(); // Resolve anyway to prevent hanging
         }, 1000);
-        
+
         client.on('ready', () => {
           clearTimeout(timeout);
           resolve();
@@ -195,15 +210,15 @@ describe('Connection Management (ioredis compatibility)', () => {
       });
 
       await client.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
-      
+
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
+
       // Wait for ready event with timeout
       await readyPromise;
 
@@ -227,7 +242,7 @@ describe('Connection Management (ioredis compatibility)', () => {
           client.removeAllListeners('connect');
           resolve(); // Resolve anyway to prevent hanging
         }, 1000);
-        
+
         client.on('connect', () => {
           clearTimeout(timeout);
           resolve();
@@ -235,15 +250,15 @@ describe('Connection Management (ioredis compatibility)', () => {
       });
 
       await client.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
-      
+
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
+
       // Wait for connect event with timeout
       await connectPromise;
 
@@ -262,14 +277,14 @@ describe('Connection Management (ioredis compatibility)', () => {
         maxRetriesPerRequest: 1,
       });
       await client.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
 
       await client.quit();
       assert.strictEqual(client.status, 'end');

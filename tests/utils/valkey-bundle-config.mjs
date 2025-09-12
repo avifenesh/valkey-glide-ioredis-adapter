@@ -38,7 +38,7 @@ export async function getValkeyBundleTestConfig() {
         process.env.VALKEY_STANDALONE_PORT ||
         process.env.VALKEY_PORT ||
         process.env.REDIS_PORT ||
-        '6380',
+        '6383',
       10
     ),
     modules: {

@@ -3,14 +3,7 @@
  * Tests the new implementations for Bull/Bee-Queue compatibility
  */
 
-import {
-  describe,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { describe, test, beforeEach, afterEach, before } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
@@ -251,7 +244,7 @@ describe('Enhanced Features for Queue Compatibility', () => {
 
         assert.ok(duplicated instanceof Redis);
         assert.ok(elapsed < 100); // Should return immediately
-        
+
         // Verify connection works
         await duplicated.ping();
       } finally {

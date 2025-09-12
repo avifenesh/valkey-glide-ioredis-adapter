@@ -61,7 +61,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
     redisClient = new Redis(config);
 
     await redisClient.connect();
-    
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {
@@ -550,7 +550,7 @@ describe('Caching, Analytics & E-commerce Integration', () => {
 
       // Ensure clean state
       await redisClient.del(onlineUsersKey);
-      
+
       // Simulate users coming online
       for (const user of users) {
         await redisClient.setex(
@@ -563,18 +563,30 @@ describe('Caching, Analytics & E-commerce Integration', () => {
 
       // Get online user count
       const onlineCount = await redisClient.scard(onlineUsersKey);
-      assert.strictEqual(onlineCount, 4, `Expected 4 online users, got ${onlineCount}`);
+      assert.strictEqual(
+        onlineCount,
+        4,
+        `Expected 4 online users, got ${onlineCount}`
+      );
 
       // Get list of online users
       const onlineUsers = await redisClient.smembers(onlineUsersKey);
       assert.ok(Array.isArray(onlineUsers), 'smembers should return an array');
-      assert.strictEqual(onlineUsers.length, 4, `Expected 4 users in array, got ${onlineUsers.length}`);
+      assert.strictEqual(
+        onlineUsers.length,
+        4,
+        `Expected 4 users in array, got ${onlineUsers.length}`
+      );
       assert.ok(onlineUsers.includes('user1'), 'user1 should be in the set');
 
       // Simulate user going offline
       await redisClient.srem(onlineUsersKey, 'user1');
       const updatedCount = await redisClient.scard(onlineUsersKey);
-      assert.strictEqual(updatedCount, 3, `Expected 3 users after removal, got ${updatedCount}`);
+      assert.strictEqual(
+        updatedCount,
+        3,
+        `Expected 3 users after removal, got ${updatedCount}`
+      );
     });
   });
 
@@ -609,8 +621,15 @@ describe('Caching, Analytics & E-commerce Integration', () => {
 
       // Verify pipeline execution succeeded
       assert.ok(pipelineResults, 'Pipeline results should exist');
-      assert.ok(Array.isArray(pipelineResults), 'Pipeline results should be an array');
-      assert.strictEqual(pipelineResults.length, itemCount, `Expected ${itemCount} results, got ${pipelineResults.length}`);
+      assert.ok(
+        Array.isArray(pipelineResults),
+        'Pipeline results should be an array'
+      );
+      assert.strictEqual(
+        pipelineResults.length,
+        itemCount,
+        `Expected ${itemCount} results, got ${pipelineResults.length}`
+      );
 
       // Check for any errors in pipeline results
       const errors = pipelineResults.filter(result => {

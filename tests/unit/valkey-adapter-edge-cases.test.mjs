@@ -10,68 +10,60 @@
  * - Edge case parameter combinations
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
 import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('Redis Adapter Edge Cases & Production Scenarios', () => {
-  let redis;
+  let client;
 
   beforeEach(async () => {
     const config = getStandaloneConfig();
-    redis = new Redis(config);
+    client = new Redis(config);
 
-    await redis.connect();
-    
+    await client.connect();
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {
-      await redis.flushall();
+      await client.flushall();
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     }
   });
 
   afterEach(async () => {
-    if (redis) {
-      await redis.quit();
+    if (client) {
+      await client.quit();
     }
   });
 
   describe('Connection Edge Cases', () => {
     test('should handle reconnection scenarios gracefully', async () => {
       // Test basic connection
-      await redis.set('connection:test', 'initial');
-      const value = await redis.get('connection:test');
+      await client.set('connection:test', 'initial');
+      const value = await client.get('connection:test');
       assert.strictEqual(value, 'initial');
 
       // Simulate connection recovery (common in cloud environments)
       // The adapter should handle this transparently
-      await redis.set('connection:test:recovery', 'after_reconnect');
-      const recoveryValue = await redis.get('connection:test:recovery');
+      await client.set('connection:test:recovery', 'after_reconnect');
+      const recoveryValue = await client.get('connection:test:recovery');
       assert.strictEqual(recoveryValue, 'after_reconnect');
     });
 
     test('should handle concurrent connection attempts', async () => {
       // Clean up any existing test data
-      await redis.del('concurrent:counter');
+      await client.del('concurrent:counter');
 
       // Multiple operations at connection time (startup scenario)
       // First, do concurrent SETs
       const setPromises = [
-        redis.set('concurrent:1', 'value1'),
-        redis.set('concurrent:2', 'value2'),
-        redis.set('concurrent:3', 'value3'),
+        client.set('concurrent:1', 'value1'),
+        client.set('concurrent:2', 'value2'),
+        client.set('concurrent:3', 'value3'),
       ];
       const setResults = await Promise.all(setPromises);
       assert.strictEqual(setResults[0], 'OK');
@@ -79,8 +71,8 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       assert.strictEqual(setResults[2], 'OK');
 
       // Then do GET and INCR after SETs are complete
-      const getValue = await redis.get('concurrent:1');
-      const incrResult = await redis.incr('concurrent:counter');
+      const getValue = await client.get('concurrent:1');
+      const incrResult = await client.incr('concurrent:counter');
 
       assert.strictEqual(getValue, 'value1');
       assert.strictEqual(incrResult, 1);
@@ -91,32 +83,32 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       const lazyConfig = getStandaloneConfig();
       const configWithLazy = { ...lazyConfig, lazyConnect: true };
 
-      const lazyRedis = new Redis(configWithLazy);
+      const lazyClient = new Redis(configWithLazy);
 
       // First operation should trigger connection
-      await lazyRedis.set('lazy:test', 'connected');
-      const result = await lazyRedis.get('lazy:test');
+      await lazyClient.set('lazy:test', 'connected');
+      const result = await lazyClient.get('lazy:test');
       assert.strictEqual(result, 'connected');
 
-      await lazyRedis.disconnect();
+      await lazyClient.disconnect();
     });
 
     test('should handle invalid host scenarios', async () => {
       const invalidConfig = getStandaloneConfig();
       invalidConfig.host = 'nonexistent.example.com';
 
-      const invalidRedis = new Redis(invalidConfig);
+      const invalidClient = new Redis(invalidConfig);
 
       // Collect all errors to prevent unhandled errors
       const errors = [];
       const errorHandler = error => {
         errors.push(error);
       };
-      invalidRedis.on('error', errorHandler);
+      invalidClient.on('error', errorHandler);
 
       // Should handle connection errors gracefully
       try {
-        await invalidRedis.set('test', 'value');
+        await invalidClient.set('test', 'value');
         assert.fail('Expected connection to fail');
       } catch (error) {
         // Expected - connection should fail
@@ -128,7 +120,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
       // Cleanup attempt should not throw
       try {
-        await invalidRedis.disconnect();
+        await invalidClient.disconnect();
       } catch (error) {
         // Expected - disconnecting invalid connection may throw
       }
@@ -137,7 +129,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Remove error listener
-      invalidRedis.off('error', errorHandler);
+      invalidClient.off('error', errorHandler);
 
       // Verify we caught connection errors as expected
       assert.ok(errors.length > 0);
@@ -153,8 +145,8 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
         const largeValue = 'x'.repeat(size);
         const key = `large:value:${size}`;
 
-        await redis.set(key, largeValue);
-        const retrieved = await redis.get(key);
+        await client.set(key, largeValue);
+        const retrieved = await client.get(key);
 
         assert.strictEqual(retrieved, largeValue);
         assert.strictEqual(retrieved.length, size);
@@ -168,18 +160,18 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
       // Create many keys
       for (let i = 0; i < keyCount; i++) {
-        await redis.set(`${keyPrefix}${i}`, `value_${i}`);
+        await client.set(`${keyPrefix}${i}`, `value_${i}`);
       }
 
       // Verify all keys exist
-      const exists = await redis.exists(
+      const exists = await client.exists(
         ...Array.from({ length: keyCount }, (_, i) => `${keyPrefix}${i}`)
       );
       assert.strictEqual(exists, keyCount);
 
       // Cleanup (test TTL setting)
       for (let i = 0; i < keyCount; i++) {
-        await redis.expire(`${keyPrefix}${i}`, 1);
+        await client.expire(`${keyPrefix}${i}`, 1);
       }
     });
 
@@ -190,7 +182,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
       // Concurrent increments
       const incrPromises = Array.from({ length: operations }, () =>
-        redis.incr(counterKey)
+        client.incr(counterKey)
       );
 
       const results = await Promise.all(incrPromises);
@@ -203,7 +195,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       }
 
       // Final count should be correct
-      const finalCount = await redis.get(counterKey);
+      const finalCount = await client.get(counterKey);
       assert.strictEqual(parseInt(finalCount || '0'), operations);
     });
   });
@@ -213,53 +205,53 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       const key = 'type:conflict:test';
 
       // Set
-      await redis.set(key, 'string_value');
+      await client.set(key, 'string_value');
 
       // Try to use as list (should fail)
-      await assert.rejects(redis.lpush(key, 'item'));
+      await assert.rejects(client.lpush(key, 'item'));
 
       // Try to use as hash (should fail)
-      await assert.rejects(redis.hset(key, 'field', 'value'));
+      await assert.rejects(client.hset(key, 'field', 'value'));
 
       // Try to use as set (should fail)
-      await assert.rejects(redis.sadd(key, 'member'));
+      await assert.rejects(client.sadd(key, 'member'));
 
       // Original string value should still exist
-      const value = await redis.get(key);
+      const value = await client.get(key);
       assert.strictEqual(value, 'string_value');
     });
 
     test('should handle empty collections correctly', async () => {
       // Empty list operations
       const emptyListKey = 'empty:list';
-      const listLen = await redis.llen(emptyListKey);
+      const listLen = await client.llen(emptyListKey);
       assert.strictEqual(listLen, 0);
 
-      const listItem = await redis.lpop(emptyListKey);
+      const listItem = await client.lpop(emptyListKey);
       assert.strictEqual(listItem, null);
 
       // Empty set operations
       const emptySetKey = 'empty:set';
-      const setSize = await redis.scard(emptySetKey);
+      const setSize = await client.scard(emptySetKey);
       assert.strictEqual(setSize, 0);
 
-      const setMember = await redis.spop(emptySetKey);
+      const setMember = await client.spop(emptySetKey);
       assert.strictEqual(setMember, null);
 
       // Empty hash operations
       const emptyHashKey = 'empty:hash';
-      const hashLen = await redis.hlen(emptyHashKey);
+      const hashLen = await client.hlen(emptyHashKey);
       assert.strictEqual(hashLen, 0);
 
-      const hashFields = await redis.hgetall(emptyHashKey);
+      const hashFields = await client.hgetall(emptyHashKey);
       assert.deepStrictEqual(hashFields, {});
 
       // Empty sorted set operations
       const emptyZSetKey = 'empty:zset';
-      const zsetSize = await redis.zcard(emptyZSetKey);
+      const zsetSize = await client.zcard(emptyZSetKey);
       assert.strictEqual(zsetSize, 0);
 
-      const zsetMember = await redis.zpopmax(emptyZSetKey);
+      const zsetMember = await client.zpopmax(emptyZSetKey);
       assert.deepStrictEqual(zsetMember, []);
     });
 
@@ -267,7 +259,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       const key = 'specials:zset';
 
       // Add members with special numeric values
-      await redis.zadd(
+      await client.zadd(
         key,
         -Infinity,
         'negative_infinity',
@@ -286,15 +278,15 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       );
 
       // Get all members in order
-      const members = await redis.zrange(key, 0, -1);
+      const members = await client.zrange(key, 0, -1);
       assert.strictEqual(members[0], 'negative_infinity');
       assert.strictEqual(members[members.length - 1], 'positive_infinity');
 
       // Check specific scores
-      const negInfScore = await redis.zscore(key, 'negative_infinity');
+      const negInfScore = await client.zscore(key, 'negative_infinity');
       assert.strictEqual(negInfScore, '-Infinity');
 
-      const posInfScore = await redis.zscore(key, 'positive_infinity');
+      const posInfScore = await client.zscore(key, 'positive_infinity');
       assert.strictEqual(posInfScore, 'Infinity');
     });
   });
@@ -304,29 +296,29 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       const key = 'set:options:test';
 
       // SET with EX (seconds)
-      await redis.set(key, 'with_ex', 'EX', 10);
-      let ttl = await redis.ttl(key);
+      await client.set(key, 'with_ex', 'EX', 10);
+      let ttl = await client.ttl(key);
       assert.ok(ttl > 5);
 
       // SET with PX (milliseconds)
-      await redis.set(key, 'with_px', 'PX', 5000);
-      ttl = await redis.ttl(key);
+      await client.set(key, 'with_px', 'PX', 5000);
+      ttl = await client.ttl(key);
       assert.ok(ttl > 3);
 
       // SET with NX (only if not exists)
-      const result1 = await redis.set(key, 'nx_attempt', 'NX');
+      const result1 = await client.set(key, 'nx_attempt', 'NX');
       assert.strictEqual(result1, null); // Should fail, key exists
 
-      await redis.del(key);
-      const result2 = await redis.set(key, 'nx_success', 'NX');
+      await client.del(key);
+      const result2 = await client.set(key, 'nx_success', 'NX');
       assert.strictEqual(result2, 'OK');
 
       // SET with XX (only if exists)
-      const result3 = await redis.set(key, 'xx_success', 'XX');
+      const result3 = await client.set(key, 'xx_success', 'XX');
       assert.strictEqual(result3, 'OK');
 
-      await redis.del(key);
-      const result4 = await redis.set(key, 'xx_attempt', 'XX');
+      await client.del(key);
+      const result4 = await client.set(key, 'xx_attempt', 'XX');
       assert.strictEqual(result4, null); // Should fail, key doesn't exist
     });
 
@@ -340,10 +332,10 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       for (let i = 0; i < keyCount; i++) {
         msetArgs.push(keys[i], values[i]);
       }
-      await redis.mset(...msetArgs);
+      await client.mset(...msetArgs);
 
       // MGET with many keys
-      const retrievedValues = await redis.mget(...keys);
+      const retrievedValues = await client.mget(...keys);
       assert.strictEqual(retrievedValues.length, keyCount);
 
       for (let i = 0; i < keyCount; i++) {
@@ -355,18 +347,18 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       const key = 'zadd:duplicates:test';
 
       // Initial add
-      const result1 = await redis.zadd(key, 100, 'member1', 200, 'member2');
+      const result1 = await client.zadd(key, 100, 'member1', 200, 'member2');
       assert.strictEqual(result1, 2); // 2 new members added
 
       // Update existing member scores
-      const result2 = await redis.zadd(key, 150, 'member1', 250, 'member3');
+      const result2 = await client.zadd(key, 150, 'member1', 250, 'member3');
       assert.strictEqual(result2, 1); // Only 1 new member (member3)
 
       // Verify updated scores
-      const score1 = await redis.zscore(key, 'member1');
+      const score1 = await client.zscore(key, 'member1');
       assert.strictEqual(score1, '150'); // Updated score
 
-      const score3 = await redis.zscore(key, 'member3');
+      const score3 = await client.zscore(key, 'member3');
       assert.strictEqual(score3, '250'); // New member
     });
 
@@ -374,7 +366,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       const key = 'zrange:complex:test';
 
       // Add test data
-      await redis.zadd(
+      await client.zadd(
         key,
         10,
         'member10',
@@ -389,15 +381,15 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       );
 
       // Exclusive ranges
-      const exclusive = await redis.zrangebyscore(key, '(20', '(40');
+      const exclusive = await client.zrangebyscore(key, '(20', '(40');
       assert.deepStrictEqual(exclusive, ['member30']);
 
       // Mixed inclusive/exclusive
-      const mixed = await redis.zrangebyscore(key, '20', '(40');
+      const mixed = await client.zrangebyscore(key, '20', '(40');
       assert.deepStrictEqual(mixed, ['member20', 'member30']);
 
       // With LIMIT
-      const limited = await redis.zrangebyscore(
+      const limited = await client.zrangebyscore(
         key,
         '-inf',
         '+inf',
@@ -413,7 +405,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
   describe('Pipeline and Transaction Edge Cases', () => {
     test('should handle complex pipeline operations', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
 
       // Mix different command types in pipeline
       pipeline.set('pipeline', 'value');
@@ -451,9 +443,9 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       const key = 'pipeline:error:test';
 
       // Set up conflicting data type
-      await redis.set(key, 'string_value');
+      await client.set(key, 'string_value');
 
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
       pipeline.get(key); // Should succeed
       pipeline.lpush(key, 'item'); // Should fail (wrong type)
       pipeline.set('other:key', 'value'); // Should succeed
@@ -468,13 +460,13 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
     test('should handle transaction with WATCH', async () => {
       const key = 'transaction:watch:test';
-      await redis.set(key, '100');
+      await client.set(key, '100');
 
       // Start watching
-      await redis.watch(key);
+      await client.watch(key);
 
       // Start transaction
-      const multi = redis.multi();
+      const multi = client.multi();
       multi.get(key);
       multi.incr(key);
 
@@ -492,7 +484,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
     test('should handle transaction abort on WATCH violation', async () => {
       const key = 'transaction:abort:test';
-      await redis.set(key, '100');
+      await client.set(key, '100');
 
       // Create second connection to modify watched key
       const redis2 = new Redis(getStandaloneConfig());
@@ -500,13 +492,13 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
       try {
         // Start watching
-        await redis.watch(key);
+        await client.watch(key);
 
         // Modify key from different connection
         await redis2.incr(key);
 
         // Start transaction (should be aborted)
-        const multi = redis.multi();
+        const multi = client.multi();
         multi.incr(key);
 
         const results = await multi.exec();
@@ -522,21 +514,21 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
   describe('Error Recovery and Resilience', () => {
     test('should handle command errors gracefully', async () => {
       // Invalid arguments
-      await assert.rejects(redis.set('', 'value'));
+      await assert.rejects(client.set('', 'value'));
 
       // Type errors
       const stringKey = 'error:key';
-      await redis.set(stringKey, 'string_value');
-      await assert.rejects(redis.lpush(stringKey, 'item'));
+      await client.set(stringKey, 'string_value');
+      await assert.rejects(client.lpush(stringKey, 'item'));
 
       // Non-existent key operations that should return defaults
-      const result1 = await redis.get('nonexistent:key');
+      const result1 = await client.get('nonexistent:key');
       assert.strictEqual(result1, null);
 
-      const result2 = await redis.llen('nonexistent:list');
+      const result2 = await client.llen('nonexistent:list');
       assert.strictEqual(result2, 0);
 
-      const result3 = await redis.scard('nonexistent:set');
+      const result3 = await client.scard('nonexistent:set');
       assert.strictEqual(result3, 0);
     });
 
@@ -567,19 +559,19 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
         'binary'
       );
 
-      await redis.set(binaryKey, binaryData);
-      const retrieved = await redis.get(binaryKey);
+      await client.set(binaryKey, binaryData);
+      const retrieved = await client.get(binaryKey);
       assert.strictEqual(retrieved, binaryData);
 
       // Empty strings
-      await redis.set('empty', '');
-      const empty = await redis.get('empty');
+      await client.set('empty', '');
+      const empty = await client.get('empty');
       assert.strictEqual(empty, '');
 
       // Very long strings
       const longString = 'x'.repeat(1000000); // 1MB
-      await redis.set('long', longString);
-      const longRetrieved = await redis.get('long');
+      await client.set('long', longString);
+      const longRetrieved = await client.get('long');
       assert.strictEqual(longRetrieved, longString);
     });
   });
@@ -590,19 +582,19 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       const tempKeys = Array.from({ length: 50 }, (_, i) => `temp:key:${i}`);
 
       for (const key of tempKeys) {
-        await redis.set(key, 'temporary_data');
-        await redis.expire(key, 1); // 1 second TTL
+        await client.set(key, 'temporary_data');
+        await client.expire(key, 1); // 1 second TTL
       }
 
       // Verify keys exist
-      const existsCount = await redis.exists(...tempKeys);
+      const existsCount = await client.exists(...tempKeys);
       assert.strictEqual(existsCount, 50);
 
       // Wait for expiration (TTL test)
       await new Promise(resolve => setTimeout(resolve, 1500).unref());
 
       // Verify keys are expired
-      const expiredCount = await redis.exists(...tempKeys);
+      const expiredCount = await client.exists(...tempKeys);
       assert.strictEqual(expiredCount, 0);
     });
 
@@ -611,7 +603,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       try {
         // Database selection is not implemented in this adapter
         // This test verifies the adapter handles missing methods gracefully
-        assert.ok(redis.select === undefined);
+        assert.ok(client.select === undefined);
       } catch (error) {
         // Database selection might not be supported in cluster mode
         assert.ok(error !== undefined);
@@ -620,20 +612,20 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
     test('should handle FLUSHDB safely in test environment', async () => {
       // Add test data
-      await redis.set('flush:test:1', 'value1');
-      await redis.set('flush:test:2', 'value2');
+      await client.set('flush:test:1', 'value1');
+      await client.set('flush:test:2', 'value2');
 
       // Verify data exists
-      const value1 = await redis.get('flush:test:1');
+      const value1 = await client.get('flush:test:1');
       assert.strictEqual(value1, 'value1');
 
       try {
         // FLUSHDB in test environment only
         if (process.env.NODE_ENV === 'test') {
-          await redis.flushdb();
+          await client.flushdb();
 
           // Verify data is gone
-          const flushedValue = await redis.get('flush:test:1');
+          const flushedValue = await client.get('flush:test:1');
           assert.strictEqual(flushedValue, null);
         }
       } catch (error) {
@@ -646,18 +638,18 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
   describe('Advanced Redis Features', () => {
     test('should handle Lua script execution', async () => {
       // Simple Lua script
-      const script = 'return redis.call("get", KEYS[1])';
-      const scriptSha = await redis.script('LOAD', script);
+      const script = 'return server.call("get", KEYS[1])';
+      const scriptSha = await client.script('LOAD', script);
 
       // Set test data
-      await redis.set('lua:test:key', 'lua_value');
+      await client.set('lua:test:key', 'lua_value');
 
       // Execute by SHA
-      const result = await redis.evalsha(scriptSha, 1, 'lua:test:key');
+      const result = await client.evalsha(scriptSha, 1, 'lua:test:key');
       assert.strictEqual(result, 'lua_value');
 
       // Execute script directly
-      const directResult = await redis.eval(script, 1, 'lua:test:key');
+      const directResult = await client.eval(script, 1, 'lua:test:key');
       assert.strictEqual(directResult, 'lua_value');
     });
 
@@ -666,19 +658,19 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       const script = `
         local key = KEYS[1]
         local increment = ARGV[1]
-        local current = redis.call("get", key)
+        local current = server.call("get", key)
         if current == false then
           current = 0
         end
         local new_value = tonumber(current) + tonumber(increment)
-        redis.call("set", key, new_value)
+        server.call("set", key, new_value)
         return new_value
       `;
 
-      const result1 = await redis.eval(script, 1, 'lua:counter', '10');
+      const result1 = await client.eval(script, 1, 'lua:counter', '10');
       assert.strictEqual(result1, 10);
 
-      const result2 = await redis.eval(script, 1, 'lua:counter', '25');
+      const result2 = await client.eval(script, 1, 'lua:counter', '25');
       assert.strictEqual(result2, 35);
     });
 
@@ -687,13 +679,13 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
       // Clean up any existing stream data
       try {
-        await redis.del(streamKey);
+        await client.del(streamKey);
       } catch {
         // Ignore cleanup errors
       }
 
       // Add entries to stream
-      const id1 = await redis.xadd(
+      const id1 = await client.xadd(
         streamKey,
         '*',
         'field1',
@@ -704,7 +696,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       assert.strictEqual(typeof id1, 'string');
       assert.match(id1, /\d+-\d+/);
 
-      const id2 = await redis.xadd(
+      const id2 = await client.xadd(
         streamKey,
         '*',
         'field1',
@@ -715,7 +707,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       assert.strictEqual(typeof id2, 'string');
 
       // Read from stream
-      const entries = await redis.xrange(streamKey, '-', '+');
+      const entries = await client.xrange(streamKey, '-', '+');
       assert.strictEqual(entries.length, 2);
       assert.strictEqual(entries[0][0], id1);
       assert.deepStrictEqual(entries[0][1], [
@@ -726,12 +718,12 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       ]);
 
       // Get stream length
-      const length = await redis.xlen(streamKey);
+      const length = await client.xlen(streamKey);
       assert.strictEqual(length, 2);
 
       // Trim stream
-      const trimmed = await redis.xtrim(streamKey, 'MAXLEN', '~', '1');
-      const newLength = await redis.xlen(streamKey);
+      const trimmed = await client.xtrim(streamKey, 'MAXLEN', '~', '1');
+      const newLength = await client.xlen(streamKey);
       // Approximate trimming (~) may not trim anything for performance
       // This is a difference between Redis and GLIDE behavior
       assert.strictEqual(typeof trimmed, 'number');
@@ -743,9 +735,9 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       // HyperLogLog commands are not implemented in the current adapter
       // This test verifies the adapter handles missing methods gracefully
       try {
-        assert.ok(redis.pfadd === undefined);
-        assert.ok(redis.pfcount === undefined);
-        assert.ok(redis.pfmerge === undefined);
+        assert.ok(client.pfadd === undefined);
+        assert.ok(client.pfcount === undefined);
+        assert.ok(client.pfmerge === undefined);
       } catch (error) {
         // Commands might not be available
         assert.ok(error !== undefined);

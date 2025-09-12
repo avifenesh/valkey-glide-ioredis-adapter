@@ -368,7 +368,7 @@ export class ClusterClient extends BaseClient {
   /**
    * Override exec method for cluster-specific batch operations.
    * In GLIDE, cluster clients use different batch mechanisms than standalone clients.
-   * 
+   *
    * For ioredis compatibility, this creates an empty multi transaction and executes it.
    * This is mainly for Bull/BullMQ compatibility which checks for the existence of exec method.
    */

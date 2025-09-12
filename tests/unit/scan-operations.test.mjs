@@ -24,7 +24,7 @@ import pkg from '../../dist/index.js';
 const { Redis } = pkg;
 
 describe('Scan Operations - Production Iteration Patterns', () => {
-  let redis;
+  let client;
 
   beforeEach(async () => {
     const config = {
@@ -32,22 +32,22 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       port: parseInt(process.env.VALKEY_PORT || '6383'),
       lazyConnect: true,
     };
-    redis = new Redis(config);
+    client = new Redis(config);
 
-    await redis.connect();
-    
+    await client.connect();
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {
-      await redis.flushall();
+      await client.flushall();
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     }
   });
 
   afterEach(async () => {
-    if (redis) {
-      await redis.quit();
+    if (client) {
+      await client.quit();
     }
   });
 
@@ -56,10 +56,10 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       const testKey = 'scan_test:basic:' + Math.random();
 
       // Create a simple test key
-      await redis.set(testKey, 'test_value');
+      await client.set(testKey, 'test_value');
 
       // Perform basic SCAN operation
-      const result = await redis.scan('0');
+      const result = await client.scan('0');
       assert.ok(Array.isArray(result));
       assert.strictEqual(result.length, 2);
       assert.strictEqual(typeof result[0], 'string'); // cursor
@@ -76,7 +76,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       // Create many recommendation keys
       for (let userId = 1; userId <= 50; userId++) {
         for (let category of ['action', 'comedy', 'drama', 'horror']) {
-          await redis.set(
+          await client.set(
             `${prefix}rec:${userId}:${category}`,
             JSON.stringify({
               userId,
@@ -93,7 +93,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       let totalScanned = 0;
 
       do {
-        const result = await redis.scan(
+        const result = await client.scan(
           cursor,
           'MATCH',
           `${prefix}rec:*:action`,
@@ -118,7 +118,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
 
       // Create temporary session keys with TTL
       for (let i = 1; i <= 10; i++) {
-        await redis.setex(
+        await client.setex(
           `${prefix}session:${i}`,
           300,
           JSON.stringify({
@@ -134,7 +134,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       let sessionKeys = [];
 
       do {
-        const result = await redis.scan(cursor, 'MATCH', `${prefix}session:*`);
+        const result = await client.scan(cursor, 'MATCH', `${prefix}session:*`);
         cursor = result[0];
         sessionKeys.push(...result[1]);
       } while (cursor !== '0');
@@ -143,7 +143,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
 
       // Verify TTL exists on scanned keys
       for (const key of sessionKeys.slice(0, 3)) {
-        const ttl = await redis.ttl(key);
+        const ttl = await client.ttl(key);
         assert.ok(ttl > 0);
         assert.ok(ttl <= 300);
       }
@@ -172,14 +172,14 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         education_school: 'Stanford University',
       };
 
-      await redis.hmset(profileKey, profileData);
+      await client.hmset(profileKey, profileData);
 
       // Scan for skills using HSCAN
       let cursor = '0';
       let skills = {};
 
       do {
-        const result = await redis.hscan(
+        const result = await client.hscan(
           profileKey,
           cursor,
           'MATCH',
@@ -223,14 +223,14 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         }
       }
 
-      await redis.hmset(inventoryKey, inventory);
+      await client.hmset(inventoryKey, inventory);
 
       // Scan for electronics stock levels
       let cursor = '0';
       let electronicsStock = {};
 
       do {
-        const result = await redis.hscan(
+        const result = await client.hscan(
           inventoryKey,
           cursor,
           'MATCH',
@@ -273,14 +273,14 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         alert_slack_webhook: 'https://hooks.slack.com/webhook',
       };
 
-      await redis.hmset(configKey, config);
+      await client.hmset(configKey, config);
 
       // Scan for feature flags
       let cursor = '0';
       let featureFlags = {};
 
       do {
-        const result = await redis.hscan(
+        const result = await client.hscan(
           configKey,
           cursor,
           'MATCH',
@@ -313,14 +313,14 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         else followers.push(`new_user_${i}`);
       }
 
-      await redis.sadd(followersKey, ...followers);
+      await client.sadd(followersKey, ...followers);
 
       // Scan for verified users
       let cursor = '0';
       let verifiedFollowers = [];
 
       do {
-        const result = await redis.sscan(
+        const result = await client.sscan(
           followersKey,
           cursor,
           'MATCH',
@@ -347,14 +347,14 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         else sessions.push(`tablet_${i}`);
       }
 
-      await redis.sadd(activeUsersKey, ...sessions);
+      await client.sadd(activeUsersKey, ...sessions);
 
       // Scan for mobile sessions
       let cursor = '0';
       let mobileSessions = [];
 
       do {
-        const result = await redis.sscan(
+        const result = await client.sscan(
           activeUsersKey,
           cursor,
           'MATCH',
@@ -390,14 +390,14 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         'education_data',
       ];
 
-      await redis.sadd(tagsKey, ...tags);
+      await client.sadd(tagsKey, ...tags);
 
       // Scan for tech tags
       let cursor = '0';
       let techTags = [];
 
       do {
-        const result = await redis.sscan(tagsKey, cursor, 'MATCH', 'tech_*');
+        const result = await client.sscan(tagsKey, cursor, 'MATCH', 'tech_*');
         cursor = result[0];
         techTags.push(...result[1]);
       } while (cursor !== '0');
@@ -424,7 +424,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
         else if (i <= 60) playerType = 'regular';
         else playerType = 'newbie';
 
-        await redis.zadd(
+        await client.zadd(
           leaderboardKey,
           Math.random() * 10000,
           `${playerType}_${i}`
@@ -436,7 +436,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       let proPlayers = [];
 
       do {
-        const result = await redis.zscan(
+        const result = await client.zscan(
           leaderboardKey,
           cursor,
           'MATCH',
@@ -481,7 +481,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       ];
 
       for (let i = 0; i < topics.length; i++) {
-        await redis.zadd(trendingKey, baseTime - i * 1000, topics[i]);
+        await client.zadd(trendingKey, baseTime - i * 1000, topics[i]);
       }
 
       // Scan for tech topics
@@ -489,7 +489,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       let techTopics = [];
 
       do {
-        const result = await redis.zscan(
+        const result = await client.zscan(
           trendingKey,
           cursor,
           'MATCH',
@@ -531,7 +531,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
             ? Math.random() * 1000 + 500
             : Math.random() * 500;
 
-        await redis.zadd(activityKey, score, `${userType}_user_${userId}`);
+        await client.zadd(activityKey, score, `${userType}_user_${userId}`);
       }
 
       // Scan for premium users
@@ -539,7 +539,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
       let premiumUsers = [];
 
       do {
-        const result = await redis.zscan(
+        const result = await client.zscan(
           activityKey,
           cursor,
           'MATCH',
@@ -573,7 +573,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
     test('should handle SCAN on non-existent keys gracefully', async () => {
       const nonExistentKey = 'non_existent:' + Math.random();
 
-      const result = await redis.scan('0', 'MATCH', nonExistentKey);
+      const result = await client.scan('0', 'MATCH', nonExistentKey);
       assert.strictEqual(typeof result[0], 'string'); // Cursor should be a string
       assert.deepStrictEqual(result[1], []); // No keys found
     });
@@ -581,7 +581,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
     test('should handle HSCAN on non-existent hash', async () => {
       const nonExistentHash = 'hash:non_existent:' + Math.random();
 
-      const result = await redis.hscan(nonExistentHash, '0');
+      const result = await client.hscan(nonExistentHash, '0');
       assert.strictEqual(result[0], '0');
       assert.deepStrictEqual(result[1], []);
     });
@@ -589,7 +589,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
     test('should handle SSCAN on non-existent set', async () => {
       const nonExistentSet = 'set:non_existent:' + Math.random();
 
-      const result = await redis.sscan(nonExistentSet, '0');
+      const result = await client.sscan(nonExistentSet, '0');
       assert.strictEqual(result[0], '0');
       assert.deepStrictEqual(result[1], []);
     });
@@ -597,18 +597,18 @@ describe('Scan Operations - Production Iteration Patterns', () => {
     test('should handle ZSCAN on non-existent sorted set', async () => {
       const nonExistentZset = 'zset:non_existent:' + Math.random();
 
-      const result = await redis.zscan(nonExistentZset, '0');
+      const result = await client.zscan(nonExistentZset, '0');
       assert.strictEqual(result[0], '0');
       assert.deepStrictEqual(result[1], []);
     });
 
     test('should handle invalid cursor values gracefully', async () => {
       const key = 'test:invalid_cursor:' + Math.random();
-      await redis.set(key, 'test');
+      await client.set(key, 'test');
 
       // Test with invalid cursor - Redis/GLIDE may throw error, so catch it
       try {
-        const result = await redis.scan('invalid_cursor', 'MATCH', key);
+        const result = await client.scan('invalid_cursor', 'MATCH', key);
         assert.ok(Array.isArray(result));
         assert.strictEqual(result.length, 2);
       } catch (error) {
@@ -622,10 +622,10 @@ describe('Scan Operations - Production Iteration Patterns', () => {
 
       // Create some test keys
       for (let i = 1; i <= 10; i++) {
-        await redis.set(`${prefix}key_${i}`, `value_${i}`);
+        await client.set(`${prefix}key_${i}`, `value_${i}`);
       }
 
-      const result = await redis.scan(
+      const result = await client.scan(
         '0',
         'MATCH',
         `${prefix}*`,

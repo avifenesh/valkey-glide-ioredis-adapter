@@ -25,25 +25,25 @@ const { Redis } = pkg;
 import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('Script Commands - Atomic Operations & Business Logic', () => {
-  let redis;
+  let client;
 
   beforeEach(async () => {
     const config = getStandaloneConfig();
-    redis = new Redis(config);
+    client = new Redis(config);
 
-    await redis.connect();
-    
+    await client.connect();
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {
-      await redis.flushall();
+      await client.flushall();
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     }
   });
 
   afterEach(async () => {
-    await redis.quit();
+    await client.quit();
   });
 
   describe('Rate Limiting Patterns', () => {
@@ -55,15 +55,15 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         local current_time = tonumber(ARGV[3])
 
         -- Remove expired entries
-        redis.call('ZREMRANGEBYSCORE', key, 0, current_time - window)
+        server.call('ZREMRANGEBYSCORE', key, 0, current_time - window)
         
         -- Count current requests
-        local current_requests = redis.call('ZCARD', key)
+        local current_requests = server.call('ZCARD', key)
         
         if current_requests < limit then
           -- Add current request
-          redis.call('ZADD', key, current_time, current_time)
-          redis.call('EXPIRE', key, math.ceil(window / 1000))
+          server.call('ZADD', key, current_time, current_time)
+          server.call('EXPIRE', key, math.ceil(window / 1000))
           return {1, limit - current_requests - 1}  -- [allowed, remaining]
         else
           return {0, 0}  -- [not_allowed, remaining]
@@ -76,7 +76,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
 
       // Make 3 requests - all should be allowed
       for (let i = 0; i < 3; i++) {
-        const result = await redis.eval(
+        const result = await client.eval(
           rateLimitScript,
           1,
           key,
@@ -95,7 +95,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       let blockedCount = 0;
 
       for (let i = 0; i < 3; i++) {
-        const result = await redis.eval(
+        const result = await client.eval(
           rateLimitScript,
           1,
           key,
@@ -125,7 +125,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         local requested_tokens = tonumber(ARGV[4])
         
         -- Get current bucket state
-        local bucket = redis.call('HMGET', bucket_key, 'tokens', 'last_refill')
+        local bucket = server.call('HMGET', bucket_key, 'tokens', 'last_refill')
         local current_tokens = tonumber(bucket[1]) or max_tokens
         local last_refill = tonumber(bucket[2]) or current_time
         
@@ -137,13 +137,13 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         if current_tokens >= requested_tokens then
           -- Grant the request
           current_tokens = current_tokens - requested_tokens
-          redis.call('HMSET', bucket_key, 'tokens', current_tokens, 'last_refill', current_time)
-          redis.call('EXPIRE', bucket_key, 3600)
+          server.call('HMSET', bucket_key, 'tokens', current_tokens, 'last_refill', current_time)
+          server.call('EXPIRE', bucket_key, 3600)
           return {1, current_tokens}  -- [granted, remaining_tokens]
         else
           -- Deny the request but update the bucket
-          redis.call('HMSET', bucket_key, 'tokens', current_tokens, 'last_refill', current_time)
-          redis.call('EXPIRE', bucket_key, 3600)
+          server.call('HMSET', bucket_key, 'tokens', current_tokens, 'last_refill', current_time)
+          server.call('EXPIRE', bucket_key, 3600)
           return {0, current_tokens}  -- [denied, remaining_tokens]
         end
       `;
@@ -154,7 +154,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       const currentTime = Date.now();
 
       // Request 3 tokens - should be granted
-      const result1 = await redis.eval(
+      const result1 = await client.eval(
         tokenBucketScript,
         1,
         bucketKey,
@@ -168,7 +168,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       assert.strictEqual(result1[1], 7); // 7 tokens remaining
 
       // Request 8 tokens - should be denied (only 7 available)
-      const result2 = await redis.eval(
+      const result2 = await client.eval(
         tokenBucketScript,
         1,
         bucketKey,
@@ -182,7 +182,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       assert.strictEqual(result2[1], 7); // Still 7 tokens
 
       // Wait and request again - should get more tokens due to refill
-      const result3 = await redis.eval(
+      const result3 = await client.eval(
         tokenBucketScript,
         1,
         bucketKey,
@@ -208,8 +208,8 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         local window_key = key .. ":" .. window_start
         
         -- Increment counter first, then check if we exceeded the limit
-        local new_count = redis.call('INCR', window_key)
-        redis.call('EXPIRE', window_key, window_seconds * 2)
+        local new_count = server.call('INCR', window_key)
+        server.call('EXPIRE', window_key, window_seconds * 2)
         
         if new_count <= limit then
           return {1, limit - new_count, window_seconds * 1000 - (current_time - window_start)}  -- [allowed, remaining, reset_time]
@@ -228,7 +228,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
 
       // Send 3 messages in the same window - all should be allowed
       for (let i = 0; i < 3; i++) {
-        const result = await redis.eval(
+        const result = await client.eval(
           fixedWindowScript,
           1,
           key,
@@ -243,7 +243,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       }
 
       // 4th message should be denied
-      const result4 = await redis.eval(
+      const result4 = await client.eval(
         fixedWindowScript,
         1,
         key,
@@ -266,7 +266,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         local requested_qty = tonumber(ARGV[2])
         
         -- Get current inventory
-        local inventory = redis.call('HMGET', product_key, 'available', 'reserved', 'total')
+        local inventory = server.call('HMGET', product_key, 'available', 'reserved', 'total')
         local available = tonumber(inventory[1]) or 0
         local reserved = tonumber(inventory[2]) or 0
         local total = tonumber(inventory[3]) or 0
@@ -277,16 +277,16 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
           reserved = reserved + requested_qty
           
           -- Update inventory
-          redis.call('HMSET', product_key, 'available', available, 'reserved', reserved)
+          server.call('HMSET', product_key, 'available', available, 'reserved', reserved)
           
           -- Log the reservation
           local reservation_key = product_key .. ':reservations:' .. order_id
-          redis.call('HMSET', reservation_key, 
+          server.call('HMSET', reservation_key, 
             'quantity', requested_qty, 
-            'timestamp', redis.call('TIME')[1],
+            'timestamp', server.call('TIME')[1],
             'status', 'reserved'
           )
-          redis.call('EXPIRE', reservation_key, 3600) -- 1 hour expiration
+          server.call('EXPIRE', reservation_key, 3600) -- 1 hour expiration
           
           return {1, available, reserved, 'reserved'}  -- [success, available, reserved, status]
         else
@@ -297,7 +297,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       const productKey = `inventory:product:${Math.random()}`;
 
       // Initialize inventory
-      await redis.hmset(
+      await client.hmset(
         productKey,
         'available',
         '100',
@@ -308,7 +308,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       );
 
       // Reserve 25 items for order 1
-      const reservation1 = await redis.eval(
+      const reservation1 = await client.eval(
         inventoryScript,
         1,
         productKey,
@@ -322,7 +322,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       assert.strictEqual(reservation1[3], 'reserved');
 
       // Reserve 80 items for order 2 - should fail
-      const reservation2 = await redis.eval(
+      const reservation2 = await client.eval(
         inventoryScript,
         1,
         productKey,
@@ -336,7 +336,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       assert.strictEqual(reservation2[3], 'insufficient_stock');
 
       // Reserve 50 items for order 3 - should succeed
-      const reservation3 = await redis.eval(
+      const reservation3 = await client.eval(
         inventoryScript,
         1,
         productKey,
@@ -359,19 +359,19 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         local current_time = tonumber(ARGV[3])
         
         -- Try to acquire lock
-        local current_lock = redis.call('GET', lock_key)
+        local current_lock = server.call('GET', lock_key)
         
         if not current_lock then
           -- Lock is available, acquire it
-          redis.call('SET', lock_key, lock_value, 'PX', expiration_ms)
+          server.call('SET', lock_key, lock_value, 'PX', expiration_ms)
           return {1, lock_value, expiration_ms}  -- [acquired, lock_value, expiration]
         elseif current_lock == lock_value then
           -- We already own this lock, extend it
-          redis.call('SET', lock_key, lock_value, 'PX', expiration_ms)
+          server.call('SET', lock_key, lock_value, 'PX', expiration_ms)
           return {1, lock_value, expiration_ms}  -- [extended, lock_value, expiration]
         else
           -- Lock is held by someone else
-          local ttl = redis.call('PTTL', lock_key)
+          local ttl = server.call('PTTL', lock_key)
           return {0, current_lock, ttl}  -- [failed, owner, remaining_time]
         end
       `;
@@ -382,7 +382,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       const expirationMs = 5000; // 5 seconds
 
       // Process 1 acquires lock
-      const lock1 = await redis.eval(
+      const lock1 = await client.eval(
         distributedLockScript,
         1,
         lockKey,
@@ -396,7 +396,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       assert.strictEqual(lock1[2], expirationMs); // Correct expiration
 
       // Process 2 tries to acquire same lock - should fail
-      const lock2 = await redis.eval(
+      const lock2 = await client.eval(
         distributedLockScript,
         1,
         lockKey,
@@ -410,7 +410,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       assert.ok(lock2[2] <= expirationMs); // TTL remaining
 
       // Process 1 extends its own lock - should succeed
-      const lock3 = await redis.eval(
+      const lock3 = await client.eval(
         distributedLockScript,
         1,
         lockKey,
@@ -438,32 +438,32 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         
         -- Daily counter
         local daily_key = 'analytics:daily:' .. event_type .. ':' .. day
-        local daily_count = redis.call('INCR', daily_key)
-        redis.call('EXPIRE', daily_key, 86400 * 7) -- Keep for 7 days
+        local daily_count = server.call('INCR', daily_key)
+        server.call('EXPIRE', daily_key, 86400 * 7) -- Keep for 7 days
         table.insert(counters_updated, {'daily', daily_count})
         
         -- Hourly counter
         local hourly_key = 'analytics:hourly:' .. event_type .. ':' .. hour
-        local hourly_count = redis.call('INCR', hourly_key)
-        redis.call('EXPIRE', hourly_key, 3600 * 48) -- Keep for 48 hours
+        local hourly_count = server.call('INCR', hourly_key)
+        server.call('EXPIRE', hourly_key, 3600 * 48) -- Keep for 48 hours
         table.insert(counters_updated, {'hourly', hourly_count})
         
         -- User-specific counter
         local user_key = 'analytics:user:' .. user_id .. ':' .. event_type
-        local user_count = redis.call('INCR', user_key)
-        redis.call('EXPIRE', user_key, 86400 * 30) -- Keep for 30 days
+        local user_count = server.call('INCR', user_key)
+        server.call('EXPIRE', user_key, 86400 * 30) -- Keep for 30 days
         table.insert(counters_updated, {'user', user_count})
         
         -- Global counter
         local global_key = 'analytics:global:' .. event_type
-        local global_count = redis.call('INCR', global_key)
+        local global_count = server.call('INCR', global_key)
         table.insert(counters_updated, {'global', global_count})
         
         -- Track unique users per event per day
         local unique_users_key = 'analytics:unique_users:' .. event_type .. ':' .. day
-        local was_unique = redis.call('SADD', unique_users_key, user_id)
-        redis.call('EXPIRE', unique_users_key, 86400 * 7)
-        local unique_count = redis.call('SCARD', unique_users_key)
+        local was_unique = server.call('SADD', unique_users_key, user_id)
+        server.call('EXPIRE', unique_users_key, 86400 * 7)
+        local unique_count = server.call('SCARD', unique_users_key)
         table.insert(counters_updated, {'unique_users', unique_count})
         
         return counters_updated
@@ -474,7 +474,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       const timestamp = Math.floor(Date.now() / 1000);
 
       // Record multiple events
-      const result1 = await redis.eval(
+      const result1 = await client.eval(
         analyticsScript,
         0,
         eventType,
@@ -494,7 +494,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       assert.ok(counterMap.get('unique_users') >= 1);
 
       // Record another event for same user - unique users should not increase
-      const result2 = await redis.eval(
+      const result2 = await client.eval(
         analyticsScript,
         0,
         eventType,
@@ -510,7 +510,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       ); // Same user, so no change
 
       // Record event for different user - unique users should increase
-      const result3 = await redis.eval(
+      const result3 = await client.eval(
         analyticsScript,
         0,
         eventType,
@@ -532,7 +532,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       `;
 
       // First execution with EVAL
-      const result1 = await redis.eval(simpleScript, 0, 'World');
+      const result1 = await client.eval(simpleScript, 0, 'World');
       assert.strictEqual(result1, 'Hello from cached script: World');
 
       // Calculate script SHA1 (simple approach - in production use crypto)
@@ -541,7 +541,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
 
       // Execute with EVALSHA - script should be cached
       try {
-        const result2 = await redis.evalsha(scriptSha1, 0, 'Cached');
+        const result2 = await client.evalsha(scriptSha1, 0, 'Cached');
         assert.strictEqual(result2, 'Hello from cached script: Cached');
       } catch (error) {
         // If EVALSHA fails, it means script wasn't cached - this is implementation dependent
@@ -569,7 +569,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         return result
       `;
 
-      const result = await redis.eval(complexScript, 0);
+      const result = await client.eval(complexScript, 0);
 
       assert.ok(Array.isArray(result));
       assert.strictEqual(result.length, 4);
@@ -584,10 +584,10 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
   describe('Error Handling and Edge Cases', () => {
     test('should handle scripts with no keys or arguments', async () => {
       const simpleScript = `
-        return redis.call('TIME')[1]
+        return server.call('TIME')[1]
       `;
 
-      const result = await redis.eval(simpleScript, 0);
+      const result = await client.eval(simpleScript, 0);
       assert.strictEqual(typeof result, 'string');
       assert.ok(parseInt(result) > 1600000000); // After 2020
     });
@@ -607,7 +607,7 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
       const keys = ['key1', 'key2', 'key3', 'key4', 'key5'];
       const args = ['val1', 'val2', 'val3', 'val4', 'val5'];
 
-      const result = await redis.eval(
+      const result = await client.eval(
         multiKeyScript,
         keys.length,
         ...keys,
@@ -626,21 +626,21 @@ describe('Script Commands - Atomic Operations & Business Logic', () => {
         return nil
       `;
 
-      const result = await redis.eval(emptyScript, 0);
+      const result = await client.eval(emptyScript, 0);
       assert.strictEqual(result, null);
     });
 
     test('should handle script errors gracefully', async () => {
       const errorScript = `
         local key = KEYS[1]
-        local invalid_operation = redis.call('UNKNOWN_COMMAND', key)
+        local invalid_operation = server.call('UNKNOWN_COMMAND', key)
         return invalid_operation
       `;
 
       const key = `error:test:${Math.random()}`;
 
       try {
-        await redis.eval(errorScript, 1, key);
+        await client.eval(errorScript, 1, key);
         // Should not reach here
         assert.strictEqual(true, false);
       } catch (error) {

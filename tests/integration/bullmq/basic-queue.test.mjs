@@ -42,9 +42,11 @@ function delay(ms) {
 const originalConsoleError = console.error;
 const suppressClosingErrors = (...args) => {
   const message = args.join(' ');
-  if (message.includes('ClosingError') || 
-      message.includes('Connection closed') ||
-      message.includes('already closed')) {
+  if (
+    message.includes('ClosingError') ||
+    message.includes('Connection closed') ||
+    message.includes('already closed')
+  ) {
     return; // Suppress these expected cleanup errors
   }
   originalConsoleError.apply(console, args);
@@ -87,10 +89,9 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
     try {
       // Flush ALL data to ensure complete isolation
       await flushClient.flushall();
-      
+
       // Flush Lua script cache
       await flushClient.script('FLUSH');
-      
     } catch (err) {
       console.warn('Cleanup warning:', err.message);
     } finally {
@@ -99,8 +100,12 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
 
     // Use unique queue name for each test to avoid BullMQ internal state issues
     // This prevents workers from getting confused about queue types (priority vs normal)
-    testQueueName = 'test-queue-' + Date.now() + '-' + Math.random().toString(36).substring(7);
-    
+    testQueueName =
+      'test-queue-' +
+      Date.now() +
+      '-' +
+      Math.random().toString(36).substring(7);
+
     // Wait for Redis to stabilize after cleanup
     await delay(200);
 
@@ -110,7 +115,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       ...baseConfig,
       maxRetriesPerRequest: null, // Required by BullMQ for blocking operations
     };
-    
+
     // Create separate connections for queue and worker - CRITICAL for BullMQ
     // BullMQ requires separate connections to avoid conflicts between
     // queue operations and worker blocking operations
@@ -124,11 +129,8 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
 
     try {
       await Promise.race([
-        Promise.all([
-          redisAdapter.connect(),
-          workerConnection.connect()
-        ]),
-        connectionTimeout
+        Promise.all([redisAdapter.connect(), workerConnection.connect()]),
+        connectionTimeout,
       ]);
     } catch (error) {
       const errorMessage =
@@ -139,7 +141,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
     // Verify connections are working
     const [pingResult1, pingResult2] = await Promise.all([
       redisAdapter.ping(),
-      workerConnection.ping()
+      workerConnection.ping(),
     ]);
     if (pingResult1 !== 'PONG' || pingResult2 !== 'PONG') {
       throw new Error('Redis connections not responding to PING');
@@ -150,13 +152,13 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       connection: redisAdapter,
       defaultJobOptions: {
         removeOnComplete: false, // Keep jobs for test verification
-        removeOnFail: false,     // Keep jobs for test verification
-        attempts: 1,             // No retries during tests
+        removeOnFail: false, // Keep jobs for test verification
+        attempts: 1, // No retries during tests
       },
     });
 
     processedJobs = [];
-    
+
     // Create default worker with fresh connection
     // IMPORTANT: Must create worker AFTER queue to ensure proper initialization
     worker = new Worker(
@@ -233,11 +235,11 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
         // causes workers to poll the wrong queue structure
         const prefix = 'bull:' + testQueueName;
         await redisAdapter.del(
-          `${prefix}:prioritized`,  // Priority queue ZSET
-          `${prefix}:pc`,          // Priority counter
-          `${prefix}:marker`       // Marker key
+          `${prefix}:prioritized`, // Priority queue ZSET
+          `${prefix}:pc`, // Priority counter
+          `${prefix}:marker` // Marker key
         );
-        
+
         // Final flush to remove any remaining data
         await redisAdapter.flushdb();
       } catch (err) {
@@ -271,7 +273,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
     } finally {
       await flushClient.quit();
     }
-    
+
     // 6. Reset all variables
     testQueueName = '';
     processedJobs = [];
@@ -347,10 +349,10 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       // Verify worker is active
       assert.ok(worker, 'Worker should be initialized');
       assert.ok(queue, 'Queue should be initialized');
-      
+
       // Give worker extra time to stabilize after priority test
       await delay(500);
-      
+
       const job = await queue.add('state-test', { test: 'data' });
 
       // Brief delay to ensure job is queued properly
@@ -359,8 +361,10 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       // Check initial state (might be waiting, active, or already completed/unknown due to removal)
       let jobState = await job.getState();
       // With aggressive cleanup, job might already be removed (state: 'unknown')
-      assert.ok(['waiting', 'active', 'completed', 'unknown'].includes(jobState), 
-        `Unexpected job state: ${jobState}`);
+      assert.ok(
+        ['waiting', 'active', 'completed', 'unknown'].includes(jobState),
+        `Unexpected job state: ${jobState}`
+      );
 
       // Wait longer for processing to complete - workers may be slower after cleanup
       await delay(7000);
@@ -369,7 +373,11 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       const freshJob = await Job.fromId(queue, job.id);
       assert.ok(freshJob, 'Job should still exist');
       jobState = await freshJob.getState();
-      assert.strictEqual(jobState, 'completed', `Job should be completed but is ${jobState}`);
+      assert.strictEqual(
+        jobState,
+        'completed',
+        `Job should be completed but is ${jobState}`
+      );
     });
 
     it('should handle job removal', async () => {
@@ -396,7 +404,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
     it('should provide accurate queue counts', async () => {
       // Track the test start count
       const startProcessedCount = processedJobs.length;
-      
+
       // Add some jobs
       await queue.add('count-test-1', { data: 1 });
       await queue.add('count-test-2', { data: 2 });
@@ -405,15 +413,23 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       await delay(100);
 
       // Check waiting count (may be lower if jobs process quickly)
-      const counts = await queue.getJobCounts('waiting', 'completed', 'failed', 'active');
-      const total = (counts.waiting || 0) + (counts.completed || 0) + (counts.active || 0);
-      
+      const counts = await queue.getJobCounts(
+        'waiting',
+        'completed',
+        'failed',
+        'active'
+      );
+      const total =
+        (counts.waiting || 0) + (counts.completed || 0) + (counts.active || 0);
+
       // With aggressive cleanup, jobs might already be processed and removed
       // So we check if they were processed instead
       if (total === 0) {
         // Jobs were likely already processed and removed
-        assert.ok(processedJobs.length > startProcessedCount,
-          'Jobs should have been processed even if removed from queue');
+        assert.ok(
+          processedJobs.length > startProcessedCount,
+          'Jobs should have been processed even if removed from queue'
+        );
       } else {
         assert.ok(total >= 1, 'At least one job should be trackable');
       }
@@ -422,8 +438,10 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       await delay(800);
 
       // Verify jobs were processed (more reliable than counts with cleanup)
-      assert.ok(processedJobs.length >= startProcessedCount + 2,
-        `Expected at least ${startProcessedCount + 2} processed jobs, got ${processedJobs.length}`);
+      assert.ok(
+        processedJobs.length >= startProcessedCount + 2,
+        `Expected at least ${startProcessedCount + 2} processed jobs, got ${processedJobs.length}`
+      );
     });
   });
 
@@ -437,10 +455,10 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       };
       const errorQueueConnection = new Redis(errorConfig);
       const errorWorkerConnection = new Redis(errorConfig);
-      
+
       await errorQueueConnection.connect();
       await errorWorkerConnection.connect();
-      
+
       // Create separate queue for error testing
       const errorQueue = new Queue(errorTestQueue, {
         connection: errorQueueConnection,
@@ -450,11 +468,11 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
           attempts: 1,
         },
       });
-      
+
       // Track processing results
       let jobProcessed = false;
       let jobFailed = false;
-      
+
       // Create a worker that fails on the error test queue
       const failWorker = new Worker(
         errorTestQueue,
@@ -485,7 +503,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
         // Verify the job was processed and failed
         assert.ok(jobProcessed, 'Job should have been processed');
         assert.ok(jobFailed, 'Job should have failed as expected');
-        
+
         // Check job state
         const failedJob = await errorQueue.getJob(job.id);
         if (failedJob) {
@@ -506,10 +524,10 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       // Verify worker is active
       assert.ok(worker, 'Worker should be initialized');
       assert.ok(queue, 'Queue should be initialized');
-      
+
       // Give worker extra time to stabilize after previous tests
       await delay(500);
-      
+
       // Test that the system can recover from temporary connection issues
       const jobData = { message: 'Recovery test', timestamp: Date.now() };
 
@@ -525,7 +543,10 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
 
       // Check that job was processed despite potential connection hiccups
       const processedJob = processedJobs.find(j => j.id === job.id);
-      assert.ok(processedJob, `Job ${job.id} was not processed. Processed jobs: ${JSON.stringify(processedJobs)}, Worker: ${worker ? 'exists' : 'null'}`);
+      assert.ok(
+        processedJob,
+        `Job ${job.id} was not processed. Processed jobs: ${JSON.stringify(processedJobs)}, Worker: ${worker ? 'exists' : 'null'}`
+      );
       assert.deepStrictEqual(processedJob.data, jobData);
     });
 
@@ -558,10 +579,10 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
       };
       const errorQueueConnection = new Redis(errorConfig);
       const errorWorkerConnection = new Redis(errorConfig);
-      
+
       await errorQueueConnection.connect();
       await errorWorkerConnection.connect();
-      
+
       // Create separate queue for error testing
       const errorQueue = new Queue(errorTestQueue, {
         connection: errorQueueConnection,
@@ -571,7 +592,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
           attempts: 1,
         },
       });
-      
+
       // Track processing
       let jobProcessed = false;
       let errorThrown = false;
@@ -609,7 +630,7 @@ describe('BullMQ Integration - Basic Queue Operations', () => {
         // Verify the job was processed and errored
         assert.ok(jobProcessed, 'Job should have been processed');
         assert.ok(errorThrown, 'Error should have been thrown');
-        
+
         // Check job state
         const failedJob = await errorQueue.getJob(errorJob.id);
         if (failedJob) {

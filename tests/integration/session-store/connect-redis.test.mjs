@@ -5,15 +5,7 @@
  * for Express session management - a critical use case for web applications.
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { describe, test, beforeEach, afterEach, before } from 'node:test';
 import assert from 'node:assert';
 // Using dynamic imports for CommonJS modules
 const express = (await import('express')).default;
@@ -68,21 +60,21 @@ describe('Express Session Store Integration', () => {
 
     // Setup Redis clients with our adapter
     const config = getStandaloneConfig();
-    
+
     // Client for the store (stays connected) - no keyPrefix for store
     storeClient = new Redis({
       ...config,
       // No keyPrefix here - connect-redis manages its own prefix
     });
     await storeClient.connect();
-    
+
     // Client for test operations - use same config as store for accessing data
     redisClient = new Redis({
       ...config,
       // No keyPrefix here either - we'll use full keys for test operations
     });
     await redisClient.connect();
-    
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {
@@ -163,7 +155,7 @@ describe('Express Session Store Integration', () => {
     // Clean up the app and request objects
     app = null;
     request = null;
-    
+
     if (redisClient) {
       try {
         // Clean up session data
@@ -196,7 +188,10 @@ describe('Express Session Store Integration', () => {
       // Add a small delay to ensure session is written
       await delay(100);
       const sessionKeys = await redisClient.keys(`${keyPrefix}sess:*`);
-      assert.ok(sessionKeys.length > 0, `No session keys found. Looking for pattern: ${keyPrefix}sess:*`);
+      assert.ok(
+        sessionKeys.length > 0,
+        `No session keys found. Looking for pattern: ${keyPrefix}sess:*`
+      );
     });
 
     test('should maintain session across requests', async () => {
@@ -322,7 +317,7 @@ describe('Express Session Store Integration', () => {
         keyPrefix: keyPrefix,
       });
       await testClient.connect();
-      
+
       // Disconnect the test client (not the store's client)
       await testClient.disconnect();
 

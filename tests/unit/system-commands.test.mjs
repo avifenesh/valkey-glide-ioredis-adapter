@@ -24,7 +24,7 @@ import pkg from '../../dist/index.js';
 const { Redis } = pkg;
 
 describe('System Commands - Monitoring & Metrics', () => {
-  let redis;
+  let client;
 
   beforeEach(async () => {
     const config = {
@@ -32,28 +32,28 @@ describe('System Commands - Monitoring & Metrics', () => {
       port: parseInt(process.env.VALKEY_PORT || '6383'),
       lazyConnect: true,
     };
-    redis = new Redis(config);
+    client = new Redis(config);
 
-    await redis.connect();
-    
+    await client.connect();
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {
-      await redis.flushall();
+      await client.flushall();
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     }
   });
 
   afterEach(async () => {
-    if (redis) {
-      await redis.quit();
+    if (client) {
+      await client.quit();
     }
   });
 
   describe('Server Information Commands', () => {
     test('should retrieve server info like Netflix monitoring', async () => {
-      const info = await redis.info();
+      const info = await client.info();
 
       assert.strictEqual(typeof info, 'string');
       assert.ok(info.length > 0);
@@ -66,39 +66,39 @@ describe('System Commands - Monitoring & Metrics', () => {
 
     test('should get specific info sections for targeted monitoring', async () => {
       // Test memory section for monitoring memory usage
-      const memoryInfo = await redis.info('memory');
+      const memoryInfo = await client.info('memory');
       assert.strictEqual(typeof memoryInfo, 'string');
       assert.ok(memoryInfo.includes('used_memory'));
 
       // Test stats section for performance metrics
-      const statsInfo = await redis.info('stats');
+      const statsInfo = await client.info('stats');
       assert.strictEqual(typeof statsInfo, 'string');
       assert.ok(statsInfo.includes('total_commands_processed'));
     });
 
     test('should get server configuration like Airbnb systems', async () => {
       // Get maxmemory configuration
-      const maxmemory = await redis.config('GET', 'maxmemory');
+      const maxmemory = await client.config('GET', 'maxmemory');
       assert.ok(Array.isArray(maxmemory));
 
       // Get timeout configuration
-      const timeout = await redis.config('GET', 'timeout');
+      const timeout = await client.config('GET', 'timeout');
       assert.ok(Array.isArray(timeout));
 
       // Pattern to get all save-related configs
-      const saveConfigs = await redis.config('GET', 'save*');
+      const saveConfigs = await client.config('GET', 'save*');
       assert.ok(Array.isArray(saveConfigs));
     });
 
     test('should monitor database size like Discord', async () => {
       // Add some test data
-      await redis.set('monitor:test:1', 'value1');
-      await redis.set('monitor:test:2', 'value2');
-      await redis.hset('monitor:hash', 'field1', 'value1');
-      await redis.sadd('monitor:set', 'member1', 'member2');
+      await client.set('monitor:test:1', 'value1');
+      await client.set('monitor:test:2', 'value2');
+      await client.hset('monitor:hash', 'field1', 'value1');
+      await client.sadd('monitor:set', 'member1', 'member2');
 
       // Get database size
-      const dbsize = await redis.dbsize();
+      const dbsize = await client.dbsize();
       assert.strictEqual(typeof dbsize, 'number');
       assert.ok(dbsize > 0);
     });
@@ -110,24 +110,24 @@ describe('System Commands - Monitoring & Metrics', () => {
       const baseKey = 'memory:test:' + Math.random();
 
       // String data
-      await redis.set(`${baseKey}`, 'x'.repeat(1000));
+      await client.set(`${baseKey}`, 'x'.repeat(1000));
 
       // Hash data
       const hashData = {};
       for (let i = 0; i < 50; i++) {
         hashData[`field_${i}`] = `value_${i}_${'x'.repeat(20)}`;
       }
-      await redis.hmset(`${baseKey}:hash`, hashData);
+      await client.hmset(`${baseKey}:hash`, hashData);
 
       // List data
       const listKey = `${baseKey}:list`;
       for (let i = 0; i < 30; i++) {
-        await redis.lpush(listKey, `item_${i}_${'x'.repeat(15)}`);
+        await client.lpush(listKey, `item_${i}_${'x'.repeat(15)}`);
       }
 
       // Get memory usage for specific key
       try {
-        const memoryUsage = await redis.memory('USAGE', `${baseKey}`);
+        const memoryUsage = await client.memory('USAGE', `${baseKey}`);
         assert.strictEqual(typeof memoryUsage, 'number');
         assert.ok(memoryUsage > 0);
       } catch (error) {
@@ -138,7 +138,7 @@ describe('System Commands - Monitoring & Metrics', () => {
 
     test('should analyze memory statistics for performance tuning', async () => {
       // Get overall memory stats from INFO
-      const info = await redis.info('memory');
+      const info = await client.info('memory');
 
       // Parse memory stats
       const lines = info.split('\r\n');
@@ -167,7 +167,7 @@ describe('System Commands - Monitoring & Metrics', () => {
     test('should monitor client connections like GitHub', async () => {
       // Get client list
       try {
-        const clients = await redis.client('LIST');
+        const clients = await client.client('LIST');
         assert.strictEqual(typeof clients, 'string');
         assert.ok(clients.length > 0);
 
@@ -182,14 +182,14 @@ describe('System Commands - Monitoring & Metrics', () => {
 
     test('should track command statistics for performance analysis', async () => {
       // Execute various commands to generate stats
-      await redis.set('stats:test:1', 'value1');
-      await redis.get('stats:test:1');
-      await redis.hset('stats:hash', 'field', 'value');
-      await redis.hget('stats:hash', 'field');
-      await redis.incr('stats:counter');
+      await client.set('stats:test:1', 'value1');
+      await client.get('stats:test:1');
+      await client.hset('stats:hash', 'field', 'value');
+      await client.hget('stats:hash', 'field');
+      await client.incr('stats:counter');
 
       // Get command statistics
-      const info = await redis.info('commandstats');
+      const info = await client.info('commandstats');
       assert.strictEqual(typeof info, 'string');
 
       if (info.includes('cmdstat_')) {
@@ -214,14 +214,14 @@ describe('System Commands - Monitoring & Metrics', () => {
 
       // Measure SET operation latency
       const startTime = Date.now();
-      await redis.set(key, 'test_value');
+      await client.set(key, 'test_value');
       const setLatency = Date.now() - startTime;
       assert.ok(setLatency >= 0);
       assert.ok(setLatency < 1000); // Should be fast
 
       // Measure GET operation latency
       const getStartTime = Date.now();
-      const value = await redis.get(key);
+      const value = await client.get(key);
       const getLatency = Date.now() - getStartTime;
       assert.ok(getLatency >= 0);
       assert.ok(getLatency < 1000);
@@ -231,7 +231,7 @@ describe('System Commands - Monitoring & Metrics', () => {
     test('should monitor slowlog for performance issues', async () => {
       try {
         // Get slow log entries
-        const slowlog = await redis.slowlog('GET', '10');
+        const slowlog = await client.slowlog('GET', '10');
         assert.ok(Array.isArray(slowlog));
 
         // Each entry should be an array with [id, timestamp, duration, command]
@@ -257,7 +257,7 @@ describe('System Commands - Monitoring & Metrics', () => {
       // Benchmark SET operations
       const setStartTime = Date.now();
       for (let i = 0; i < operations; i++) {
-        await redis.set(`${testKey}:${i}`, `value_${i}`);
+        await client.set(`${testKey}:${i}`, `value_${i}`);
       }
       const setDuration = Date.now() - setStartTime;
       const setOpsPerSecond = (operations / setDuration) * 1000;
@@ -267,7 +267,7 @@ describe('System Commands - Monitoring & Metrics', () => {
       // Benchmark GET operations
       const getStartTime = Date.now();
       for (let i = 0; i < operations; i++) {
-        await redis.get(`${testKey}:${i}`);
+        await client.get(`${testKey}:${i}`);
       }
       const getDuration = Date.now() - getStartTime;
       const getOpsPerSecond = (operations / getDuration) * 1000;
@@ -283,11 +283,11 @@ describe('System Commands - Monitoring & Metrics', () => {
   describe('Debugging and Diagnostic Commands', () => {
     test('should provide debug information for troubleshooting', async () => {
       const key = 'debug:test:' + Math.random();
-      await redis.set(key, 'debug_value');
+      await client.set(key, 'debug_value');
 
       try {
         // Get object information for debugging
-        const objectInfo = await redis.debug('OBJECT', key);
+        const objectInfo = await client.debug('OBJECT', key);
         assert.strictEqual(typeof objectInfo, 'string');
         assert.ok(objectInfo.length > 0);
       } catch (error) {
@@ -298,23 +298,23 @@ describe('System Commands - Monitoring & Metrics', () => {
 
     test('should support ping for connectivity testing', async () => {
       // Basic ping
-      const pong = await redis.ping();
+      const pong = await client.ping();
       assert.strictEqual(pong, 'PONG');
 
       // Ping with custom message
       const customMessage = 'health_check_' + Math.random();
-      const response = await redis.ping(customMessage);
+      const response = await client.ping(customMessage);
       assert.strictEqual(response, customMessage);
     });
 
     test('should handle echo for message verification', async () => {
       const testMessage = 'echo_test_' + Math.random();
-      const response = await redis.echo(testMessage);
+      const response = await client.echo(testMessage);
       assert.strictEqual(response, testMessage);
     });
 
     test('should provide time information for synchronization', async () => {
-      const time = await redis.time();
+      const time = await client.time();
       assert.ok(Array.isArray(time));
       assert.strictEqual(time.length, 2);
 
@@ -333,7 +333,7 @@ describe('System Commands - Monitoring & Metrics', () => {
     test('should handle auth-related monitoring', async () => {
       // Test auth state (should succeed without auth in test environment)
       try {
-        await redis.ping();
+        await client.ping();
         assert.strictEqual(true, true); // Connection works
       } catch (error) {
         // May require auth in some environments
@@ -345,7 +345,7 @@ describe('System Commands - Monitoring & Metrics', () => {
   describe('Error Handling and Edge Cases', () => {
     test('should handle unknown INFO sections gracefully', async () => {
       try {
-        const result = await redis.info('nonexistent_section');
+        const result = await client.info('nonexistent_section');
         assert.strictEqual(typeof result, 'string');
         // Should return empty or minimal info
       } catch (error) {
@@ -356,7 +356,7 @@ describe('System Commands - Monitoring & Metrics', () => {
 
     test('should handle CONFIG commands with invalid parameters', async () => {
       try {
-        await redis.config('GET', 'nonexistent_config_parameter');
+        await client.config('GET', 'nonexistent_config_parameter');
         // Should return empty array for non-existent config
       } catch (error) {
         assert.ok(error !== undefined);
@@ -365,7 +365,7 @@ describe('System Commands - Monitoring & Metrics', () => {
 
     test('should handle MEMORY commands gracefully when not supported', async () => {
       try {
-        await redis.memory('USAGE', 'test_key');
+        await client.memory('USAGE', 'test_key');
         // If supported, should return number
       } catch (error) {
         // MEMORY commands might not be available in older Redis versions
@@ -375,7 +375,7 @@ describe('System Commands - Monitoring & Metrics', () => {
 
     test('should handle CLIENT commands when restricted', async () => {
       try {
-        await redis.client('LIST');
+        await client.client('LIST');
         // If allowed, should return string
       } catch (error) {
         // CLIENT commands might be restricted
@@ -385,7 +385,7 @@ describe('System Commands - Monitoring & Metrics', () => {
 
     test('should handle DEBUG commands when disabled', async () => {
       try {
-        await redis.debug('OBJECT', 'test_key');
+        await client.debug('OBJECT', 'test_key');
         // If enabled, should return debug info
       } catch (error) {
         // DEBUG commands are often disabled in production
