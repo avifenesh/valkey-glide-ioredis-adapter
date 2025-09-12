@@ -2,14 +2,16 @@ import { TimeUnit } from '@valkey/valkey-glide';
 import { BaseClient } from '../BaseClient';
 import { ParameterTranslator } from '../utils/ParameterTranslator';
 import { RedisKey, RedisValue } from '../types';
+import { asInternal } from '../types/internal';
 
 export async function get(
   client: BaseClient,
   key: RedisKey
 ): Promise<string | null> {
-  await (client as any).ensureConnection();
-  const normalizedKey = (client as any).normalizeKey(key);
-  const result = await (client as any).glideClient.get(normalizedKey);
+  const internal = asInternal(client);
+  await internal.ensureConnection();
+  const normalizedKey = internal.normalizeKey(key);
+  const result = await internal.glideClient.get(normalizedKey);
   return ParameterTranslator.convertGlideString(result);
 }
 
@@ -19,11 +21,12 @@ export async function set(
   value: RedisValue,
   ...args: any[]
 ): Promise<string | null> {
-  await (client as any).ensureConnection();
+  const internal = asInternal(client);
+  await internal.ensureConnection();
   if (key === '' || key === null || key === undefined) {
     throw new Error("ERR wrong number of arguments for 'set' command");
   }
-  const normalizedKey = (client as any).normalizeKey(key);
+  const normalizedKey = internal.normalizeKey(key);
   const normalizedValue = ParameterTranslator.normalizeValue(value);
 
   const options: any = {};
@@ -120,7 +123,7 @@ export async function set(
     }
   }
 
-  const result = await (client as any).glideClient.set(
+  const result = await internal.glideClient.set(
     normalizedKey,
     normalizedValue,
     options
@@ -132,12 +135,13 @@ export async function mget(
   client: BaseClient,
   ...keysOrArray: any[]
 ): Promise<(string | null)[]> {
-  await (client as any).ensureConnection();
+  const internal = asInternal(client);
+  await internal.ensureConnection();
   const keys = Array.isArray(keysOrArray[0]) ? keysOrArray[0] : keysOrArray;
   const normalizedKeys = keys.map((k: RedisKey) =>
-    (client as any).normalizeKey(k)
+    internal.normalizeKey(k)
   );
-  const results = await (client as any).glideClient.mget(normalizedKeys);
+  const results = await internal.glideClient.mget(normalizedKeys);
   return results.map(ParameterTranslator.convertGlideString);
 }
 
@@ -145,7 +149,8 @@ export async function mset(
   client: BaseClient,
   ...argsOrHash: any[]
 ): Promise<string> {
-  await (client as any).ensureConnection();
+  const internal = asInternal(client);
+  await internal.ensureConnection();
   const keyValuePairs: Record<string, string> = {};
   if (
     argsOrHash.length === 1 &&
@@ -154,16 +159,16 @@ export async function mset(
   ) {
     const obj = argsOrHash[0];
     for (const [key, value] of Object.entries(obj)) {
-      keyValuePairs[(client as any).normalizeKey(key)] =
+      keyValuePairs[internal.normalizeKey(key)] =
         ParameterTranslator.normalizeValue(value as any);
     }
   } else {
     for (let i = 0; i < argsOrHash.length; i += 2) {
-      const key = (client as any).normalizeKey(argsOrHash[i]);
+      const key = internal.normalizeKey(argsOrHash[i]);
       const value = ParameterTranslator.normalizeValue(argsOrHash[i + 1]);
       keyValuePairs[key] = value;
     }
   }
-  await (client as any).glideClient.mset(keyValuePairs);
+  await internal.glideClient.mset(keyValuePairs);
   return 'OK';
 }

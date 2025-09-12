@@ -158,22 +158,7 @@ describe('Express Session Store Integration', () => {
 
     if (redisClient) {
       try {
-        // Clean up session data using SCAN
-        let cursor = '0';
-        const keys = [];
-        do {
-          const res = await redisClient.scan(
-            cursor,
-            'MATCH',
-            `${keyPrefix}*`,
-            'COUNT',
-            200
-          );
-          cursor = Array.isArray(res) ? res[0] : '0';
-          const batch = Array.isArray(res) ? res[1] : [];
-          if (Array.isArray(batch) && batch.length) keys.push(...batch);
-        } while (cursor !== '0');
-        if (keys.length > 0) await redisClient.del(...keys);
+        await redisClient.flushall();
       } catch {
         // Ignore cleanup errors
       }
@@ -380,8 +365,8 @@ describe('Express Session Store Integration', () => {
       await delay(500);
 
       // Find a session key using SCAN
-      cursor = '0';
-      firstKey = null;
+      let cursor = '0';
+      let firstKey = null;
       do {
         const res = await redisClient.scan(
           cursor,
