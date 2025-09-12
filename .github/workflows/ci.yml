@@ -66,14 +66,14 @@ jobs:
         sudo apt-get update && sudo apt-get install -y valkey-tools
         
         for i in {1..30}; do
-          if valkey-cli -h localhost -p 6383 ping > /dev/null 2>&1; then
+          if valkey-cli -h 127.0.0.1 -p 6383 ping > /dev/null 2>&1; then
             echo "✅ Valkey Bundle is ready!"
             echo "📦 Checking loaded modules..."
-            valkey-cli -h localhost -p 6383 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"
+            valkey-cli -h 127.0.0.1 -p 6383 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"
             echo "🔍 Testing JSON command..."
-            valkey-cli -h localhost -p 6383 JSON.SET test_ci_key '$' '"test"' || echo "⚠️  JSON module not available"
+            valkey-cli -h 127.0.0.1 -p 6383 JSON.SET test_ci_key '$' '"test"' || echo "⚠️  JSON module not available"
             echo "🔍 Testing Search command..."
-            valkey-cli -h localhost -p 6383 FT.CREATE test_ci_idx ON JSON PREFIX 1 "test:" SCHEMA name TEXT || echo "⚠️  Search module not available"
+            valkey-cli -h 127.0.0.1 -p 6383 FT.CREATE test_ci_idx ON JSON PREFIX 1 "test:" SCHEMA name TEXT || echo "⚠️  Search module not available"
             
             echo "🔧 Configuring Valkey for testing..."
             # Optimize Valkey for testing
@@ -151,9 +151,9 @@ jobs:
         }
       env:
         CI: true
-        VALKEY_HOST: localhost
+        VALKEY_HOST: 127.0.0.1
         VALKEY_PORT: 6383
-        VALKEY_CLUSTER_NODES: localhost:17000,localhost:17001,localhost:17002
+        VALKEY_CLUSTER_NODES: 127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002
 
     - name: Cleanup after tests
       if: always()
@@ -293,7 +293,7 @@ jobs:
         fi
       env:
         CI: true
-        VALKEY_HOST: localhost
+        VALKEY_HOST: 127.0.0.1
         VALKEY_PORT: 6383
         SKIP_MODULE_TESTS: true
 
