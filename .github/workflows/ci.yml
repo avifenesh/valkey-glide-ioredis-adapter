@@ -25,6 +25,233 @@ jobs:
           - arch: x64
             node: '22'
 
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Setup Node.js ${{ matrix.node }}
+      uses: actions/setup-node@v5
+      with:
+        node-version: ${{ matrix.node }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build project
+      run: npm run build
+
+    - name: Install Valkey server directly on runner
+      run: |
+        echo "🔑 Installing Valkey/Redis server..."
+        
+        # Install Redis server (Valkey-compatible)
+        sudo apt-get update
+        sudo apt-get install -y redis-server
+        
+        # Stop default Redis service 
+        sudo systemctl stop redis-server || true
+        sudo systemctl disable redis-server || true
+        
+        # Start Redis server for standalone tests (using Valkey-compatible setup)
+        redis-server --daemonize yes \
+          --port 6379 \
+          --bind 127.0.0.1 \
+          --save "" \
+          --appendonly no \
+          --maxmemory 512mb \
+          --maxmemory-policy allkeys-lru \
+          --loglevel notice \
+          --tcp-keepalive 60 \
+          --timeout 300
+
+    - name: Wait for Valkey server
+      run: |
+        echo "⏳ Waiting for Redis/Valkey server to be ready..."
+        for i in {1..30}; do
+          if redis-cli -p 6379 ping > /dev/null 2>&1; then
+            echo "✅ Redis/Valkey server is ready!"
+            echo "📋 Server info:"
+            redis-cli -p 6379 INFO server | grep -E "(redis_version|server_name)" || true
+            break
+          fi
+          echo "⏳ Still waiting for server... ($i/30)"
+          sleep 2
+        done
+        
+        # Final test
+        redis-cli -p 6379 ping
+
+    - name: Run standalone tests (excluding JSON module tests)
+      run: |
+        echo "🧪 Running standalone tests (no JSON/module tests)..."
+        
+        # Verify server health
+        redis-cli -p 6379 ping
+        
+        echo "🧪 Running unit tests (excluding JSON tests)..."
+        # Get all test files except JSON-related ones
+        UNIT_TESTS=$(find tests/unit -name "*.test.mjs" ! -name "*json*" | tr '\n' ' ')
+        if [ -n "$UNIT_TESTS" ]; then
+          timeout 600 ./scripts/test-runner.sh $UNIT_TESTS || {
+            echo "⚠️ Unit tests failed, forcing cleanup..."
+            node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
+            exit 1
+          }
+        fi
+        
+        echo "⏳ Brief pause between test suites..."
+        sleep 5
+        
+        echo "🧪 Running integration tests..."
+        timeout 600 ./scripts/test-runner.sh tests/integration/ || {
+          echo "⚠️ Integration tests failed, forcing cleanup..."
+          node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
+          exit 1
+        }
+      env:
+        CI: true
+        VALKEY_HOST: 127.0.0.1
+        VALKEY_PORT: 6379
+        SKIP_MODULE_TESTS: true
+
+    - name: Cleanup Valkey server
+      if: always()
+      run: |
+        echo "🧹 Cleaning up..."
+        node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
+        sleep 2
+        redis-cli -p 6379 SHUTDOWN NOSAVE || pkill redis-server || true
+        echo "✅ Cleanup completed"
+
+  # Cluster test suite with non-docker Valkey
+  test-valkey-cluster:
+    name: Test Cluster Mode (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Setup Node.js ${{ matrix.node }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build project
+      run: npm run build
+
+    - name: Install Valkey and setup cluster
+      run: |
+        echo "🔑 Installing Redis server for cluster (Valkey-compatible)..."
+        
+        # Install Redis server (Valkey-compatible)
+        sudo apt-get update
+        sudo apt-get install -y redis-server
+        
+        # Stop default Redis service 
+        sudo systemctl stop redis-server || true
+        sudo systemctl disable redis-server || true
+        
+        # Start cluster nodes
+        for port in 17000 17001 17002 17003 17004 17005; do
+          echo "Starting cluster node on port $port..."
+          redis-server --daemonize yes \
+            --port $port \
+            --bind 127.0.0.1 \
+            --cluster-enabled yes \
+            --cluster-config-file /tmp/nodes-${port}.conf \
+            --cluster-node-timeout 5000 \
+            --save "" \
+            --appendonly no \
+            --maxmemory 256mb \
+            --maxmemory-policy allkeys-lru \
+            --loglevel notice
+        done
+        
+        # Wait for nodes to start
+        sleep 10
+        
+        # Initialize cluster
+        echo "yes" | redis-cli --cluster create \
+          127.0.0.1:17000 127.0.0.1:17001 127.0.0.1:17002 \
+          127.0.0.1:17003 127.0.0.1:17004 127.0.0.1:17005 \
+          --cluster-replicas 1
+
+    - name: Verify cluster setup
+      run: |
+        echo "🔍 Verifying cluster setup..."
+        
+        for port in 17000 17001 17002; do
+          echo "Testing node on port $port..."
+          if ! redis-cli -p $port ping > /dev/null 2>&1; then
+            echo "❌ Node on port $port is not responding"
+            exit 1
+          fi
+        done
+        
+        echo "📋 Cluster info:"
+        redis-cli -p 17000 cluster info | head -5
+        echo "✅ Cluster is ready!"
+
+    - name: Run cluster tests (excluding JSON module tests)
+      run: |
+        echo "🧪 Running cluster tests (no JSON/module tests)..."
+        
+        echo "🧪 Running unit tests in cluster mode (excluding JSON tests)..."
+        UNIT_TESTS=$(find tests/unit -name "*.test.mjs" ! -name "*json*" | tr '\n' ' ')
+        if [ -n "$UNIT_TESTS" ]; then
+          timeout 600 ./scripts/test-runner.sh $UNIT_TESTS || {
+            echo "⚠️ Unit tests in cluster mode failed, forcing cleanup..."
+            node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
+            exit 1
+          }
+        fi
+        
+        echo "⏳ Brief pause between test suites..."
+        sleep 5
+        
+        echo "🧪 Running cluster-specific tests..."
+        timeout 600 ./scripts/test-runner.sh tests/cluster/ || {
+          echo "⚠️ Cluster-specific tests failed, forcing cleanup..."
+          node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
+          exit 1
+        }
+      env:
+        CI: true
+        VALKEY_CLUSTER_NODES: 127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002
+        ENABLE_CLUSTER_TESTS: true
+        SKIP_MODULE_TESTS: true
+
+    - name: Cleanup cluster
+      if: always()
+      run: |
+        echo "🧹 Cleaning up cluster..."
+        node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
+        sleep 2
+        
+        for port in 17000 17001 17002 17003 17004 17005; do
+          redis-cli -p $port SHUTDOWN NOSAVE || true
+        done
+        pkill redis-server || true
+        sudo rm -f /tmp/nodes-*.conf
+        echo "✅ Cleanup completed"
+
+  # JSON module tests using Docker (separate job)
+  test-json-modules:
+    name: Test JSON Module with Valkey Bundle (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22']
+
     services:
       valkey-bundle:
         image: valkey/valkey-bundle:8.1-bookworm
