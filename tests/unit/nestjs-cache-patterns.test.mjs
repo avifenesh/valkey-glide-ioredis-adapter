@@ -111,10 +111,17 @@ describe('NestJS Cache Integration Patterns', () => {
       assert.ok(settings);
       assert.ok(activity);
 
-      // Pattern-based cache invalidation (simulate)
+      // Pattern-based cache invalidation (simulate) using SCAN
       const pattern = `${baseKey}user:${userId}:*`;
-      const keys = await client.keys(pattern);
-      assert.strictEqual(keys.length, 3);
+      let cursor = '0';
+      let count = 0;
+      do {
+        const res = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 200);
+        cursor = Array.isArray(res) ? res[0] : '0';
+        const batch = Array.isArray(res) ? res[1] : [];
+        count += Array.isArray(batch) ? batch.length : 0;
+      } while (cursor !== '0');
+      assert.strictEqual(count, 3);
     });
   });
 

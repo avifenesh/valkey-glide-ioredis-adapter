@@ -46,6 +46,7 @@
     "psubscribe",
     "pubsub",
     "punsubscribe",
+    "Redi",
     "redisjson",
     "rediss",
     "rpop",
@@ -60,13 +61,17 @@
     "spublish",
     "ssubscribe",
     "sunsubscribe",
+    "unwatch",
+    "UNWATCH",
     "valkey",
     "valkeyjson",
     "xadd",
     "xrange",
     "xread",
     "zadd",
-    "zrange"
+    "zrange",
+    "zsets",
+    "zset"
   ],
   "ignorePaths": [
     "node_modules/**",

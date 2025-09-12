@@ -2,6 +2,30 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Quick Reference
+
+### Most Common Commands
+```bash
+# Build the project
+npm run build
+
+# Run all tests (sequential, prevents hanging)
+npm test
+
+# Run a single test file
+VALKEY_HOST=localhost VALKEY_PORT=6383 node --test tests/unit/string-commands.test.mjs
+
+# Run tests with coverage
+npm run test:cov
+
+# Lint and format
+npm run lint:fix
+npm run format
+
+# Start local Valkey server for testing
+npm run valkey:start
+```
+
 ## Commands
 
 ### Development
@@ -10,7 +34,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run dev` - Run both build:watch and test:watch concurrently
 
 ### Testing
-- `npm test` - Run all tests sequentially using test-sequential.sh
+- `npm test` - Run all tests sequentially (prevents hanging from third-party libraries)
 - `npm run test:parallel` - Run tests in dual-mode (standalone + cluster)
 - `npm run test:standalone` - Run tests in standalone mode only
 - `npm run test:cluster` - Run tests in cluster mode only
@@ -21,6 +45,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run test:single` - Run single test with Node.js test runner
 
 ### Direct Test Commands (bypass npm scripts)
+- `./scripts/test-sequential.sh` - Default sequential runner (npm test) - prevents hanging
 - `./scripts/test-dual-mode.sh` - Run dual-mode tests (standalone + cluster)
 - `./scripts/test-runner.sh` - Single mode test runner with infrastructure management
 - `ENABLE_CLUSTER_TESTS=true ./scripts/test-dual-mode.sh` - Enable cluster testing
@@ -218,7 +243,7 @@ ioredis-compatible Results
 - `tests/utils/valkey-bundle-config.mjs` - Module testing configuration
 
 ### Shell Scripts (`scripts/`)
-- `test-sequential.sh` - Default test runner for `npm test` (prevents hanging)
+- `test-sequential.sh` - Default test runner for `npm test` (runs each file separately to prevent hanging)
 - `test-runner.sh` - Single mode test runner with infrastructure management
 - `test-dual-mode.sh` - Runs tests in both standalone and cluster modes
 - `test-runner-batch.sh` - Batch test runner
@@ -246,10 +271,11 @@ ioredis-compatible Results
 
 ### Test Execution Patterns
 - **Sequential execution**: `--test-concurrency=1` for connection stability
+- **File-by-file execution**: Default `npm test` runs each test file separately to prevent hanging
 - **Coverage reports**: `npm run test:cov` generates text, lcov, html
 - **JUnit output**: `JUNIT=1 npm test` generates XML reports
-- **Timeout handling**: 30-60s timeouts for different test types
-- **Dual-mode testing**: Automatically runs tests in both modes
+- **Timeout handling**: 60s for unit tests, 120s for integration tests
+- **Dual-mode testing**: Automatically runs tests in both standalone and cluster modes
 - **Node.js 18+ required**: Uses built-in test runner
 
 ### Quick Test Commands
@@ -405,6 +431,41 @@ it('should handle mode-specific features', async () => {
 - **Coverage reports**: C8 integration for code coverage
 - **JUnit output**: XML reports for CI/CD integration
 - **Environment flexibility**: Easy configuration via env vars
+
+## Commit and PR Guidelines
+
+### Commit Messages
+Use Conventional Commits format:
+- `feat(adapter): add JSON.SET path support`
+- `fix(commands): prevent memory leak on reconnect`
+- `test(integration): add BullMQ priority queue tests`
+- `docs(readme): update compatibility matrix`
+- `chore(deps): update @valkey/valkey-glide to 2.0.1`
+
+### Pull Request Process
+1. Keep changes focused and small
+2. Include clear description and link related issues
+3. Add test plan with expected output
+4. Update documentation if behavior changes
+5. Ensure all tests pass: `npm test`
+6. Run linter: `npm run lint:fix`
+
+## Common Troubleshooting
+
+### Test Hanging Issues
+- **Problem**: Tests hang due to third-party libraries not cleaning up resources
+- **Solution**: Use `npm test` which runs `test-sequential.sh` - executes each test file separately
+- **Alternative**: Set timeouts explicitly: `timeout 60 node --test tests/unit/some.test.mjs`
+
+### Connection Issues
+- **Check server**: Ensure Valkey/Redis is running on localhost:6383 (default test port)
+- **Start test server**: `npm run valkey:start` or `docker-compose -f docker-compose.test.yml up -d`
+- **Custom server**: Use environment variables: `VALKEY_HOST=myserver VALKEY_PORT=6379 npm test`
+
+### Module Testing
+- **JSON module required**: Tests requiring JSON module will skip if not available
+- **Start with modules**: `npm run valkey:start` starts Valkey with JSON module loaded
+- **Check availability**: Tests automatically detect module presence
 
 ## Important File Locations
 

@@ -9,6 +9,7 @@ import pkg from '../../dist/index.js';
 const { Redis } = pkg;
 import clusterPkg from '../../dist/Cluster.js';
 const { Cluster } = clusterPkg;
+import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('Fastify Redis Plugin Compatibility', () => {
   let client;
@@ -25,8 +26,7 @@ describe('Fastify Redis Plugin Compatibility', () => {
     beforeEach(async () => {
       // Fastify plugin typically creates client like this
       client = new Redis({
-        host: process.env.VALKEY_HOST || 'localhost',
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
+        ...getStandaloneConfig(),
         family: 4,
         // Common fastify options
         lazyConnect: false,
@@ -110,10 +110,7 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
   describe('Redis Streams (as used in fastify examples)', () => {
     beforeEach(async () => {
-      client = new Redis({
-        host: process.env.VALKEY_HOST || 'localhost',
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
-      });
+      client = new Redis(getStandaloneConfig());
       await client.connect();
 
       // Clean slate: flush all data to prevent test pollution
@@ -169,14 +166,8 @@ describe('Fastify Redis Plugin Compatibility', () => {
     let publisher;
 
     beforeEach(async () => {
-      subscriber = new Redis({
-        host: process.env.VALKEY_HOST || 'localhost',
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
-      });
-      publisher = new Redis({
-        host: process.env.VALKEY_HOST || 'localhost',
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
-      });
+      subscriber = new Redis(getStandaloneConfig());
+      publisher = new Redis(getStandaloneConfig());
       await subscriber.connect();
       await publisher.connect();
     });
@@ -218,10 +209,7 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
   describe('Pipeline Operations (batch processing)', () => {
     beforeEach(async () => {
-      client = new Redis({
-        host: process.env.VALKEY_HOST || 'localhost',
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
-      });
+      client = new Redis(getStandaloneConfig());
       await client.connect();
 
       // Clean slate: flush all data to prevent test pollution
@@ -259,10 +247,7 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
   describe('Rate Limiting Patterns', () => {
     beforeEach(async () => {
-      client = new Redis({
-        host: process.env.VALKEY_HOST || 'localhost',
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
-      });
+      client = new Redis(getStandaloneConfig());
       await client.connect();
 
       // Clean slate: flush all data to prevent test pollution
@@ -337,10 +322,7 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
   describe('Session Storage Patterns', () => {
     beforeEach(async () => {
-      client = new Redis({
-        host: process.env.VALKEY_HOST || 'localhost',
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
-      });
+      client = new Redis(getStandaloneConfig());
       await client.connect();
 
       // Clean slate: flush all data to prevent test pollution
@@ -386,10 +368,7 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
   describe('Caching Patterns', () => {
     beforeEach(async () => {
-      client = new Redis({
-        host: process.env.VALKEY_HOST || 'localhost',
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
-      });
+      client = new Redis(getStandaloneConfig());
       await client.connect();
 
       // Clean slate: flush all data to prevent test pollution
@@ -447,10 +426,7 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
   describe('Distributed Locking (Redlock pattern)', () => {
     beforeEach(async () => {
-      client = new Redis({
-        host: process.env.VALKEY_HOST || 'localhost',
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
-      });
+      client = new Redis(getStandaloneConfig());
       await client.connect();
 
       // Clean slate: flush all data to prevent test pollution
@@ -502,10 +478,7 @@ describe('Fastify Redis Plugin Compatibility', () => {
   describe('Client Instance Management', () => {
     it('should support providing existing client instance', async () => {
       // Pattern used by fastify plugin
-      const existingClient = new Redis({
-        host: process.env.VALKEY_HOST || 'localhost',
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
-      });
+      const existingClient = new Redis(getStandaloneConfig());
       await existingClient.connect();
 
       await existingClient.set('test', 'value');

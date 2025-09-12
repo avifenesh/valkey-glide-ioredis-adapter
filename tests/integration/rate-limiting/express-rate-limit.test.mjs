@@ -112,11 +112,16 @@ describe('Rate Limiting Integration', () => {
   afterEach(async () => {
     if (redisAdapter) {
       try {
-        // Clean up rate limiting keys
-        const keys = await redisAdapter.keys('rl:*');
-        if (keys.length > 0) {
-          await redisAdapter.del(...keys);
-        }
+        // Clean up rate limiting keys using SCAN
+        let cursor = '0';
+        const keys = [];
+        do {
+          const res = await redisAdapter.scan(cursor, 'MATCH', 'rl:*', 'COUNT', 200);
+          cursor = Array.isArray(res) ? res[0] : '0';
+          const batch = Array.isArray(res) ? res[1] : [];
+          if (Array.isArray(batch) && batch.length) keys.push(...batch);
+        } while (cursor !== '0');
+        if (keys.length > 0) await redisAdapter.del(...keys);
       } catch {
         // Ignore cleanup errors
       }

@@ -58,13 +58,18 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
   });
 
   beforeEach(async () => {
-    // Clean up any existing test keys
+    // Clean up any existing test keys using SCAN
     try {
-      const keys = await client.keys('*');
-      if (keys.length > 0) {
-        await client.del(...keys);
-      }
-    } catch (error) {
+      let cursor = '0';
+      const keys = [];
+      do {
+        const res = await client.scan(cursor, 'MATCH', '*', 'COUNT', 500);
+        cursor = Array.isArray(res) ? res[0] : '0';
+        const batch = Array.isArray(res) ? res[1] : [];
+        if (Array.isArray(batch) && batch.length) keys.push(...batch);
+      } while (cursor !== '0');
+      if (keys.length > 0) await client.del(...keys);
+    } catch {
       // Ignore cleanup errors
     }
   });

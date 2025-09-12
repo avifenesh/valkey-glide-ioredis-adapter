@@ -13,6 +13,7 @@ import { ParameterTranslator } from './utils/ParameterTranslator';
 import { TimeUnit, InfBoundary } from '@valkey/valkey-glide';
 import * as stringCommands from './commands/strings';
 import { IoredisPubSubClient } from './utils/IoredisPubSubClient';
+import { ErrorClassifier } from './utils/ErrorClassifier';
 import * as keyCommands from './commands/keys';
 import * as streamCommands from './commands/streams';
 import * as serverCommands from './commands/server';
@@ -24,15 +25,8 @@ import * as hashCommands from './commands/hashes';
 import * as listCommands from './commands/lists';
 import * as setCommands from './commands/sets';
 import * as zsetCommands from './commands/zsets';
-// import { Packr } from 'msgpackr'; // Disabled for now due to GLIDE Buffer issues
 
 export type GlideClientType = GlideClient | GlideClusterClient;
-
-// msgpack packer for Bull script compatibility (disabled for now due to GLIDE Buffer issues)
-// const packer = new Packr({
-//   useRecords: false,
-//   encodeUndefinedAsNil: true
-// });
 
 // Direct GLIDE Pub/Sub Interface - High-Performance Native Callbacks
 export interface DirectPubSubMessage {
@@ -284,29 +278,20 @@ export abstract class BaseClient extends EventEmitter {
             // IMPORTANT: await the close() method as it returns a Promise
             await this.glideClient.close();
           } catch (closeError: any) {
-            // Suppress ClosingError that happens during close() call itself
-            if (
-              closeError?.constructor?.name === 'ClosingError' ||
-              closeError?.name === 'ClosingError' ||
-              closeError?.message?.includes('ClosingError')
-            ) {
-              // ClosingError means cleanup is already in progress - that's fine
-            } else {
-              throw closeError; // Re-throw other errors
+            // Use ErrorClassifier to determine if error should be suppressed
+            if (!ErrorClassifier.shouldSuppress(closeError)) {
+              throw closeError; // Re-throw non-suppressible errors
             }
+            // ClosingError and other suppressible errors are ignored during cleanup
           }
           this.mainClientClosed = true;
         }
       } catch (error: any) {
         // Mark as closed even on error to prevent retry
         this.mainClientClosed = true;
-        // Suppress ClosingError - it's expected when cleanup is already in progress
-        if (
-          error?.constructor?.name === 'ClosingError' ||
-          error?.name === 'ClosingError' ||
-          error?.message?.includes('ClosingError')
-        ) {
-          // ClosingError is expected during cleanup - silently ignore
+        // Use ErrorClassifier to determine if error should be suppressed
+        if (ErrorClassifier.shouldSuppress(error)) {
+          // ClosingError and other suppressible errors are ignored during cleanup
           return;
         }
         // Silently ignore other unexpected errors during cleanup
@@ -322,29 +307,20 @@ export abstract class BaseClient extends EventEmitter {
             // IMPORTANT: await the close() method as it returns a Promise
             await (this.subscriberClient as any).close();
           } catch (closeError: any) {
-            // Suppress ClosingError that happens during close() call itself
-            if (
-              closeError?.constructor?.name === 'ClosingError' ||
-              closeError?.name === 'ClosingError' ||
-              closeError?.message?.includes('ClosingError')
-            ) {
-              // ClosingError means cleanup is already in progress - that's fine
-            } else {
-              throw closeError; // Re-throw other errors
+            // Use ErrorClassifier to determine if error should be suppressed
+            if (!ErrorClassifier.shouldSuppress(closeError)) {
+              throw closeError; // Re-throw non-suppressible errors
             }
+            // ClosingError and other suppressible errors are ignored during cleanup
           }
           this.subscriberClientClosed = true;
         }
       } catch (error: any) {
         // Mark as closed even on error to prevent retry
         this.subscriberClientClosed = true;
-        // Suppress ClosingError - it's expected when cleanup is already in progress
-        if (
-          error?.constructor?.name === 'ClosingError' ||
-          error?.name === 'ClosingError' ||
-          error?.message?.includes('ClosingError')
-        ) {
-          // ClosingError is expected during cleanup - silently ignore
+        // Use ErrorClassifier to determine if error should be suppressed
+        if (ErrorClassifier.shouldSuppress(error)) {
+          // ClosingError and other suppressible errors are ignored during cleanup
           return;
         }
         // Silently ignore other unexpected errors during cleanup

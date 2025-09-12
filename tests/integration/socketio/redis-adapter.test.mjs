@@ -125,10 +125,22 @@ describe('Socket.IO Valkey Adapter Integration', () => {
     // Clean up shared Valkey connections
     if (valkeyClient1) {
       try {
-        const keys = await valkeyClient1.keys(`${keyPrefix}*`);
-        if (keys.length > 0) {
-          await valkeyClient1.del(...keys);
-        }
+        // Clean up Socket.IO keys via SCAN
+        let cursor = '0';
+        const keys = [];
+        do {
+          const res = await valkeyClient1.scan(
+            cursor,
+            'MATCH',
+            `${keyPrefix}*`,
+            'COUNT',
+            200
+          );
+          cursor = Array.isArray(res) ? res[0] : '0';
+          const batch = Array.isArray(res) ? res[1] : [];
+          if (Array.isArray(batch) && batch.length) keys.push(...batch);
+        } while (cursor !== '0');
+        if (keys.length > 0) await valkeyClient1.del(...keys);
       } catch {
         // Ignore cleanup errors
       }

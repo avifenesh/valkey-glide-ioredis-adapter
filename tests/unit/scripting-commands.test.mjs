@@ -7,15 +7,13 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
+import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('Scripting Commands', () => {
   let client;
 
   beforeEach(async () => {
-    client = new Redis({
-      host: process.env.VALKEY_HOST || 'localhost',
-      port: parseInt(process.env.VALKEY_PORT || '6383'),
-    });
+    client = new Redis(getStandaloneConfig());
     await client.connect();
 
     // Clean slate: flush all data to prevent test pollution
