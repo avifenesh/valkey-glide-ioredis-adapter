@@ -77,14 +77,26 @@ jobs:
           sleep 2
         done
 
-    - name: Run all tests (including JSON/Search modules and cluster tests)
-      run: npm test
+    - name: Run unit tests
+      run: npm run test:standalone -- tests/unit/
       env:
         CI: true
         VALKEY_HOST: localhost
         VALKEY_PORT: 6383
-        VALKEY_BUNDLE_HOST: localhost
-        VALKEY_BUNDLE_PORT: 6383
+
+    - name: Run integration tests
+      run: npm run test:standalone -- tests/integration/
+      env:
+        CI: true
+        VALKEY_HOST: localhost
+        VALKEY_PORT: 6383
+
+    - name: Run cluster tests
+      run: npm run test:standalone -- tests/cluster/
+      env:
+        CI: true
+        VALKEY_HOST: localhost
+        VALKEY_PORT: 6383
         VALKEY_CLUSTER_NODES: localhost:17000,localhost:17001,localhost:17002
 
     - name: Upload coverage to Codecov
@@ -157,6 +169,16 @@ jobs:
       run: |
         echo "🧪 Running unit tests only on macOS (no JSON/module support)"
         npm run test:standalone -- tests/unit/
+      env:
+        CI: true
+        VALKEY_HOST: localhost
+        VALKEY_PORT: 6383
+        SKIP_MODULE_TESTS: true
+
+    - name: Run basic integration tests (no modules)
+      run: |
+        echo "🧪 Running basic integration tests on macOS (no JSON/module support)"
+        npm run test:standalone -- tests/integration/simple-adapter.test.mjs tests/integration/fastify-redis.test.mjs
       env:
         CI: true
         VALKEY_HOST: localhost
