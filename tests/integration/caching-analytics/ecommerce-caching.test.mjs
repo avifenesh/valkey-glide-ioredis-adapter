@@ -7,7 +7,12 @@
 
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import { describeForEachMode, createClient, flushAll, keyTag } from '../../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+  keyTag,
+} from '../../setup/dual-mode.mjs';
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms).unref());

@@ -1,6 +1,6 @@
 /**
  * Error Classification Utility
- * 
+ *
  * Provides utilities for classifying and handling different types of errors
  * that can occur during GLIDE operations, improving error handling and debugging.
  */
@@ -12,7 +12,7 @@ export enum ErrorType {
   COMMAND_ERROR = 'COMMAND_ERROR',
   AUTHENTICATION_ERROR = 'AUTHENTICATION_ERROR',
   NETWORK_ERROR = 'NETWORK_ERROR',
-  UNKNOWN_ERROR = 'UNKNOWN_ERROR'
+  UNKNOWN_ERROR = 'UNKNOWN_ERROR',
 }
 
 export interface ClassifiedError {
@@ -30,7 +30,7 @@ export class ErrorClassifier {
   static classify(error: any): ClassifiedError {
     const errorName = error?.constructor?.name || error?.name || '';
     const errorMessage = error?.message || '';
-    
+
     // Check for ClosingError
     if (
       errorName === 'ClosingError' ||
@@ -42,10 +42,10 @@ export class ErrorClassifier {
         originalError: error,
         isRetryable: false,
         shouldSuppress: true, // These errors can be suppressed during cleanup
-        message: 'Client is closing or already closed'
+        message: 'Client is closing or already closed',
       };
     }
-    
+
     // Check for connection errors
     if (
       errorMessage.includes('ECONNREFUSED') ||
@@ -58,10 +58,10 @@ export class ErrorClassifier {
         originalError: error,
         isRetryable: true,
         shouldSuppress: false,
-        message: 'Failed to connect to server'
+        message: 'Failed to connect to server',
       };
     }
-    
+
     // Check for timeout errors
     if (
       errorName === 'TimeoutError' ||
@@ -73,10 +73,10 @@ export class ErrorClassifier {
         originalError: error,
         isRetryable: true,
         shouldSuppress: false,
-        message: 'Operation timed out'
+        message: 'Operation timed out',
       };
     }
-    
+
     // Check for authentication errors
     if (
       errorMessage.includes('NOAUTH') ||
@@ -88,10 +88,10 @@ export class ErrorClassifier {
         originalError: error,
         isRetryable: false,
         shouldSuppress: false,
-        message: 'Authentication failed'
+        message: 'Authentication failed',
       };
     }
-    
+
     // Check for command errors
     if (
       errorMessage.includes('ERR') ||
@@ -103,10 +103,10 @@ export class ErrorClassifier {
         originalError: error,
         isRetryable: false,
         shouldSuppress: false,
-        message: 'Command execution failed'
+        message: 'Command execution failed',
       };
     }
-    
+
     // Check for network errors
     if (
       errorMessage.includes('EPIPE') ||
@@ -118,20 +118,20 @@ export class ErrorClassifier {
         originalError: error,
         isRetryable: true,
         shouldSuppress: false,
-        message: 'Network error occurred'
+        message: 'Network error occurred',
       };
     }
-    
+
     // Default to unknown error
     return {
       type: ErrorType.UNKNOWN_ERROR,
       originalError: error,
       isRetryable: false,
       shouldSuppress: false,
-      message: error?.message || 'Unknown error occurred'
+      message: error?.message || 'Unknown error occurred',
     };
   }
-  
+
   /**
    * Check if an error should be suppressed (e.g., during cleanup)
    */
@@ -139,7 +139,7 @@ export class ErrorClassifier {
     const classified = this.classify(error);
     return classified.shouldSuppress;
   }
-  
+
   /**
    * Check if an error is retryable
    */
@@ -147,7 +147,7 @@ export class ErrorClassifier {
     const classified = this.classify(error);
     return classified.isRetryable;
   }
-  
+
   /**
    * Format error for logging
    */

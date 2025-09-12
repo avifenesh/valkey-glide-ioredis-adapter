@@ -1,6 +1,6 @@
 /**
  * Constants and Configuration Values
- * 
+ *
  * Centralized configuration for timeouts, limits, and other magic numbers
  * used throughout the adapter.
  */

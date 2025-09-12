@@ -6,7 +6,11 @@
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import { delay } from '../utils/test-config.mjs';
-import { describeForEachMode, createClient, flushAll } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+} from '../setup/dual-mode.mjs';
 
 describeForEachMode('Basic Pub/Sub Functionality', mode => {
   let publisher;

@@ -1,6 +1,10 @@
 import { describe, it, afterEach, after } from 'node:test';
 import assert from 'node:assert';
-import { describeForEachMode, createClient, flushAll } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+} from '../setup/dual-mode.mjs';
 describeForEachMode('Connection Management (ioredis compatibility)', mode => {
   let client;
 

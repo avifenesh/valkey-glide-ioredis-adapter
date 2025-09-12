@@ -136,16 +136,16 @@ export async function client(
 export async function clientId(client: BaseClient): Promise<number> {
   const internal = asInternal(client);
   await internal.ensureConnection();
-  
+
   // Both GlideClient and GlideClusterClient have clientId()
   const result = await internal.glideClient.clientId();
-  
+
   // GlideClient returns number, GlideClusterClient returns ClusterResponse<number>
   if (client.isCluster && typeof result === 'object') {
     // For cluster, return first node's client ID
     return Object.values(result)[0] as number;
   }
-  
+
   return result as number;
 }
 
@@ -156,10 +156,10 @@ export async function configGet(
   const internal = asInternal(client);
   await internal.ensureConnection();
   const params = Array.isArray(parameter) ? parameter : [parameter];
-  
+
   // Both GlideClient and GlideClusterClient have configGet()
   const res = await internal.glideClient.configGet(params);
-  
+
   // Handle ClusterResponse for cluster clients
   if (client.isCluster && typeof res === 'object') {
     // For cluster, merge all node responses
@@ -171,7 +171,7 @@ export async function configGet(
     }
     return list;
   }
-  
+
   // For standalone, convert Record<string, GlideString> to array
   const list: string[] = [];
   for (const [k, v] of Object.entries(res)) {
@@ -186,7 +186,7 @@ export async function configSet(
 ): Promise<'OK'> {
   const internal = asInternal(client);
   await internal.ensureConnection();
-  
+
   // Both GlideClient and GlideClusterClient have configSet()
   return await internal.glideClient.configSet(map);
 }
@@ -194,7 +194,7 @@ export async function configSet(
 export async function configRewrite(client: BaseClient): Promise<'OK'> {
   const internal = asInternal(client);
   await internal.ensureConnection();
-  
+
   // Both GlideClient and GlideClusterClient have configRewrite()
   return await internal.glideClient.configRewrite();
 }
@@ -202,7 +202,7 @@ export async function configRewrite(client: BaseClient): Promise<'OK'> {
 export async function configResetStat(client: BaseClient): Promise<'OK'> {
   const internal = asInternal(client);
   await internal.ensureConnection();
-  
+
   // Both GlideClient and GlideClusterClient have configResetStat()
   return await internal.glideClient.configResetStat();
 }
@@ -215,10 +215,7 @@ export async function config(
   const internal = asInternal(client);
   await internal.ensureConnection();
   const args = parameter ? [action, parameter] : [action];
-  const result = await internal.glideClient.customCommand([
-    'CONFIG',
-    ...args,
-  ]);
+  const result = await internal.glideClient.customCommand(['CONFIG', ...args]);
 
   if (action.toUpperCase() === 'GET' && Array.isArray(result)) {
     return result.map((item: any) => String(item));
@@ -234,7 +231,7 @@ export async function flushall(
 ): Promise<string> {
   const internal = asInternal(client);
   await internal.ensureConnection();
-  
+
   // Both GlideClient and GlideClusterClient have flushall()
   // GLIDE uses FlushMode enum, but we accept string for ioredis compatibility
   const glideMode = mode?.toUpperCase() as any; // FlushMode enum value
@@ -248,9 +245,9 @@ export async function flushdb(
 ): Promise<string> {
   const internal = asInternal(client);
   await internal.ensureConnection();
-  
+
   // Both GlideClient and GlideClusterClient have flushdb()
-  // GLIDE uses FlushMode enum, but we accept string for ioredis compatibility  
+  // GLIDE uses FlushMode enum, but we accept string for ioredis compatibility
   const glideMode = mode?.toUpperCase() as any; // FlushMode enum value
   const result = await internal.glideClient.flushdb(glideMode);
   return result;
@@ -259,7 +256,7 @@ export async function flushdb(
 export async function dbsize(client: BaseClient): Promise<number> {
   const internal = asInternal(client);
   await internal.ensureConnection();
-  
+
   // Both GlideClient and GlideClusterClient have dbsize()
   // GlideClient.dbsize() returns Promise<number>
   // GlideClusterClient.dbsize() ALSO returns Promise<number> (aggregated)
@@ -306,53 +303,61 @@ export async function echo(
 ): Promise<string> {
   const internal = asInternal(client);
   await internal.ensureConnection();
-  
+
   // Both GlideClient and GlideClusterClient have echo()
   const result = await internal.glideClient.echo(message);
-  
+
   // GlideClient returns GlideString
   // GlideClusterClient returns ClusterResponse<GlideString>
-  if (client.isCluster && typeof result === 'object' && !Buffer.isBuffer(result)) {
+  if (
+    client.isCluster &&
+    typeof result === 'object' &&
+    !Buffer.isBuffer(result)
+  ) {
     // For cluster, return first node's response
     const firstValue = Object.values(result)[0];
     return ParameterTranslator.convertGlideString(firstValue) || '';
   }
-  
+
   return ParameterTranslator.convertGlideString(result) || '';
 }
 
 export async function time(client: BaseClient): Promise<[string, string]> {
   const internal = asInternal(client);
   await internal.ensureConnection();
-  
+
   // Both GlideClient and GlideClusterClient have time()
   const result = await internal.glideClient.time();
-  
+
   // GlideClient returns [string, string]
   // GlideClusterClient returns ClusterResponse<[string, string]>
-  if (client.isCluster && typeof result === 'object' && !Array.isArray(result)) {
+  if (
+    client.isCluster &&
+    typeof result === 'object' &&
+    !Array.isArray(result)
+  ) {
     // For cluster, return first node's time
     const firstValue = Object.values(result)[0] as [string, string];
     return firstValue;
   }
-  
+
   return result as [string, string];
 }
 
 export async function lastsave(client: BaseClient): Promise<number> {
   const internal = asInternal(client);
   await internal.ensureConnection();
-  
+
   // Both GlideClient and GlideClusterClient have lastsave()
   const result = await internal.glideClient.lastsave();
-  
+
   // GlideClient returns number
   // GlideClusterClient returns ClusterResponse<number>
   if (client.isCluster && typeof result === 'object') {
     // For cluster, return the most recent save time across all nodes
     return Math.max(...Object.values(result).map(val => Number(val)));
   }
-  
+
   return result as number;
 }
 

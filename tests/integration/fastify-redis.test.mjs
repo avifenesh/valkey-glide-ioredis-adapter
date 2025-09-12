@@ -5,7 +5,13 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+  keyTag,
+} from '../setup/dual-mode.mjs';
+import { Cluster } from '../../dist/index.js';
 
 describeForEachMode('Fastify Redis Plugin Compatibility', mode => {
   let client;

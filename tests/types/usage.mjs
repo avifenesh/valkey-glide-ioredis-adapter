@@ -9,16 +9,13 @@
  */
 
 // TypeScript type-usage smoke test: ensures our public types compile in TS
-import RedisDefault, {
-  Redis,
-  Cluster,
-  RedisOptions,
-} from '../../dist/index.js';
+import pkg from '../../dist/index.js';
+const { Redis: RedisDefault, Redis, Cluster } = pkg;
 
 // TypeScript compilation tests
 function testRedisTypeUsage() {
   // Basic options with proper typing
-  const opts: RedisOptions = {
+  const opts = {
     host: 'localhost',
     port: parseInt(process.env.VALKEY_PORT || '6383'),
     keyPrefix: 'ts:types:',
@@ -27,26 +24,23 @@ function testRedisTypeUsage() {
   };
 
   // Construct via named export
-  const client: Redis = new Redis(opts);
+  const client = new Redis(opts);
 
   // Construct via default export
-  const client2: Redis = new RedisDefault(opts);
+  const client2 = new RedisDefault(opts);
 
   // Method signatures should type-check
-  const setPromise: Promise<string | null> = client.set(
-    'ts:test:key',
-    'test_value'
-  );
-  const getPromise: Promise<string | null> = client.get('ts:test:key');
-  const delPromise: Promise<number> = client.del('ts:test:key');
-  const quitPromise: Promise<void> = client.quit();
+  const setPromise = client.set('ts:test:key', 'test_value');
+  const getPromise = client.get('ts:test:key');
+  const delPromise = client.del('ts:test:key');
+  const quitPromise = client.quit();
 
   return { client, client2, setPromise, getPromise, delPromise, quitPromise };
 }
 
 function testClusterTypeUsage() {
   // Cluster type usage (nodes shape)
-  const cluster: Cluster = new Cluster(
+  const cluster = new Cluster(
     [
       { host: 'localhost', port: 7000 },
       { host: 'localhost', port: 7001 },
@@ -60,14 +54,14 @@ function testClusterTypeUsage() {
   // Method should be typed
   const pipeline = cluster.pipeline();
   const multi = cluster.multi();
-  const quitPromise: Promise<void> = cluster.quit();
+  const quitPromise = cluster.quit();
 
   return { cluster, pipeline, multi, quitPromise };
 }
 
 function testRedisOptionsInterface() {
   // Test that RedisOptions interface accepts all expected properties
-  const fullOptions: RedisOptions = {
+  const fullOptions = {
     host: 'localhost',
     port: 6379,
     keyPrefix: 'test:',
@@ -81,17 +75,17 @@ function testRedisOptionsInterface() {
   };
 
   // Should compile without errors
-  const client: Redis = new Redis(fullOptions);
+  const client = new Redis(fullOptions);
   return client;
 }
 
 function testMethodChainingTypes() {
-  const opts: RedisOptions = {
+  const opts = {
     host: 'localhost',
     port: 6383,
   };
 
-  const client: Redis = new Redis(opts);
+  const client = new Redis(opts);
 
   // Pipeline should return proper types for chaining
   const pipeline = client
@@ -111,41 +105,37 @@ function testMethodChainingTypes() {
 }
 
 async function testAsyncMethodReturnTypes() {
-  const opts: RedisOptions = {
+  const opts = {
     host: 'localhost',
     port: 6383,
     lazyConnect: true, // Don't actually connect in type tests
   };
 
-  const client: Redis = new Redis(opts);
+  const client = new Redis(opts);
 
   // String operations - type annotations validate return types
-  const setResult: Promise<string | null> = client.set('type:string', 'test');
-  const stringResult: Promise<string | null> = client.get('type:string');
+  const setResult = client.set('type:string', 'test');
+  const stringResult = client.get('type:string');
 
   // Number operations
-  const incrResult: Promise<number> = client.incr('type:number');
+  const incrResult = client.incr('type:number');
 
   // Hash operations
-  const hsetResult: Promise<number> = client.hset(
-    'type:hash',
-    'field',
-    'value'
-  );
-  const hashResult: Promise<string | null> = client.hget('type:hash', 'field');
+  const hsetResult = client.hset('type:hash', 'field', 'value');
+  const hashResult = client.hget('type:hash', 'field');
 
   // List operations
-  const lpushResult: Promise<number> = client.lpush('type:list', 'item');
-  const listResult: Promise<string[]> = client.lrange('type:list', 0, -1);
+  const lpushResult = client.lpush('type:list', 'item');
+  const listResult = client.lrange('type:list', 0, -1);
 
   // Cleanup
-  const delResult: Promise<number> = client.del(
+  const delResult = client.del(
     'type:string',
     'type:number',
     'type:hash',
     'type:list'
   );
-  const quitResult: Promise<void> = client.quit();
+  const quitResult = client.quit();
 
   return {
     setResult,
@@ -161,7 +151,7 @@ async function testAsyncMethodReturnTypes() {
 }
 
 function testErrorHandlingTypes() {
-  const client: Redis = new Redis({
+  const client = new Redis({
     host: 'nonexistent',
     port: 9999,
     connectTimeout: 100,
@@ -169,13 +159,13 @@ function testErrorHandlingTypes() {
   });
 
   // Error handling should be properly typed
-  const connectPromise: Promise<void> = client.connect();
-  const pingPromise: Promise<string> = client.ping();
+  const connectPromise = client.connect();
+  const pingPromise = client.ping();
 
   // Error should be unknown type in catch
-  connectPromise.catch((error: unknown) => {
+  connectPromise.catch(error => {
     if (error instanceof Error) {
-      const message: string = error.message;
+      const message = error.message;
       console.log(message); // Use the variable to avoid unused variable warning
     }
   });

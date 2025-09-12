@@ -1,6 +1,6 @@
 /**
  * Internal type definitions for command modules
- * 
+ *
  * These interfaces expose protected methods of BaseClient to command modules
  * in a type-safe way, eliminating the need for (client as any) casting.
  */
@@ -15,17 +15,17 @@ import { RedisKey } from './index';
 export interface IInternalClient {
   // Connection management (note: actually protected in BaseClient)
   ensureConnection(): Promise<void>;
-  
+
   // Key normalization (note: actually protected in BaseClient)
   normalizeKey(key: RedisKey): string;
-  
+
   // Access to underlying GLIDE client
   readonly glideClient: GlideClientType;
-  
+
   // Connection status
   readonly connectionStatus: string;
   readonly isClosing: boolean;
-  
+
   // Options
   readonly options: any;
   readonly keyPrefix?: string;
