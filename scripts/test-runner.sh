@@ -42,10 +42,9 @@ trap cleanup SIGINT SIGTERM
 
 echo -e "${GREEN}=== Running Test Suite ===${NC}"
 
-# Infrastructure management
-VALKEY_PORT=${VALKEY_PORT:-6383}
+# Infrastructure management - use environment variables if set
 export VALKEY_HOST=${VALKEY_HOST:-localhost}
-export VALKEY_PORT
+export VALKEY_PORT=${VALKEY_PORT:-6383}
 INFRA_STARTED=false
 
 # Function to check if Valkey is accessible
