@@ -102,7 +102,11 @@ jobs:
         done
         
         echo "🧪 Running unit tests..."
-        npm run test:standalone -- tests/unit/
+        timeout 300 npm run test:standalone -- tests/unit/ || {
+          echo "⚠️ Unit tests timed out or failed, forcing cleanup..."
+          node -e "import('./dist/index.js').then(pkg => pkg.Redis.forceCloseAllClients(1000))"
+          exit 1
+        }
         
         echo "⏳ Waiting 10s to reduce server load..."
         sleep 10
@@ -119,7 +123,11 @@ jobs:
         done
         
         echo "🧪 Running integration tests..."
-        npm run test:standalone -- tests/integration/
+        timeout 300 npm run test:standalone -- tests/integration/ || {
+          echo "⚠️ Integration tests timed out or failed, forcing cleanup..."
+          node -e "import('./dist/index.js').then(pkg => pkg.Redis.forceCloseAllClients(1000))"
+          exit 1
+        }
         
         echo "⏳ Waiting 10s to reduce server load..."
         sleep 10
@@ -136,12 +144,25 @@ jobs:
         done
         
         echo "🧪 Running cluster tests..."
-        npm run test:standalone -- tests/cluster/
+        timeout 300 npm run test:standalone -- tests/cluster/ || {
+          echo "⚠️ Cluster tests timed out or failed, forcing cleanup..."
+          node -e "import('./dist/index.js').then(pkg => pkg.Redis.forceCloseAllClients(1000))"
+          exit 1
+        }
       env:
         CI: true
         VALKEY_HOST: localhost
         VALKEY_PORT: 6383
         VALKEY_CLUSTER_NODES: localhost:17000,localhost:17001,localhost:17002
+
+    - name: Cleanup after tests
+      if: always()
+      run: |
+        echo "🧹 Cleaning up after tests..."
+        # Force close all Redis clients
+        node -e "import('./dist/index.js').then(pkg => pkg.Redis.forceCloseAllClients(1000)).catch(() => {})" || true
+        sleep 2
+        echo "✅ Cleanup completed"
 
     - name: Upload coverage to Codecov
       if: matrix.node == '20'
@@ -226,7 +247,11 @@ jobs:
         
         echo "🧪 Running unit tests (excluding JSON/module tests)..."
         # Exclude JSON and module-dependent tests
-        find tests/unit -name "*.test.mjs" ! -name "*json*" ! -name "*module*" ! -name "*search*" | xargs npm run test:standalone --
+        timeout 300 find tests/unit -name "*.test.mjs" ! -name "*json*" ! -name "*module*" ! -name "*search*" | xargs npm run test:standalone -- || {
+          echo "⚠️ Unit tests timed out or failed, forcing cleanup..."
+          node -e "import('./dist/index.js').then(pkg => pkg.Redis.forceCloseAllClients(1000))"
+          exit 1
+        }
         
         echo "⏳ Waiting 15s to reduce server load..."
         sleep 15
@@ -243,7 +268,11 @@ jobs:
         done
         
         echo "🧪 Running basic integration tests..."
-        npm run test:standalone -- tests/integration/simple-adapter.test.mjs tests/integration/fastify-redis.test.mjs
+        timeout 300 npm run test:standalone -- tests/integration/simple-adapter.test.mjs tests/integration/fastify-redis.test.mjs || {
+          echo "⚠️ Integration tests timed out or failed, forcing cleanup..."
+          node -e "import('./dist/index.js').then(pkg => pkg.Redis.forceCloseAllClients(1000))"
+          exit 1
+        }
       env:
         CI: true
         VALKEY_HOST: localhost
@@ -254,6 +283,14 @@ jobs:
       if: always()
       run: |
         echo "🧹 Cleaning up Valkey server..."
+        
+        # Force close all Redis clients first
+        echo "🔌 Force closing all Redis clients..."
+        node -e "import('./dist/index.js').then(pkg => pkg.Redis.forceCloseAllClients(1000)).catch(() => {})" || true
+        
+        # Wait for cleanup
+        sleep 2
+        
         # Stop Valkey gracefully with timeout
         timeout 10 valkey-cli -p 6383 SHUTDOWN NOSAVE || true
         # Kill any remaining processes
