@@ -101,14 +101,14 @@ jobs:
         # redis-tools already installed in previous step
         
         for i in {1..30}; do
-          if redis-cli -h localhost -p 6383 ping > /dev/null 2>&1; then
+          if redis-cli -h 127.0.0.1 -p 6383 ping > /dev/null 2>&1; then
             echo "✅ Valkey Bundle is ready!"
             echo "📦 Checking loaded modules..."
-            redis-cli -h localhost -p 6383 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"
+            redis-cli -h 127.0.0.1 -p 6383 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"
             echo "🔍 Testing JSON command..."
-            redis-cli -h localhost -p 6383 JSON.SET test_ci_key '$' '"test"' || echo "⚠️  JSON module not available"
+            redis-cli -h 127.0.0.1 -p 6383 JSON.SET test_ci_key '$' '"test"' || echo "⚠️  JSON module not available"
             echo "🔍 Testing Search command..."
-            redis-cli -h localhost -p 6383 FT.CREATE test_ci_idx ON JSON PREFIX 1 "test:" SCHEMA name TEXT || echo "⚠️  Search module not available"
+            redis-cli -h 127.0.0.1 -p 6383 FT.CREATE test_ci_idx ON JSON PREFIX 1 "test:" SCHEMA name TEXT || echo "⚠️  Search module not available"
             break
           fi
           echo "⏳ Waiting for Valkey Bundle... ($i/30)"
@@ -119,11 +119,11 @@ jobs:
       run: npm test
       env:
         CI: true
-        VALKEY_HOST: localhost
+        VALKEY_HOST: 127.0.0.1
         VALKEY_PORT: 6383
-        VALKEY_BUNDLE_HOST: localhost
+        VALKEY_BUNDLE_HOST: 127.0.0.1
         VALKEY_BUNDLE_PORT: 6383
-        VALKEY_CLUSTER_NODES: localhost:17000,localhost:17001,localhost:17002
+        VALKEY_CLUSTER_NODES: 127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002
         ENABLE_CLUSTER_TESTS: true
 
     - name: Upload coverage to Codecov
@@ -199,7 +199,7 @@ jobs:
       run: npm test
       env:
         CI: true
-        VALKEY_HOST: localhost
+        VALKEY_HOST: 127.0.0.1
         VALKEY_PORT: 6383
 
     - name: Cleanup Valkey server
