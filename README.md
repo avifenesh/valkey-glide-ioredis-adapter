@@ -15,6 +15,13 @@ A **production-ready ioredis replacement** that seamlessly integrates **Valkey G
 
 This project uses **exclusively Valkey GLIDE** - a high-performance, language-independent Valkey client library with a Rust core and Node.js wrapper.
 
+**v0.5.0 Major Updates:**
+- ✅ **Complete Architecture Refactor** - Rebuilt for optimal GLIDE integration
+- ✅ **Binary Pub/Sub Support** - Full support for binary data in real-time applications  
+- ✅ **Enhanced Connection Management** - Improved auto-connect and cleanup logic
+- ✅ **ES Module Test Suite** - Complete migration to modern ES modules
+- ✅ **35+ Test Improvements** - Enhanced reliability and test infrastructure
+
 ## 🏆 **Production Readiness Status**
 
 | Component | Status | Test Coverage | Production Use |
