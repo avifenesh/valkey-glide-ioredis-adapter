@@ -32,10 +32,15 @@ export class ResultTranslator {
     let index = 0;
 
     for (const item of glideResult) {
+      // Bounds checking: ensure item has required properties
+      if (!item || typeof item !== 'object') {
+        continue; // Skip invalid items
+      }
+
       // Direct array assignment is faster than push
       flatArray[index++] =
         ParameterTranslator.convertGlideString(item.element) || '';
-      flatArray[index++] = item.score.toString();
+      flatArray[index++] = (item.score ?? 0).toString();
     }
 
     return flatArray;
