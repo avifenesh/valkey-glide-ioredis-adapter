@@ -2,10 +2,11 @@
  * Basic smoke test for Redis - Standalone version without globals
  */
 
-import { describe, it, test } from 'node:test';
+import { describe, test } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
+import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('Redis Basic Functionality (No Globals)', () => {
   test('should create adapter instance with lazyConnect', async () => {
@@ -15,21 +16,13 @@ describe('Redis Basic Functionality (No Globals)', () => {
   });
 
   test('should create adapter with port and host', async () => {
-    const adapter = new Redis({
-      port: 6383,
-      host: 'localhost',
-      lazyConnect: true,
-    });
+    const adapter = new Redis(getStandaloneConfig());
     assert.ok(adapter instanceof Redis);
     assert.strictEqual(adapter.status, 'disconnected');
   });
 
   test('should create adapter with options object', async () => {
-    const adapter = new Redis({
-      port: 6383,
-      host: 'localhost',
-      lazyConnect: true,
-    });
+    const adapter = new Redis(getStandaloneConfig());
     assert.ok(adapter instanceof Redis);
   });
 

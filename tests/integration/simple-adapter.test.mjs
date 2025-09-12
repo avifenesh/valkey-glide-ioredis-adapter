@@ -3,15 +3,7 @@
  * Tests that our ioredis adapter can connect and perform basic operations
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { describe, test, beforeEach, afterEach, before } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
