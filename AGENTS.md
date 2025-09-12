@@ -8,8 +8,8 @@
 
 ## Build, Test, and Development Commands
 - `npm run build`: Compile TypeScript to `dist/`.
-- `npm test`: Run Node’s test runner via `scripts/test-runner-batch.sh` (batches `.test.mjs`).
-- `npm run test:cov`: Same tests with c8 coverage (`text`, `html`, `lcov`).
+- `npm test`: Dual-mode runner; executes standalone tests then cluster tests (`scripts/test-dual-mode.sh`).
+- `npm run test:cov`: Dual-mode with c8 coverage (`text`, `html`, `lcov`).
 - `npm run test:types`: Type‑check sample types in `tests/types/`.
 - `npm run lint` / `npm run lint:fix`: ESLint over `src` and `tests` (auto‑fix with `--fix`).
 - `npm run format` / `npm run format:check`: Prettier format or check.
@@ -24,8 +24,9 @@
 
 ## Testing Guidelines
 - Runner: Node test runner; tests end with `.test.mjs` under `tests/unit` or `tests/integration` (cluster specs in `tests/cluster`).
-- Coverage: c8 reports with target ≥ 80% lines/branches (see `jest.config.js` thresholds).
-- Env: `VALKEY_HOST` / `VALKEY_PORT` (defaults `localhost:6379`). For integration, start a local bundle via `npm run valkey:test`.
+- Modes: Dual-mode runs standalone first, then cluster (cluster-only specs live under `tests/cluster`).
+- Coverage: c8 reports with target ≥ 80% lines/branches.
+- Env: `VALKEY_HOST` / `VALKEY_PORT` (defaults `localhost:6383`). Cluster uses `VALKEY_CLUSTER_NODES` (e.g., `localhost:17000,localhost:17001,localhost:17002`). For integration, start a local bundle via `npm run valkey:test`.
 
 ## Commit & Pull Request Guidelines
 - Commits: Conventional Commits. Examples:
@@ -36,4 +37,3 @@
 ## Security & Configuration Tips
 - Do not commit secrets. Use env vars or a local `.env`.
 - Prefer ephemeral Valkey for e2e/integration via `npm run valkey:test`.
-

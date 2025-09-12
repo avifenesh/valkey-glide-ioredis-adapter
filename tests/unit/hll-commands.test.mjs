@@ -3,33 +3,25 @@
  * Tests for probabilistic cardinality estimation
  */
 
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
 
-describe('HyperLogLog Commands', () => {
+describeForEachMode('HyperLogLog Commands', mode => {
   let client;
-  const testKey = 'test:hll';
+  let testKey;
+  let tag;
 
   beforeEach(async () => {
-    client = new Redis(getStandaloneConfig());
+    client = await createClient(mode);
     await client.connect();
-
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
-    await client.flushdb();
+    await flushAll(client);
+    tag = keyTag('hll');
+    testKey = `${tag}:test:hll`;
   });
 
   afterEach(async () => {
     if (client) {
-      await client.flushdb();
       await client.disconnect();
     }
   });

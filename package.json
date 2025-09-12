@@ -29,7 +29,7 @@
     "pretest:unit": "npm run build",
     "build": "tsc",
     "build:watch": "tsc --watch",
-    "test": "exec ./scripts/test-sequential.sh",
+    "test": "./scripts/test-dual-mode.sh",
     "test:parallel": "./scripts/test-dual-mode.sh",
     "test:sequential": "./scripts/test-sequential.sh",
     "test:standalone": "DISABLE_CLUSTER_TESTS=true ./scripts/test-runner.sh",

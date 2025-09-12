@@ -256,23 +256,9 @@ describe('Real-World Socket.IO Application', () => {
     if (chatServer1) chatServer1.close();
     if (chatServer2) chatServer2.close();
 
-    // Clean up chat data using SCAN
+    // Clean up chat data via cluster-safe FLUSHALL
     try {
-      let cursor = '0';
-      const keys = [];
-      do {
-        const res = await valkeyPubClient1.scan(
-          cursor,
-          'MATCH',
-          'CHAT:*',
-          'COUNT',
-          200
-        );
-        cursor = Array.isArray(res) ? res[0] : '0';
-        const batch = Array.isArray(res) ? res[1] : [];
-        if (Array.isArray(batch) && batch.length) keys.push(...batch);
-      } while (cursor !== '0');
-      if (keys.length > 0) await valkeyPubClient1.del(...keys);
+      await valkeyPubClient1.flushall();
     } catch {
       // Ignore cleanup errors
     }

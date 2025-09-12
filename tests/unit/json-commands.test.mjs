@@ -58,17 +58,9 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
   });
 
   beforeEach(async () => {
-    // Clean up any existing test keys using SCAN
+    // Clean slate for JSON tests (cluster-safe)
     try {
-      let cursor = '0';
-      const keys = [];
-      do {
-        const res = await client.scan(cursor, 'MATCH', '*', 'COUNT', 500);
-        cursor = Array.isArray(res) ? res[0] : '0';
-        const batch = Array.isArray(res) ? res[1] : [];
-        if (Array.isArray(batch) && batch.length) keys.push(...batch);
-      } while (cursor !== '0');
-      if (keys.length > 0) await client.del(...keys);
+      await client.flushall();
     } catch {
       // Ignore cleanup errors
     }

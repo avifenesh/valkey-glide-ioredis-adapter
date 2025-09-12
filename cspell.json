@@ -71,7 +71,17 @@
     "zadd",
     "zrange",
     "zsets",
-    "zset"
+    "zset",
+    "dbsize",
+    "dbsizes",
+    "DBSIZE",
+    "slowlog",
+    "SLOWLOG",
+    "lastsave",
+    "LASTSAVE",
+    "bgsave",
+    "BGSAVE",
+    "RESETSTAT"
   ],
   "ignorePaths": [
     "node_modules/**",

@@ -3,51 +3,21 @@
  * Tests current pub/sub implementation and validates incremental improvements
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import {
-  getStandaloneConfig,
-  checkTestServers,
-  delay,
-} from '../utils/test-config.mjs';
+import { delay } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll } from '../setup/dual-mode.mjs';
 
-describe('Basic Pub/Sub Functionality', () => {
+describeForEachMode('Basic Pub/Sub Functionality', mode => {
   let publisher;
   let subscriber;
-  let config;
-
-  before(async () => {
-    // Check if test servers are available
-    const serversAvailable = await checkTestServers();
-    if (!serversAvailable) {
-      throw new Error(
-        'Test servers not available. Please start Redis server before running tests.'
-      );
-    }
-
-    config = await getStandaloneConfig();
-  });
 
   beforeEach(async () => {
-    // Create separate clients for publishing and subscribing
-    publisher = new Redis(config);
-    subscriber = new Redis(config);
-
+    publisher = await createClient(mode);
+    subscriber = await createClient(mode);
     await publisher.connect();
     await subscriber.connect();
-
-    // Clear any existing state
-    await publisher.flushall();
+    await flushAll(publisher);
   });
 
   afterEach(async () => {

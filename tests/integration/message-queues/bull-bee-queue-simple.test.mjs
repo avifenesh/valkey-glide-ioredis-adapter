@@ -43,22 +43,8 @@ describe('Message Queue Systems Integration (No Workers)', () => {
   afterEach(async () => {
     if (redisClient) {
       try {
-        // Clean up keys using SCAN with per-suite prefix
-        let cursor = '0';
-        const keys = [];
-        do {
-          const res = await redisClient.scan(
-            cursor,
-            'MATCH',
-            `${keyPrefix}*`,
-            'COUNT',
-            200
-          );
-          cursor = Array.isArray(res) ? res[0] : '0';
-          const batch = Array.isArray(res) ? res[1] : [];
-          if (Array.isArray(batch) && batch.length) keys.push(...batch);
-        } while (cursor !== '0');
-        if (keys.length > 0) await redisClient.del(...keys);
+        // Clean slate via cluster-safe FLUSHALL
+        await redisClient.flushall();
       } catch {
         // Ignore cleanup errors
       }

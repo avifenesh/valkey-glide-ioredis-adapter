@@ -11,8 +11,6 @@ import {
   GlideClient, 
   GlideClusterClient,
   Script,
-  Transaction,
-  ClusterTransaction,
   Batch,
   ClusterBatch,
   TimeUnit,
@@ -1775,21 +1773,16 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
 
   // Create adapter that implements Pipeline/Multi interface on top of GLIDE Batch
   private createBatchAdapter(isTransaction: boolean): any {
-    // Create the appropriate batch or transaction object
-    let batch: Batch | ClusterBatch | Transaction | ClusterTransaction;
+    // Create the appropriate batch object
+    // Use Batch/ClusterBatch with isAtomic parameter instead of deprecated Transaction classes
+    let batch: Batch | ClusterBatch;
     
     if (this.isCluster) {
-      if (isTransaction) {
-        batch = new ClusterTransaction();
-      } else {
-        batch = new ClusterBatch(false); // false = non-atomic (pipeline)
-      }
+      // ClusterBatch: isAtomic = true for transaction, false for pipeline
+      batch = new ClusterBatch(isTransaction);
     } else {
-      if (isTransaction) {
-        batch = new Transaction();
-      } else {
-        batch = new Batch(false); // false = non-atomic (pipeline)
-      }
+      // Batch: isAtomic = true for transaction, false for pipeline
+      batch = new Batch(isTransaction);
     }
     let commandCount = 0;
     let discarded = false;
@@ -2221,8 +2214,8 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
           // Execute the batch commands first
           // Use type narrowing to call exec with the correct batch type
           const batchResults = this.isCluster 
-            ? await (this.glideClient as GlideClusterClient).exec(batch as ClusterBatch | ClusterTransaction, false)
-            : await (this.glideClient as GlideClient).exec(batch as Batch | Transaction, false);
+            ? await (this.glideClient as GlideClusterClient).exec(batch as ClusterBatch, false)
+            : await (this.glideClient as GlideClient).exec(batch as Batch, false);
 
           // Execute custom commands that were registered via defineCommand
           const customResults: Array<[Error | null, any]> = [];

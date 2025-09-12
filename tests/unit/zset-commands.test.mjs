@@ -3,36 +3,19 @@
  * Real-world patterns, rankings, time-series data, priority queues
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
 
-describe('ZSet Commands - Real-World Patterns', () => {
+describeForEachMode('ZSet Commands - Real-World Patterns', mode => {
   let client;
+  let tag;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    client = new Redis(config);
-
+    client = await createClient(mode);
     await client.connect();
-
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+    await flushAll(client);
+    tag = keyTag('z');
   });
 
   afterEach(async () => {
@@ -41,7 +24,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
 
   describe('Gaming Leaderboard Pattern', () => {
     test('should handle game score updates with ZADD', async () => {
-      const key = 'test:zadd:' + Math.random();
+      const key = `${tag}:test:zadd:${Math.random()}`;
 
       // Add initial players
       const result1 = await client.zadd(key, 1000, 'player1');
@@ -64,7 +47,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
     });
 
     test('should increment player scores with ZINCRBY', async () => {
-      const key = 'test:zincrby:' + Math.random();
+      const key = `${tag}:test:zincrby:${Math.random()}`;
 
       await client.zadd(key, 1000, 'player1');
 
@@ -78,7 +61,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
     });
 
     test('should get top players with ZREVRANGE', async () => {
-      const key = 'test:zrevrange:' + Math.random();
+      const key = `${tag}:test:zrevrange:${Math.random()}`;
 
       // Setup leaderboard
       await client.zadd(

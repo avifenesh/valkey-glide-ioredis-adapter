@@ -13,48 +13,20 @@ import {
   after,
 } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import {
-  getStandaloneConfig,
-  checkTestServers,
-  delay,
-} from '../utils/test-config.mjs';
+import { delay } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll } from '../setup/dual-mode.mjs';
 
-describe('String Commands (ioredis compatibility)', () => {
+describeForEachMode('String Commands (ioredis compatibility)', mode => {
   let client;
 
-  before(async () => {
-    // Check if test servers are available
-    const serversAvailable = await checkTestServers();
-    if (!serversAvailable) {
-      throw new Error(
-        'Test servers not available. Please start Redis server before running tests.'
-      );
-    }
-  });
-
   beforeEach(async () => {
-    // Health check before each test
-    const serversAvailable = await checkTestServers();
-    if (!serversAvailable) {
-      throw new Error('Test servers became unavailable during test execution');
-    }
-
-    // Use test server configuration
-    const config = await getStandaloneConfig();
-    client = new Redis(config);
+    client = await createClient(mode);
     await client.connect();
 
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-      // Add a small delay to ensure flush completes
-      await delay(50);
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+    await flushAll(client);
+    await delay(50);
   });
 
   afterEach(async () => {

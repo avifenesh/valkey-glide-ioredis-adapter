@@ -33,29 +33,21 @@ describe('Simple Adapter Integration Test', () => {
     const config = await getStandaloneConfig();
     adapter = new Redis(config);
     await adapter.connect();
-
-    // Use a per-test key prefix to avoid cross-test interference
+    // Ensure clean state for each test (cluster-safe in GLIDE)
+    try {
+      await adapter.flushall();
+    } catch (error) {
+      console.warn('Warning: Could not flush database:', error.message);
+    }
+    // Use a per-test key prefix (not strictly required with flushall, but harmless)
     keyPrefix = `test:${Date.now()}:${Math.random().toString(36).slice(2)}:`;
   });
 
   afterEach(async () => {
     if (adapter) {
       try {
-        // Clean up only keys created in this test using SCAN
-        if (keyPrefix) {
-          let cursor = '0';
-          const keys = [];
-          do {
-            const res = await adapter.scan(cursor, 'MATCH', `${keyPrefix}*`, 'COUNT', 200);
-            cursor = Array.isArray(res) ? res[0] : '0';
-            const batch = Array.isArray(res) ? res[1] : [];
-            if (Array.isArray(batch) && batch.length) keys.push(...batch);
-          } while (cursor !== '0');
-
-          if (keys.length > 0) {
-            await adapter.del(...keys);
-          }
-        }
+        // Clean slate via cluster-safe FLUSHALL
+        await adapter.flushall();
       } catch {
         // Ignore cleanup errors
       }
