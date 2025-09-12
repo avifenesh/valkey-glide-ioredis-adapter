@@ -86,10 +86,7 @@ export function getGlobalClientRegistry(): Set<BaseClient> {
   return globalClientRegistry;
 }
 
-export abstract class BaseClient
-  extends EventEmitter
-  implements IInternalClient
-{
+export abstract class BaseClient extends EventEmitter implements IInternalClient {
   public glideClient!: GlideClientType; // Always initialized in constructor
   protected subscriberClient?: GlideClientType; // Only created when needed for subscriptions
   protected ioredisCompatiblePubSub?: IoredisPubSubClient; // Only created when needed
@@ -610,23 +607,18 @@ export abstract class BaseClient
         }
       } catch (error: any) {
         // If invokeScript fails, try EVAL fallback
-        try {
-          const commandArgs = [
-            'EVAL',
-            lua,
-            numkeys.toString(),
-            ...normalizedKeys,
-            ...normalizedArgs,
-          ];
-          const result = await (this.glideClient as any).customCommand(
-            commandArgs
-          );
+        const commandArgs = [
+          'EVAL',
+          lua,
+          numkeys.toString(),
+          ...normalizedKeys,
+          ...normalizedArgs,
+        ];
+        const result = await (this.glideClient as any).customCommand(
+          commandArgs
+        );
 
-          return result === null && lua.includes('return {}') ? [] : result;
-        } catch (fallbackError: any) {
-          // Script execution failed - throw the fallback error
-          throw fallbackError;
-        }
+        return result === null && lua.includes('return {}') ? [] : result;
       }
     };
 
@@ -1113,6 +1105,78 @@ export abstract class BaseClient
     return await zsetCommands.zrevrange(this, key, start, stop, withScores);
   }
 
+  /**
+   * Parse a boundary value for zrange operations
+   * @private
+   */
+  private parseBoundary(value: string | number): {
+    value: any;
+    isInclusive: boolean;
+  } {
+    if (typeof value === 'string') {
+      if (value === '-inf' || value === '+inf') {
+        return { value: value as any, isInclusive: true };
+      } else if (value.startsWith('(')) {
+        const val = value.slice(1);
+        if (val === '-inf' || val === '+inf') {
+          return { value: val as any, isInclusive: false };
+        } else {
+          return { value: parseFloat(val), isInclusive: false };
+        }
+      } else {
+        return { value: parseFloat(value), isInclusive: true };
+      }
+    } else {
+      return { value, isInclusive: true };
+    }
+  }
+
+  /**
+   * Parse LIMIT arguments from command args
+   * @private
+   */
+  private parseLimitArgs(
+    args: string[]
+  ): { offset: number; count: number } | undefined {
+    for (let i = 0; i < args.length; i++) {
+      const currentArg = args[i];
+      if (
+        currentArg &&
+        currentArg.toString().toUpperCase() === 'LIMIT' &&
+        i + 2 < args.length
+      ) {
+        const offsetArg = args[i + 1];
+        const countArg = args[i + 2];
+        if (offsetArg !== undefined && countArg !== undefined) {
+          return {
+            offset: parseInt(offsetArg.toString()),
+            count: parseInt(countArg.toString()),
+          };
+        }
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Flatten zrange result with scores to ioredis format
+   * @private
+   */
+  private flattenZrangeWithScores(result: any[]): string[] {
+    const flattened: string[] = [];
+    for (const item of result) {
+      if (
+        typeof item === 'object' &&
+        item !== null &&
+        'element' in item &&
+        'score' in item
+      ) {
+        flattened.push(String(item.element), String(item.score));
+      }
+    }
+    return flattened;
+  }
+
   async zrangebyscore(
     key: RedisKey,
     min: string | number,
@@ -1121,104 +1185,41 @@ export abstract class BaseClient
   ): Promise<string[]> {
     const normalizedKey = this.normalizeKey(key);
 
-    try {
-      // Parse min/max boundaries for native GLIDE zrange
-      let minBoundary: any;
-      if (typeof min === 'string') {
-        if (min === '-inf' || min === '+inf') {
-          minBoundary = { value: min as any, isInclusive: true };
-        } else if (min.startsWith('(')) {
-          const val = min.slice(1);
-          if (val === '-inf' || val === '+inf') {
-            minBoundary = { value: val as any, isInclusive: false };
-          } else {
-            minBoundary = { value: parseFloat(val), isInclusive: false };
-          }
-        } else {
-          minBoundary = { value: parseFloat(min), isInclusive: true };
-        }
-      } else {
-        minBoundary = { value: min, isInclusive: true };
-      }
+    // Parse boundaries
+    const minBoundary = this.parseBoundary(min);
+    const maxBoundary = this.parseBoundary(max);
 
-      let maxBoundary: any;
-      if (typeof max === 'string') {
-        if (max === '-inf' || max === '+inf') {
-          maxBoundary = { value: max as any, isInclusive: true };
-        } else if (max.startsWith('(')) {
-          const val = max.slice(1);
-          if (val === '-inf' || val === '+inf') {
-            maxBoundary = { value: val as any, isInclusive: false };
-          } else {
-            maxBoundary = { value: parseFloat(val), isInclusive: false };
-          }
-        } else {
-          maxBoundary = { value: parseFloat(max), isInclusive: true };
-        }
-      } else {
-        maxBoundary = { value: max, isInclusive: true };
-      }
+    const rangeQuery: any = {
+      type: 'byScore',
+      start: minBoundary,
+      end: maxBoundary,
+    };
 
-      const rangeQuery: any = {
-        type: 'byScore',
-        start: minBoundary,
-        end: maxBoundary,
-      };
-
-      // Handle LIMIT arguments
-      for (let i = 0; i < args.length; i++) {
-        const currentArg = args[i];
-        if (
-          currentArg &&
-          currentArg.toString().toUpperCase() === 'LIMIT' &&
-          i + 2 < args.length
-        ) {
-          const offsetArg = args[i + 1];
-          const countArg = args[i + 2];
-          if (offsetArg !== undefined && countArg !== undefined) {
-            rangeQuery.limit = {
-              offset: parseInt(offsetArg.toString()),
-              count: parseInt(countArg.toString()),
-            };
-            break;
-          }
-        }
-      }
-
-      // Check if WITHSCORES is requested
-      const withScores = args.some(arg => arg.toUpperCase() === 'WITHSCORES');
-
-      // Use native GLIDE zrange method
-      const result = withScores
-        ? await this.glideClient.zrangeWithScores(normalizedKey, rangeQuery)
-        : await this.glideClient.zrange(normalizedKey, rangeQuery);
-
-      if (!Array.isArray(result)) {
-        return [];
-      }
-
-      if (withScores) {
-        // GLIDE returns [{element: 'key', score: 1}] format, convert to ['key', '1'] format
-        const flattened: string[] = [];
-        for (const item of result) {
-          if (
-            typeof item === 'object' &&
-            item !== null &&
-            'element' in item &&
-            'score' in item
-          ) {
-            flattened.push(String(item.element), String(item.score));
-          }
-        }
-        return flattened;
-      }
-
-      return result.map(
-        (item: any) => ParameterTranslator.convertGlideString(item) || ''
-      );
-    } catch (error) {
-      throw error;
+    // Handle LIMIT arguments
+    const limit = this.parseLimitArgs(args);
+    if (limit) {
+      rangeQuery.limit = limit;
     }
+
+    // Check if WITHSCORES is requested
+    const withScores = args.some(arg => arg.toUpperCase() === 'WITHSCORES');
+
+    // Use native GLIDE zrange method
+    const result = withScores
+      ? await this.glideClient.zrangeWithScores(normalizedKey, rangeQuery)
+      : await this.glideClient.zrange(normalizedKey, rangeQuery);
+
+    if (!Array.isArray(result)) {
+      return [];
+    }
+
+    if (withScores) {
+      return this.flattenZrangeWithScores(result);
+    }
+
+    return result.map(
+      (item: any) => ParameterTranslator.convertGlideString(item) || ''
+    );
   }
 
   async zrevrangebyscore(
