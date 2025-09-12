@@ -12,6 +12,29 @@ import { LRUCache } from './LRUCache';
 export class ParameterTranslator {
   // Performance optimization: LRU cache for frequently used parameter translations
   private static readonly setOptionsCache = new LRUCache<string, any>(1000);
+
+  /**
+   * Generates an efficient cache key for argument arrays.
+   * Uses a simple hash-based approach instead of JSON.stringify for better performance.
+   * @param args - Array of arguments to generate key for
+   * @returns Cache key string
+   * @private
+   */
+  private static generateCacheKey(args: any[]): string {
+    // Simple hash-based key generation for better performance than JSON.stringify
+    let hash = 0;
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      const str = typeof arg === 'string' ? arg : String(arg);
+      for (let j = 0; j < str.length; j++) {
+        const char = str.charCodeAt(j);
+        hash = (hash << 5) - hash + char;
+        hash = hash & hash; // Convert to 32-bit integer
+      }
+      hash = hash + i; // Include position in hash
+    }
+    return `set_${Math.abs(hash)}_${args.length}`;
+  }
   /**
    * Converts SET command arguments from ioredis format to GLIDE format.
    * @param args - ioredis SET arguments: key, value, [EX seconds], [PX milliseconds], [NX|XX]
@@ -51,7 +74,8 @@ export class ParameterTranslator {
     if (args.length === 0) return undefined;
 
     // Performance optimization: Check cache first
-    const cacheKey = JSON.stringify(args);
+    // Use a more efficient cache key generation
+    const cacheKey = this.generateCacheKey(args);
     const cached = this.setOptionsCache.get(cacheKey);
     if (cached !== undefined) {
       return cached === null ? undefined : cached;
