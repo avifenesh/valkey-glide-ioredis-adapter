@@ -33,7 +33,7 @@ jobs:
       valkey-bundle:
         image: valkey/valkey-bundle:8.1-bookworm
         ports:
-          - 6379:6379
+          - 6383:6379
         options: >-
           --health-cmd "valkey-cli ping"
           --health-interval 10s
@@ -63,14 +63,14 @@ jobs:
         sudo apt-get update && sudo apt-get install -y redis-tools
         
         for i in {1..30}; do
-          if redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
+          if redis-cli -h localhost -p 6383 ping > /dev/null 2>&1; then
             echo "✅ Valkey Bundle is ready!"
             echo "📦 Checking loaded modules..."
-            redis-cli -h localhost -p 6379 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"
+            redis-cli -h localhost -p 6383 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"
             echo "🔍 Testing JSON command..."
-            redis-cli -h localhost -p 6379 JSON.SET test_ci_key '$' '"test"' || echo "⚠️  JSON module not available"
+            redis-cli -h localhost -p 6383 JSON.SET test_ci_key '$' '"test"' || echo "⚠️  JSON module not available"
             echo "🔍 Testing Search command..."
-            redis-cli -h localhost -p 6379 FT.CREATE test_ci_idx ON JSON PREFIX 1 "test:" SCHEMA name TEXT || echo "⚠️  Search module not available"
+            redis-cli -h localhost -p 6383 FT.CREATE test_ci_idx ON JSON PREFIX 1 "test:" SCHEMA name TEXT || echo "⚠️  Search module not available"
             break
           fi
           echo "⏳ Waiting for Valkey Bundle... ($i/30)"
@@ -82,9 +82,9 @@ jobs:
       env:
         CI: true
         VALKEY_HOST: localhost
-        VALKEY_PORT: 6379
+        VALKEY_PORT: 6383
         VALKEY_BUNDLE_HOST: localhost
-        VALKEY_BUNDLE_PORT: 6379
+        VALKEY_BUNDLE_PORT: 6383
         VALKEY_CLUSTER_NODES: localhost:17000,localhost:17001,localhost:17002
 
     - name: Upload coverage to Codecov
@@ -127,7 +127,7 @@ jobs:
         
         # Start Valkey server with custom config suitable for testing
         valkey-server --daemonize yes \
-          --port 6379 \
+          --port 6383 \
           --bind 127.0.0.1 \
           --save "" \
           --appendonly no \
@@ -140,10 +140,10 @@ jobs:
         echo "⏳ Waiting for Valkey server to be ready..."
         
         for i in {1..20}; do
-          if valkey-cli -p 6379 ping > /dev/null 2>&1; then
+          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
             echo "✅ Valkey server is ready!"
             echo "📋 Server info:"
-            valkey-cli -p 6379 INFO server | head -5
+            valkey-cli -p 6383 INFO server | head -5
             break
           fi
           echo "⏳ Still waiting for Valkey server... ($i/20)"
@@ -151,21 +151,21 @@ jobs:
         done
         
         # Final test
-        valkey-cli -p 6379 ping
+        valkey-cli -p 6383 ping
 
     - name: Run all tests (same as local testing)
       run: npm test
       env:
         CI: true
         VALKEY_HOST: localhost
-        VALKEY_PORT: 6379
+        VALKEY_PORT: 6383
 
     - name: Cleanup Valkey server
       if: always()
       run: |
         echo "🧹 Cleaning up Valkey server..."
         # Stop Valkey gracefully with timeout
-        timeout 10 valkey-cli -p 6379 SHUTDOWN NOSAVE || true
+        timeout 10 valkey-cli -p 6383 SHUTDOWN NOSAVE || true
         # Kill any remaining processes
         pkill valkey-server || true
         # Wait a moment for cleanup
