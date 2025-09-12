@@ -153,12 +153,15 @@ jobs:
         # Final test
         valkey-cli -p 6383 ping
 
-    - name: Run all tests (same as local testing)
-      run: npm test
+    - name: Run unit tests only (no JSON/module tests)
+      run: |
+        echo "🧪 Running unit tests only on macOS (no JSON/module support)"
+        npm run test:standalone -- tests/unit/
       env:
         CI: true
         VALKEY_HOST: localhost
         VALKEY_PORT: 6383
+        SKIP_MODULE_TESTS: true
 
     - name: Cleanup Valkey server
       if: always()
