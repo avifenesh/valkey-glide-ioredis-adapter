@@ -5,7 +5,12 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+  keyTag,
+} from '../setup/dual-mode.mjs';
 
 describeForEachMode('GEO Commands', mode => {
   let client;
@@ -737,7 +742,12 @@ describeForEachMode('GEO Commands', mode => {
 
       assert.ok(count > 0);
 
-      const stored = await client.zrange(`${tag}:${destKey}`, 0, -1, 'WITHSCORES');
+      const stored = await client.zrange(
+        `${tag}:${destKey}`,
+        0,
+        -1,
+        'WITHSCORES'
+      );
       assert.ok(Array.isArray(stored));
       assert.ok(stored.length > 0);
 

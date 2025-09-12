@@ -12,7 +12,12 @@
 
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import { describeForEachMode, createClient, keyTag, flushAll } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  keyTag,
+  flushAll,
+} from '../setup/dual-mode.mjs';
 
 describeForEachMode('Key Management - TTL & Persistence Patterns', mode => {
   let client;

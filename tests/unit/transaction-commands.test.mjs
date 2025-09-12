@@ -1,6 +1,11 @@
 import { it, before, after } from 'node:test';
 import assert from 'node:assert';
-import { describeForEachMode, createClient, keyTag, flushAll } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  keyTag,
+  flushAll,
+} from '../setup/dual-mode.mjs';
 describeForEachMode('Transaction Commands', mode => {
   let client;
   let tag;

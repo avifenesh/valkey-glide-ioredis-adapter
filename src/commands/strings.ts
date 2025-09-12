@@ -138,9 +138,7 @@ export async function mget(
   const internal = asInternal(client);
   await internal.ensureConnection();
   const keys = Array.isArray(keysOrArray[0]) ? keysOrArray[0] : keysOrArray;
-  const normalizedKeys = keys.map((k: RedisKey) =>
-    internal.normalizeKey(k)
-  );
+  const normalizedKeys = keys.map((k: RedisKey) => internal.normalizeKey(k));
   const results = await internal.glideClient.mget(normalizedKeys);
   return results.map(ParameterTranslator.convertGlideString);
 }

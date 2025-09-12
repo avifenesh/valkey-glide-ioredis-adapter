@@ -12,7 +12,12 @@ const express = (await import('express')).default;
 const session = (await import('express-session')).default;
 import { RedisStore } from 'connect-redis';
 const supertest = (await import('supertest')).default;
-import { describeForEachMode, createClient, flushAll, keyTag } from '../../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+  keyTag,
+} from '../../setup/dual-mode.mjs';
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms).unref());

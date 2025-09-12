@@ -14,7 +14,11 @@ import {
 } from 'node:test';
 import assert from 'node:assert';
 import { delay } from '../utils/test-config.mjs';
-import { describeForEachMode, createClient, flushAll } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+} from '../setup/dual-mode.mjs';
 
 describeForEachMode('String Commands (ioredis compatibility)', mode => {
   let client;

@@ -5,7 +5,12 @@
 
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+  keyTag,
+} from '../setup/dual-mode.mjs';
 
 describeForEachMode('Simple Adapter Integration Test', mode => {
   let adapter;
@@ -101,9 +106,9 @@ describeForEachMode('Simple Adapter Integration Test', mode => {
 
     // Find keys with pattern
     const userKeys = await adapter.keys(`${keyPrefix}user:*`);
-    assert.deepStrictEqual(
-      userKeys.sort(),
-      [`${keyPrefix}user:1`, `${keyPrefix}user:2`]
-    );
+    assert.deepStrictEqual(userKeys.sort(), [
+      `${keyPrefix}user:1`,
+      `${keyPrefix}user:2`,
+    ]);
   });
 });

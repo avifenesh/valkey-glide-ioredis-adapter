@@ -10,7 +10,12 @@ const express = (await import('express')).default;
 const { default: rateLimit } = await import('express-rate-limit');
 import { RedisStore } from 'rate-limit-redis';
 const supertest = (await import('supertest')).default;
-import { describeForEachMode, createClient, flushAll, keyTag } from '../../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+  keyTag,
+} from '../../setup/dual-mode.mjs';
 
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms).unref());
@@ -166,7 +171,13 @@ describeForEachMode('Rate Limiting Integration', mode => {
       let found = 0;
       let firstKey = null;
       do {
-        const res = await redisAdapter.scan(cursor, 'MATCH', 'rl:*', 'COUNT', 100);
+        const res = await redisAdapter.scan(
+          cursor,
+          'MATCH',
+          'rl:*',
+          'COUNT',
+          100
+        );
         cursor = Array.isArray(res) ? res[0] : '0';
         const batch = Array.isArray(res) ? res[1] : [];
         if (Array.isArray(batch) && batch.length) {

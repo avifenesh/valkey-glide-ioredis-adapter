@@ -18,8 +18,13 @@ import assert from 'node:assert';
 import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { io } from 'socket.io-client';
-const ioOpts = { transports: ['websocket'], reconnection: false, forceNew: true, timeout: 2000 };
-const mk = (url) => io(url, ioOpts);
+const ioOpts = {
+  transports: ['websocket'],
+  reconnection: false,
+  forceNew: true,
+  timeout: 2000,
+};
+const mk = url => io(url, ioOpts);
 import { createServer } from 'http';
 import {
   describeForEachMode,

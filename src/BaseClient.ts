@@ -7,14 +7,14 @@
  */
 
 import { EventEmitter } from 'events';
-import { 
-  GlideClient, 
+import {
+  GlideClient,
   GlideClusterClient,
   Script,
   Batch,
   ClusterBatch,
   TimeUnit,
-  InfBoundary
+  InfBoundary,
 } from '@valkey/valkey-glide';
 import { RedisOptions, RedisKey, RedisValue, Multi, Pipeline } from './types';
 import { IInternalClient } from './types/internal';
@@ -86,7 +86,10 @@ export function getGlobalClientRegistry(): Set<BaseClient> {
   return globalClientRegistry;
 }
 
-export abstract class BaseClient extends EventEmitter implements IInternalClient {
+export abstract class BaseClient
+  extends EventEmitter
+  implements IInternalClient
+{
   public glideClient!: GlideClientType; // Always initialized in constructor
   protected subscriberClient?: GlideClientType; // Only created when needed for subscriptions
   protected ioredisCompatiblePubSub?: IoredisPubSubClient; // Only created when needed
@@ -1776,7 +1779,7 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
     // Create the appropriate batch object
     // Use Batch/ClusterBatch with isAtomic parameter instead of deprecated Transaction classes
     let batch: Batch | ClusterBatch;
-    
+
     if (this.isCluster) {
       // ClusterBatch: isAtomic = true for transaction, false for pipeline
       batch = new ClusterBatch(isTransaction);
@@ -2069,7 +2072,12 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
         return adapter;
       },
       zcount: (key: RedisKey, min: string | number, max: string | number) => {
-        batch.customCommand(['ZCOUNT', this.normalizeKey(key), String(min), String(max)]);
+        batch.customCommand([
+          'ZCOUNT',
+          this.normalizeKey(key),
+          String(min),
+          String(max),
+        ]);
         commandCount++;
         return adapter;
       },
@@ -2213,9 +2221,15 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
 
           // Execute the batch commands first
           // Use type narrowing to call exec with the correct batch type
-          const batchResults = this.isCluster 
-            ? await (this.glideClient as GlideClusterClient).exec(batch as ClusterBatch, false)
-            : await (this.glideClient as GlideClient).exec(batch as Batch, false);
+          const batchResults = this.isCluster
+            ? await (this.glideClient as GlideClusterClient).exec(
+                batch as ClusterBatch,
+                false
+              )
+            : await (this.glideClient as GlideClient).exec(
+                batch as Batch,
+                false
+              );
 
           // Execute custom commands that were registered via defineCommand
           const customResults: Array<[Error | null, any]> = [];
@@ -2988,7 +3002,8 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
         try {
           await this.ioredisCompatiblePubSub.disconnect();
         } catch {}
-        this.ioredisCompatiblePubSub = undefined as unknown as IoredisPubSubClient;
+        this.ioredisCompatiblePubSub =
+          undefined as unknown as IoredisPubSubClient;
       }
     }
 
@@ -3040,7 +3055,8 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
         try {
           await this.ioredisCompatiblePubSub.disconnect();
         } catch {}
-        this.ioredisCompatiblePubSub = undefined as unknown as IoredisPubSubClient;
+        this.ioredisCompatiblePubSub =
+          undefined as unknown as IoredisPubSubClient;
       }
     }
 

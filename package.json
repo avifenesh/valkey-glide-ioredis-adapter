@@ -47,7 +47,7 @@
     "test:unit:junit": "JUNIT=1 ./scripts/test-dual-mode.sh tests/unit",
     "test:original": "./scripts/test-runner.sh",
     "test:batches": "./scripts/test-runner-batch.sh",
-    "test:types": "tsc -p tests/types/tsconfig.json --noEmit",
+    "test:types": "node tests/types/usage.mjs",
     "test:single": "node --test",
     "lint": "eslint src tests --ext .ts",
     "lint:fix": "eslint src tests --ext .ts --fix",

@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-01-27
+
+### 🎯 **Production Release - Clean & Stable**
+- **Complete Test Migration**: All tests converted from TypeScript to ES modules (.mjs)
+- **Code Quality**: Fixed all linting and formatting issues across the codebase
+- **Cleanup**: Removed all conversion scripts and leftover files
+- **Documentation**: Updated and cleaned up all documentation for production readiness
+
+### ✨ **Features Added**
+- **ES Module Support**: Full ES module compatibility with proper import/export patterns
+- **Clean Codebase**: Eliminated all technical debt from test conversion process
+- **Production Ready**: Zero linting errors, consistent formatting, clean file structure
+
+### 🐛 **Bug Fixes**
+- **Import Issues**: Fixed missing Cluster import in fastify-redis integration tests
+- **Formatting**: Resolved all Prettier formatting inconsistencies (26 files)
+- **File Cleanup**: Removed all leftover TypeScript test files and conversion scripts
+
+### 🔧 **Technical Improvements**
+- **Test Infrastructure**: Streamlined test runner with pure ES modules
+- **Code Quality**: 100% linting compliance and consistent formatting
+- **File Organization**: Clean project structure with no leftover conversion artifacts
+- **Type Safety**: Maintained full TypeScript support while using ES modules for tests
+
+### 📚 **Documentation**
+- **Release Notes**: Comprehensive 0.5.0 release documentation
+- **Cleanup Plan**: Documented the complete cleanup process for future reference
+- **Migration Guide**: Updated migration documentation for ES module compatibility
+
 ## [0.4.0] - 2025-08-31
 
 ### ✨ Features Added

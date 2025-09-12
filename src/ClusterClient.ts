@@ -57,7 +57,6 @@ export class ClusterClient extends BaseClient {
 
   // Override scanStream for cluster-specific GLIDE implementation
   scanStream(options: { match?: string; type?: string; count?: number } = {}) {
-
     class ClusterScanStream extends Readable {
       public cursor: string = '0';
       public clusterCursor: ClusterScanCursor;
@@ -145,7 +144,6 @@ export class ClusterClient extends BaseClient {
 
   // Cluster scan implementation using native GLIDE ClusterScanCursor
   async scan(cursor: string, ...args: string[]): Promise<[string, string[]]> {
-
     // Construct or resume cluster cursor from the token provided by caller
     const clusterCursor =
       !cursor || cursor === '0'
