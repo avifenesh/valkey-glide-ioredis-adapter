@@ -104,7 +104,7 @@ jobs:
         echo "🧪 Running unit tests..."
         timeout 300 npm run test:standalone -- tests/unit/ || {
           echo "⚠️ Unit tests timed out or failed, forcing cleanup..."
-          node -e "import('./dist/index.js').then(pkg => pkg.Redis.forceCloseAllClients(1000))"
+          node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})"
           exit 1
         }
         
@@ -125,7 +125,7 @@ jobs:
         echo "🧪 Running integration tests..."
         timeout 300 npm run test:standalone -- tests/integration/ || {
           echo "⚠️ Integration tests timed out or failed, forcing cleanup..."
-          node -e "import('./dist/index.js').then(pkg => pkg.Redis.forceCloseAllClients(1000))"
+          node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})"
           exit 1
         }
         
@@ -146,7 +146,7 @@ jobs:
         echo "🧪 Running cluster tests..."
         timeout 300 npm run test:standalone -- tests/cluster/ || {
           echo "⚠️ Cluster tests timed out or failed, forcing cleanup..."
-          node -e "import('./dist/index.js').then(pkg => pkg.Redis.forceCloseAllClients(1000))"
+          node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})"
           exit 1
         }
       env:
@@ -160,7 +160,7 @@ jobs:
       run: |
         echo "🧹 Cleaning up after tests..."
         # Force close all Redis clients
-        node -e "import('./dist/index.js').then(pkg => pkg.Redis.forceCloseAllClients(1000)).catch(() => {})" || true
+        node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
         sleep 2
         echo "✅ Cleanup completed"
 
@@ -247,11 +247,20 @@ jobs:
         
         echo "🧪 Running unit tests (excluding JSON/module tests)..."
         # Exclude JSON and module-dependent tests
-        timeout 300 find tests/unit -name "*.test.mjs" ! -name "*json*" ! -name "*module*" ! -name "*search*" | xargs npm run test:standalone -- || {
-          echo "⚠️ Unit tests timed out or failed, forcing cleanup..."
-          node -e "import('./dist/index.js').then(pkg => pkg.Redis.forceCloseAllClients(1000))"
+        # Use a background process with timeout for macOS
+        (find tests/unit -name "*.test.mjs" ! -name "*json*" ! -name "*module*" ! -name "*search*" | xargs npm run test:standalone --) &
+        TEST_PID=$!
+        (sleep 300 && kill $TEST_PID 2>/dev/null) &
+        TIMEOUT_PID=$!
+        wait $TEST_PID
+        TEST_EXIT_CODE=$?
+        kill $TIMEOUT_PID 2>/dev/null
+        
+        if [ $TEST_EXIT_CODE -ne 0 ]; then
+          echo "⚠️ Unit tests failed, forcing cleanup..."
+          node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})"
           exit 1
-        }
+        fi
         
         echo "⏳ Waiting 15s to reduce server load..."
         sleep 15
@@ -268,11 +277,20 @@ jobs:
         done
         
         echo "🧪 Running basic integration tests..."
-        timeout 300 npm run test:standalone -- tests/integration/simple-adapter.test.mjs tests/integration/fastify-redis.test.mjs || {
-          echo "⚠️ Integration tests timed out or failed, forcing cleanup..."
-          node -e "import('./dist/index.js').then(pkg => pkg.Redis.forceCloseAllClients(1000))"
+        # Use a background process with timeout for macOS
+        (npm run test:standalone -- tests/integration/simple-adapter.test.mjs tests/integration/fastify-redis.test.mjs) &
+        TEST_PID=$!
+        (sleep 300 && kill $TEST_PID 2>/dev/null) &
+        TIMEOUT_PID=$!
+        wait $TEST_PID
+        TEST_EXIT_CODE=$?
+        kill $TIMEOUT_PID 2>/dev/null
+        
+        if [ $TEST_EXIT_CODE -ne 0 ]; then
+          echo "⚠️ Integration tests failed, forcing cleanup..."
+          node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})"
           exit 1
-        }
+        fi
       env:
         CI: true
         VALKEY_HOST: localhost
@@ -286,7 +304,7 @@ jobs:
         
         # Force close all Redis clients first
         echo "🔌 Force closing all Redis clients..."
-        node -e "import('./dist/index.js').then(pkg => pkg.Redis.forceCloseAllClients(1000)).catch(() => {})" || true
+        node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
         
         # Wait for cleanup
         sleep 2
