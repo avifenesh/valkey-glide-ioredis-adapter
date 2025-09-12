@@ -24,7 +24,7 @@ async function checkTestServers() {
   }
 }
 describe('Transaction Commands', () => {
-  let redis;
+  let client;
 
   before(async () => {
     // Check if test servers are available
@@ -36,21 +36,21 @@ describe('Transaction Commands', () => {
     }
 
     const config = await getStandaloneConfig();
-    redis = new Redis(config);
-    await redis.connect();
-    
+    client = new Redis(config);
+    await client.connect();
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {
-      await redis.flushall();
+      await client.flushall();
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     }
   });
 
   after(async () => {
-    if (redis) {
-      await redis.quit();
+    if (client) {
+      await client.quit();
     }
   });
 
@@ -60,14 +60,14 @@ describe('Transaction Commands', () => {
       return;
     }
 
-    await redis.set('watchkey', 'value1');
+    await client.set('watchkey', 'value1');
 
     // Watch the key
-    const watchResult = await redis.watch('watchkey');
+    const watchResult = await client.watch('watchkey');
     assert.strictEqual(watchResult, 'OK');
 
     // Unwatch the key
-    const unwatchResult = await redis.unwatch();
+    const unwatchResult = await client.unwatch();
     assert.strictEqual(unwatchResult, 'OK');
   });
 
@@ -77,10 +77,10 @@ describe('Transaction Commands', () => {
       return;
     }
 
-    await redis.set('multikey1', 'value1');
-    await redis.set('multikey2', 'value2');
+    await client.set('multikey1', 'value1');
+    await client.set('multikey2', 'value2');
 
-    const multi = redis.multi();
+    const multi = client.multi();
     multi.get('multikey1');
     multi.get('multikey2');
     multi.set('multikey3', 'value3');
@@ -105,9 +105,9 @@ describe('Transaction Commands', () => {
 
     // This test is more complex as it requires simulating a transaction failure
     // For now, we'll just test that the multi/exec flow works
-    await redis.set('watchtestkey', 'initial');
+    await client.set('watchtestkey', 'initial');
 
-    const multi = redis.multi();
+    const multi = client.multi();
     multi.get('watchtestkey');
     multi.set('watchtestkey', 'modified');
 

@@ -19,25 +19,25 @@ const { Redis } = pkg;
 import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('Stream Commands - Event Sourcing & Microservices', () => {
-  let redis;
+  let client;
 
   beforeEach(async () => {
     const config = getStandaloneConfig();
-    redis = new Redis(config);
+    client = new Redis(config);
 
-    await redis.connect();
-    
+    await client.connect();
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {
-      await redis.flushall();
+      await client.flushall();
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     }
   });
 
   afterEach(async () => {
-    await redis.quit();
+    await client.quit();
   });
 
   describe('Event Sourcing Patterns', () => {
@@ -45,7 +45,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const streamKey = 'user_actions:' + Math.random();
 
       // Record user events
-      const loginEvent = await redis.xadd(
+      const loginEvent = await client.xadd(
         streamKey,
         '*',
         'event',
@@ -61,7 +61,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
       assert.match(loginEvent, /\d+-\d+/); // Redis stream ID format
 
-      const purchaseEvent = await redis.xadd(
+      const purchaseEvent = await client.xadd(
         streamKey,
         '*',
         'event',
@@ -77,7 +77,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
       assert.match(purchaseEvent, /\d+-\d+/);
 
-      const logoutEvent = await redis.xadd(
+      const logoutEvent = await client.xadd(
         streamKey,
         '*',
         'event',
@@ -90,7 +90,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       assert.match(logoutEvent, /\d+-\d+/);
 
       // Verify stream length
-      const streamLength = await redis.xlen(streamKey);
+      const streamLength = await client.xlen(streamKey);
       assert.strictEqual(streamLength, 3);
     });
 
@@ -98,7 +98,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const streamKey = 'order_events:' + Math.random();
 
       // Add some order events
-      await redis.xadd(
+      await client.xadd(
         streamKey,
         '*',
         'event',
@@ -111,7 +111,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         '150.00'
       );
 
-      await redis.xadd(
+      await client.xadd(
         streamKey,
         '*',
         'event',
@@ -124,7 +124,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'success'
       );
 
-      await redis.xadd(
+      await client.xadd(
         streamKey,
         '*',
         'event',
@@ -138,7 +138,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Read all events from beginning
-      const allEvents = await redis.xread('STREAMS', streamKey, '0');
+      const allEvents = await client.xread('STREAMS', streamKey, '0');
       assert.ok(allEvents);
       assert.ok(Array.isArray(allEvents));
       assert.strictEqual(allEvents.length, 1); // One stream
@@ -158,7 +158,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const accountId = 'ACC-789';
 
       // Record account events over time
-      await redis.xadd(
+      await client.xadd(
         streamKey,
         '*',
         'event',
@@ -171,7 +171,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'USD'
       );
 
-      await redis.xadd(
+      await client.xadd(
         streamKey,
         '*',
         'event',
@@ -184,7 +184,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'bank_transfer'
       );
 
-      await redis.xadd(
+      await client.xadd(
         streamKey,
         '*',
         'event',
@@ -197,7 +197,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'ATM'
       );
 
-      await redis.xadd(
+      await client.xadd(
         streamKey,
         '*',
         'event',
@@ -211,7 +211,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Rebuild account state by replaying events
-      const events = await redis.xread('STREAMS', streamKey, '0');
+      const events = await client.xread('STREAMS', streamKey, '0');
       const accountEvents = events[0][1];
 
       let accountState = {
@@ -256,7 +256,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
       // Order service creates order
       const orderId = `ORD-${Math.random()}`;
-      await redis.xadd(
+      await client.xadd(
         orderStreamKey,
         '*',
         'service',
@@ -274,7 +274,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Inventory service reserves stock
-      await redis.xadd(
+      await client.xadd(
         inventoryStreamKey,
         '*',
         'service',
@@ -292,7 +292,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Payment service processes payment
-      await redis.xadd(
+      await client.xadd(
         paymentStreamKey,
         '*',
         'service',
@@ -310,7 +310,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Order service completes order
-      await redis.xadd(
+      await client.xadd(
         orderStreamKey,
         '*',
         'service',
@@ -326,13 +326,17 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Verify all services recorded their events
-      const orderEvents = await redis.xread('STREAMS', orderStreamKey, '0');
-      const inventoryEvents = await redis.xread(
+      const orderEvents = await client.xread('STREAMS', orderStreamKey, '0');
+      const inventoryEvents = await client.xread(
         'STREAMS',
         inventoryStreamKey,
         '0'
       );
-      const paymentEvents = await redis.xread('STREAMS', paymentStreamKey, '0');
+      const paymentEvents = await client.xread(
+        'STREAMS',
+        paymentStreamKey,
+        '0'
+      );
 
       assert.strictEqual(orderEvents[0][1].length, 2); // Order created + completed
       assert.strictEqual(inventoryEvents[0][1].length, 1); // Stock reserved
@@ -344,7 +348,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const tripId = `TRIP-${Math.random()}`;
 
       // Flight booking
-      await redis.xadd(
+      await client.xadd(
         sagaStreamKey,
         '*',
         'saga_id',
@@ -361,7 +365,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         '300.00'
       );
 
-      await redis.xadd(
+      await client.xadd(
         sagaStreamKey,
         '*',
         'saga_id',
@@ -377,7 +381,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Hotel booking
-      await redis.xadd(
+      await client.xadd(
         sagaStreamKey,
         '*',
         'saga_id',
@@ -394,7 +398,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         '200.00'
       );
 
-      await redis.xadd(
+      await client.xadd(
         sagaStreamKey,
         '*',
         'saga_id',
@@ -410,7 +414,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Car rental (fails)
-      await redis.xadd(
+      await client.xadd(
         sagaStreamKey,
         '*',
         'saga_id',
@@ -427,7 +431,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         '150.00'
       );
 
-      await redis.xadd(
+      await client.xadd(
         sagaStreamKey,
         '*',
         'saga_id',
@@ -445,7 +449,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Compensating actions
-      await redis.xadd(
+      await client.xadd(
         sagaStreamKey,
         '*',
         'saga_id',
@@ -460,7 +464,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'HB-012'
       );
 
-      await redis.xadd(
+      await client.xadd(
         sagaStreamKey,
         '*',
         'saga_id',
@@ -476,7 +480,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Verify saga events
-      const sagaEvents = await redis.xread('STREAMS', sagaStreamKey, '0');
+      const sagaEvents = await client.xread('STREAMS', sagaStreamKey, '0');
       assert.strictEqual(sagaEvents[0][1].length, 8); // All saga steps recorded
 
       // Count successful vs failed/compensated actions
@@ -501,7 +505,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const userId = `USER-${Math.random()}`;
 
       // User activity triggers notifications
-      await redis.xadd(
+      await client.xadd(
         notificationStreamKey,
         '*',
         'type',
@@ -518,7 +522,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'medium'
       );
 
-      await redis.xadd(
+      await client.xadd(
         notificationStreamKey,
         '*',
         'type',
@@ -533,7 +537,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'low'
       );
 
-      await redis.xadd(
+      await client.xadd(
         notificationStreamKey,
         '*',
         'type',
@@ -550,7 +554,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'high'
       );
 
-      await redis.xadd(
+      await client.xadd(
         notificationStreamKey,
         '*',
         'type',
@@ -568,7 +572,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Process notifications by priority
-      const notifications = await redis.xread(
+      const notifications = await client.xread(
         'STREAMS',
         notificationStreamKey,
         '0'
@@ -601,7 +605,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const metricsStreamKey = 'app_metrics:' + Math.random();
 
       // API request metrics
-      await redis.xadd(
+      await client.xadd(
         metricsStreamKey,
         '*',
         'metric_type',
@@ -618,7 +622,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'USER-123'
       );
 
-      await redis.xadd(
+      await client.xadd(
         metricsStreamKey,
         '*',
         'metric_type',
@@ -636,7 +640,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Database query metrics
-      await redis.xadd(
+      await client.xadd(
         metricsStreamKey,
         '*',
         'metric_type',
@@ -652,7 +656,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Error tracking
-      await redis.xadd(
+      await client.xadd(
         metricsStreamKey,
         '*',
         'metric_type',
@@ -670,7 +674,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // System performance
-      await redis.xadd(
+      await client.xadd(
         metricsStreamKey,
         '*',
         'metric_type',
@@ -686,7 +690,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       );
 
       // Analyze metrics
-      const metrics = await redis.xread('STREAMS', metricsStreamKey, '0');
+      const metrics = await client.xread('STREAMS', metricsStreamKey, '0');
       const metricEvents = metrics[0][1];
 
       let apiRequests = 0;
@@ -737,7 +741,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       ];
 
       for (const action of actions) {
-        await redis.xadd(
+        await client.xadd(
           activityStreamKey,
           '*',
           'user_id',
@@ -751,7 +755,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       }
 
       // Analyze user behavior
-      const activities = await redis.xread('STREAMS', activityStreamKey, '0');
+      const activities = await client.xread('STREAMS', activityStreamKey, '0');
       const userActions = activities[0][1];
 
       const analytics = {
@@ -804,7 +808,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
       // Add multiple events
       for (let i = 0; i < 10; i++) {
-        await redis.xadd(
+        await client.xadd(
           streamKey,
           '*',
           'event_number',
@@ -817,17 +821,17 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       }
 
       // Verify initial length
-      let streamLength = await redis.xlen(streamKey);
+      let streamLength = await client.xlen(streamKey);
       assert.strictEqual(streamLength, 10);
 
       // Trim to keep only last 5 events
-      const trimmed = await redis.xtrim(streamKey, 'MAXLEN', '~', '5');
+      const trimmed = await client.xtrim(streamKey, 'MAXLEN', '~', '5');
 
       // GLIDE XTRIM API may have different behavior - just verify operation completes
       assert.strictEqual(typeof trimmed, 'number');
 
       // Verify stream still exists and has entries
-      streamLength = await redis.xlen(streamKey);
+      streamLength = await client.xlen(streamKey);
       assert.ok(streamLength >= 0);
     });
 
@@ -847,7 +851,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const eventIds = [];
       for (const { offset, event } of events) {
         const timestamp = baseTime + offset;
-        const eventId = await redis.xadd(
+        const eventId = await client.xadd(
           streamKey,
           '*',
           'event',
@@ -861,7 +865,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       }
 
       // Query range of events
-      const middleEvents = await redis.xrange(
+      const middleEvents = await client.xrange(
         streamKey,
         eventIds[1],
         eventIds[3]
@@ -882,7 +886,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const consumer2 = 'processor-2';
 
       // Create some orders in the stream
-      await redis.xadd(
+      await client.xadd(
         streamKey,
         '*',
         'order_id',
@@ -895,7 +899,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'high'
       );
 
-      await redis.xadd(
+      await client.xadd(
         streamKey,
         '*',
         'order_id',
@@ -908,7 +912,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         'medium'
       );
 
-      await redis.xadd(
+      await client.xadd(
         streamKey,
         '*',
         'order_id',
@@ -923,13 +927,13 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
       // Create consumer group starting from beginning
       try {
-        await redis.xgroup('CREATE', streamKey, groupName, '0', 'MKSTREAM');
+        await client.xgroup('CREATE', streamKey, groupName, '0', 'MKSTREAM');
       } catch (error) {
         // Group might already exist, continue
       }
 
       // Consumer 1 reads messages
-      const consumer1Messages = await redis.xreadgroup(
+      const consumer1Messages = await client.xreadgroup(
         groupName,
         consumer1,
         'STREAMS',
@@ -942,7 +946,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       assert.ok(consumer1Messages.length > 0);
 
       // Consumer 2 reads remaining messages (if any)
-      const consumer2Messages = await redis.xreadgroup(
+      const consumer2Messages = await client.xreadgroup(
         groupName,
         consumer2,
         'STREAMS',
@@ -954,7 +958,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       assert.ok(consumer2Messages === null || Array.isArray(consumer2Messages));
 
       // Check pending messages
-      const pendingInfo = await redis.xpending(streamKey, groupName);
+      const pendingInfo = await client.xpending(streamKey, groupName);
       assert.ok(pendingInfo !== undefined);
 
       // Get delivered messages for consumer 1 if any were delivered
@@ -969,7 +973,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
         // Acknowledge processed messages
         if (messageIds.length > 0) {
-          const ackCount = await redis.xack(
+          const ackCount = await client.xack(
             streamKey,
             groupName,
             ...messageIds
@@ -996,7 +1000,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
       for (let i = 0; i < 15; i++) {
         const eventType = eventTypes[i % eventTypes.length];
-        const eventId = await redis.xadd(
+        const eventId = await client.xadd(
           streamKey,
           '*',
           'event_type',
@@ -1015,7 +1019,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
       // Create consumer group
       try {
-        await redis.xgroup('CREATE', streamKey, groupName, '0');
+        await client.xgroup('CREATE', streamKey, groupName, '0');
       } catch (error) {
         // Group might already exist
       }
@@ -1023,7 +1027,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       // Each consumer processes some messages
       const consumerResults = [];
       for (const consumer of consumers) {
-        const messages = await redis.xreadgroup(
+        const messages = await client.xreadgroup(
           groupName,
           consumer,
           'COUNT',
@@ -1052,11 +1056,11 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       assert.ok(totalMessagesProcessed <= 15);
 
       // Verify we have some events in the stream
-      const streamLength = await redis.xlen(streamKey);
+      const streamLength = await client.xlen(streamKey);
       assert.strictEqual(streamLength, 15);
 
       // Check group info
-      const pendingMessages = await redis.xpending(streamKey, groupName);
+      const pendingMessages = await client.xpending(streamKey, groupName);
       assert.ok(pendingMessages !== undefined);
     });
 
@@ -1067,7 +1071,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const consumer = 'payment-worker-1';
 
       // Add payment messages
-      await redis.xadd(
+      await client.xadd(
         mainStreamKey,
         '*',
         'payment_id',
@@ -1080,7 +1084,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         '0'
       );
 
-      await redis.xadd(
+      await client.xadd(
         mainStreamKey,
         '*',
         'payment_id',
@@ -1095,13 +1099,13 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
       // Create consumer group
       try {
-        await redis.xgroup('CREATE', mainStreamKey, groupName, '0');
+        await client.xgroup('CREATE', mainStreamKey, groupName, '0');
       } catch (error) {
         // Continue if group exists
       }
 
       // Consumer reads messages
-      const messages = await redis.xreadgroup(
+      const messages = await client.xreadgroup(
         groupName,
         consumer,
         'STREAMS',
@@ -1119,7 +1123,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
           if (paymentId === 'PAY-001') {
             // Successful payment - acknowledge
-            await redis.xack(mainStreamKey, groupName, messageId);
+            await client.xack(mainStreamKey, groupName, messageId);
           } else if (paymentId === 'PAY-002') {
             // Failed payment - simulate retry logic
             const retryCount = parseInt(
@@ -1128,7 +1132,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
             if (retryCount >= 2) {
               // Move to DLQ after max retries
-              await redis.xadd(
+              await client.xadd(
                 dlqStreamKey,
                 '*',
                 'original_message_id',
@@ -1145,7 +1149,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
               );
 
               // Acknowledge from main stream (remove from pending)
-              await redis.xack(mainStreamKey, groupName, messageId);
+              await client.xack(mainStreamKey, groupName, messageId);
             }
             // In real implementation, would increment retry count and reprocess
           }
@@ -1153,11 +1157,11 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       }
 
       // Verify DLQ has failed message
-      const dlqLength = await redis.xlen(dlqStreamKey);
+      const dlqLength = await client.xlen(dlqStreamKey);
       assert.ok(dlqLength >= 0);
 
       // Check pending messages in main stream
-      const pendingInfo = await redis.xpending(mainStreamKey, groupName);
+      const pendingInfo = await client.xpending(mainStreamKey, groupName);
       assert.ok(pendingInfo !== undefined);
     });
 
@@ -1169,7 +1173,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       // Add batch of tasks
       const taskIds = [];
       for (let i = 0; i < 12; i++) {
-        const taskId = await redis.xadd(
+        const taskId = await client.xadd(
           streamKey,
           '*',
           'task_id',
@@ -1188,7 +1192,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
       // Create consumer group
       try {
-        await redis.xgroup('CREATE', streamKey, groupName, '0');
+        await client.xgroup('CREATE', streamKey, groupName, '0');
       } catch (error) {
         // Continue
       }
@@ -1197,7 +1201,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const consumerWorkloads = [];
 
       // Worker 1: processes 5 tasks
-      const worker1Messages = await redis.xreadgroup(
+      const worker1Messages = await client.xreadgroup(
         groupName,
         consumers[0],
         'COUNT',
@@ -1212,7 +1216,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       });
 
       // Worker 2: processes 3 tasks
-      const worker2Messages = await redis.xreadgroup(
+      const worker2Messages = await client.xreadgroup(
         groupName,
         consumers[1],
         'COUNT',
@@ -1227,7 +1231,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       });
 
       // Worker 3: processes remaining tasks
-      const worker3Messages = await redis.xreadgroup(
+      const worker3Messages = await client.xreadgroup(
         groupName,
         consumers[2],
         'STREAMS',
@@ -1255,7 +1259,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
             // Worker 1 completes all tasks
             const messageIds = streamMessages.map(msg => msg[0]);
             if (messageIds.length > 0) {
-              await redis.xack(streamKey, groupName, ...messageIds);
+              await client.xack(streamKey, groupName, ...messageIds);
             }
           }
           // Worker 2 and 3 leave tasks pending (simulating active processing)
@@ -1263,7 +1267,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       }
 
       // Check overall pending state
-      const pendingInfo = await redis.xpending(streamKey, groupName);
+      const pendingInfo = await client.xpending(streamKey, groupName);
       assert.ok(pendingInfo !== undefined);
 
       // Verify task distribution worked - at least some tasks should be processed
@@ -1271,7 +1275,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       assert.ok(totalProcessedByWorkers >= 0);
 
       // Verify we created the expected number of tasks
-      const streamLength = await redis.xlen(streamKey);
+      const streamLength = await client.xlen(streamKey);
       assert.strictEqual(streamLength, 12);
     });
 
@@ -1282,7 +1286,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const recoveryConsumer = 'processor-recovery';
 
       // Add critical operations
-      await redis.xadd(
+      await client.xadd(
         streamKey,
         '*',
         'operation',
@@ -1295,7 +1299,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         '3600'
       );
 
-      await redis.xadd(
+      await client.xadd(
         streamKey,
         '*',
         'operation',
@@ -1308,7 +1312,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         '1800'
       );
 
-      await redis.xadd(
+      await client.xadd(
         streamKey,
         '*',
         'operation',
@@ -1325,13 +1329,13 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
       // Create consumer group
       try {
-        await redis.xgroup('CREATE', streamKey, groupName, '0');
+        await client.xgroup('CREATE', streamKey, groupName, '0');
       } catch (error) {
         // Continue
       }
 
       // Failed consumer claims messages but doesn't process them
-      const claimedMessages = await redis.xreadgroup(
+      const claimedMessages = await client.xreadgroup(
         groupName,
         failedConsumer,
         'STREAMS',
@@ -1342,7 +1346,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       // Simulate consumer failure - messages remain unacknowledged
 
       // Recovery consumer checks for unprocessed messages
-      const pendingMessages = await redis.xpending(streamKey, groupName);
+      const pendingMessages = await client.xpending(streamKey, groupName);
       assert.ok(pendingMessages !== undefined);
 
       if (
@@ -1355,7 +1359,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         // (In production, would use XCLAIM command with appropriate idle time)
 
         // For now, just process new messages with recovery consumer
-        const recoveryMessages = await redis.xreadgroup(
+        const recoveryMessages = await client.xreadgroup(
           groupName,
           recoveryConsumer,
           'STREAMS',
@@ -1375,13 +1379,13 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
           const recoveredMessages = recoveryMessages[0][1];
           if (recoveredMessages.length > 0) {
             const messageIds = recoveredMessages.map(msg => msg[0]);
-            await redis.xack(streamKey, groupName, ...messageIds);
+            await client.xack(streamKey, groupName, ...messageIds);
           }
         }
       }
 
       // Verify system can continue operating
-      const streamLength = await redis.xlen(streamKey);
+      const streamLength = await client.xlen(streamKey);
       assert.strictEqual(streamLength, 3);
     });
 
@@ -1396,7 +1400,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
         const groupName = `${tenant}-processors`;
 
         // Add tenant-specific events
-        await redis.xadd(
+        await client.xadd(
           streamKey,
           '*',
           'tenant_id',
@@ -1409,7 +1413,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
           tenant === 'tenant_a' ? 'premium' : 'basic'
         );
 
-        await redis.xadd(
+        await client.xadd(
           streamKey,
           '*',
           'tenant_id',
@@ -1424,7 +1428,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
           'monthly'
         );
 
-        await redis.xadd(
+        await client.xadd(
           streamKey,
           '*',
           'tenant_id',
@@ -1441,7 +1445,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
         // Create consumer group for tenant
         try {
-          await redis.xgroup('CREATE', streamKey, groupName, '0');
+          await client.xgroup('CREATE', streamKey, groupName, '0');
           consumerGroups.push({ streamKey, groupName, tenant });
         } catch (error) {
           // Continue if exists
@@ -1452,7 +1456,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       for (const { streamKey, groupName, tenant } of consumerGroups) {
         const consumerName = `${tenant}-worker-1`;
 
-        const tenantMessages = await redis.xreadgroup(
+        const tenantMessages = await client.xreadgroup(
           groupName,
           consumerName,
           'STREAMS',
@@ -1480,7 +1484,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
           // Process and acknowledge tenant messages
           const messageIds = messages.map(msg => msg[0]);
           if (messageIds.length > 0) {
-            const ackCount = await redis.xack(
+            const ackCount = await client.xack(
               streamKey,
               groupName,
               ...messageIds
@@ -1492,7 +1496,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
       // Verify tenant isolation - check stream lengths
       for (const { streamKey } of consumerGroups) {
-        const length = await redis.xlen(streamKey);
+        const length = await client.xlen(streamKey);
         assert.strictEqual(length, 3); // Each tenant has 3 events
       }
     });
@@ -1503,15 +1507,15 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const nonExistentStream = 'nonexistent:stream:' + Math.random();
 
       // Reading non-existent stream should return empty
-      const readResult = await redis.xread('STREAMS', nonExistentStream, '0');
+      const readResult = await client.xread('STREAMS', nonExistentStream, '0');
       assert.deepStrictEqual(readResult, []);
 
       // Length of non-existent stream should be 0
-      const length = await redis.xlen(nonExistentStream);
+      const length = await client.xlen(nonExistentStream);
       assert.strictEqual(length, 0);
 
       // Range query on non-existent stream should return empty
-      const rangeResult = await redis.xrange(nonExistentStream, '-', '+');
+      const rangeResult = await client.xrange(nonExistentStream, '-', '+');
       assert.deepStrictEqual(rangeResult, []);
     });
 
@@ -1519,17 +1523,17 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       const streamKey = 'malformed_test:' + Math.random();
 
       // Add valid event first
-      await redis.xadd(streamKey, '*', 'valid', 'event');
+      await client.xadd(streamKey, '*', 'valid', 'event');
 
       // Try to read with malformed parameters - should handle gracefully
       try {
-        await redis.xread('STREAMS', streamKey, 'invalid-id');
+        await client.xread('STREAMS', streamKey, 'invalid-id');
       } catch (error) {
         assert.ok(error !== undefined);
       }
 
       // Stream should still be usable
-      const length = await redis.xlen(streamKey);
+      const length = await client.xlen(streamKey);
       assert.strictEqual(length, 1);
     });
 
@@ -1538,7 +1542,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
       // Add event with large data
       const largeData = 'x'.repeat(10000); // 10KB of data
-      const eventId = await redis.xadd(
+      const eventId = await client.xadd(
         streamKey,
         '*',
         'large_field',
@@ -1552,7 +1556,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
       assert.match(eventId, /\d+-\d+/);
 
       // Read it back
-      const events = await redis.xread('STREAMS', streamKey, '0');
+      const events = await client.xread('STREAMS', streamKey, '0');
       assert.strictEqual(events[0][1].length, 1);
 
       const retrievedData = events[0][1][0][1];

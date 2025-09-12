@@ -20,7 +20,7 @@ import {
 } from '../utils/test-config.mjs';
 
 describe('Connection Management (ioredis compatibility)', () => {
-  let redis;
+  let client;
 
   before(() => {
     // Check if test servers are available
@@ -33,9 +33,9 @@ describe('Connection Management (ioredis compatibility)', () => {
   });
 
   afterEach(async () => {
-    if (redis) {
-      await redis.quit();
-      redis = null;
+    if (client) {
+      await client.quit();
+      client = null;
     }
   });
 
@@ -44,19 +44,19 @@ describe('Connection Management (ioredis compatibility)', () => {
       // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
-      redis = new Redis(config);
-      await redis.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await redis.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+      client = new Redis(config);
+      await client.connect();
+
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
 
       // Basic connectivity test
-      const result = await redis.ping();
+      const result = await client.ping();
       assert.strictEqual(result, 'PONG');
     });
 
@@ -64,18 +64,18 @@ describe('Connection Management (ioredis compatibility)', () => {
       // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
-      redis = new Redis(config.port, config.host);
-      await redis.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await redis.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+      client = new Redis(config.port, config.host);
+      await client.connect();
 
-      const result = await redis.ping();
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
+
+      const result = await client.ping();
       assert.strictEqual(result, 'PONG');
     });
 
@@ -83,23 +83,23 @@ describe('Connection Management (ioredis compatibility)', () => {
       // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
-      redis = new Redis({
+      client = new Redis({
         port: config.port,
         host: config.host,
         retryDelayOnFailover: 100,
         maxRetriesPerRequest: 3,
       });
-      await redis.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await redis.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+      await client.connect();
 
-      const result = await redis.ping();
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
+
+      const result = await client.ping();
       assert.strictEqual(result, 'PONG');
     });
 
@@ -107,18 +107,18 @@ describe('Connection Management (ioredis compatibility)', () => {
       // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
-      redis = new Redis(`redis://${config.host}:${config.port}/0`);
-      await redis.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await redis.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+      client = new Redis(`redis://${config.host}:${config.port}/0`);
+      await client.connect();
 
-      const result = await redis.ping();
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
+
+      const result = await client.ping();
       assert.strictEqual(result, 'PONG');
     });
 
@@ -126,20 +126,20 @@ describe('Connection Management (ioredis compatibility)', () => {
       // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
-      redis = new Redis({ port: config.port, host: config.host, db: 1 });
-      await redis.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await redis.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+      client = new Redis({ port: config.port, host: config.host, db: 1 });
+      await client.connect();
+
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
 
       // Test that we're using the correct database
-      await redis.set('dbtest', 'value');
-      assert.strictEqual(await redis.get('dbtest'), 'value');
+      await client.set('dbtest', 'value');
+      assert.strictEqual(await client.get('dbtest'), 'value');
     });
   });
 
@@ -148,80 +148,80 @@ describe('Connection Management (ioredis compatibility)', () => {
       // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
-      redis = new Redis(config);
-      
+      client = new Redis(config);
+
       let readyListener;
       const readyPromise = new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
-          redis.off('ready', readyListener);
+          client.off('ready', readyListener);
           reject(new Error('Ready event timeout'));
         }, 5000);
-        
+
         readyListener = () => {
           clearTimeout(timeout);
           resolve();
         };
-        redis.on('ready', readyListener);
+        client.on('ready', readyListener);
       });
 
-      await redis.connect();
-      
+      await client.connect();
+
       // Clean slate: flush all data to prevent test pollution
       try {
-        await redis.flushall();
+        await client.flushall();
       } catch (error) {
         console.warn('Warning: Could not flush database:', error.message);
       }
-      
-      await readyPromise;
-      redis.off('ready', readyListener);
 
-      assert.strictEqual(redis.status, 'ready');
+      await readyPromise;
+      client.off('ready', readyListener);
+
+      assert.strictEqual(client.status, 'ready');
     });
 
     test('should emit connect event', async () => {
       // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
-      redis = new Redis(config);
-      
+      client = new Redis(config);
+
       let connectListener;
       const connectPromise = new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
-          redis.off('connect', connectListener);
+          client.off('connect', connectListener);
           reject(new Error('Connect event timeout'));
         }, 5000);
-        
+
         connectListener = () => {
           clearTimeout(timeout);
           resolve();
         };
-        redis.on('connect', connectListener);
+        client.on('connect', connectListener);
       });
 
-      await redis.connect();
-      
+      await client.connect();
+
       // Clean slate: flush all data to prevent test pollution
       try {
-        await redis.flushall();
+        await client.flushall();
       } catch (error) {
         console.warn('Warning: Could not flush database:', error.message);
       }
-      
+
       await connectPromise;
-      redis.off('connect', connectListener);
+      client.off('connect', connectListener);
     });
 
     test('should emit end event when disconnected', async () => {
       // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
-      redis = new Redis(config);
-      await redis.connect();
-    
+      client = new Redis(config);
+      await client.connect();
+
       // Clean slate: flush all data to prevent test pollution
       try {
-        await redis.flushall();
+        await client.flushall();
       } catch (error) {
         console.warn('Warning: Could not flush database:', error.message);
       }
@@ -229,79 +229,83 @@ describe('Connection Management (ioredis compatibility)', () => {
       let endListener;
       const endPromise = new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
-          redis.off('end', endListener);
+          client.off('end', endListener);
           // Event might not fire, so we check status instead
-          if (redis.status === 'end') {
+          if (client.status === 'end') {
             resolve();
           } else {
             reject(new Error('End event timeout'));
           }
         }, 2000);
-        
+
         endListener = () => {
           clearTimeout(timeout);
           resolve();
         };
-        redis.on('end', endListener);
+        client.on('end', endListener);
       });
 
-      await redis.quit();
-      
+      await client.quit();
+
       try {
         await endPromise;
       } catch (error) {
         // If event didn't fire, check if status is correct anyway
-        if (redis.status !== 'end') {
+        if (client.status !== 'end') {
           throw error;
         }
       }
-      
-      redis.off('end', endListener);
-      assert.strictEqual(redis.status, 'end');
+
+      client.off('end', endListener);
+      assert.strictEqual(client.status, 'end');
     });
 
     test('should handle reconnection', async () => {
       // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
-      redis = new Redis({ ...config, retryDelayOnFailover: 10 });
-      await redis.connect();
-    
+      client = new Redis({ ...config, retryDelayOnFailover: 10 });
+      await client.connect();
+
       // Clean slate: flush all data to prevent test pollution
       try {
-        await redis.flushall();
+        await client.flushall();
       } catch (error) {
         console.warn('Warning: Could not flush database:', error.message);
       }
 
       // Simulate connection loss and recovery
-      await redis.disconnect();
-      
+      await client.disconnect();
+
       // Wait a moment for disconnect to complete
       await new Promise(resolve => setTimeout(resolve, 100).unref());
-      
+
       // Create a new connection since disconnect() closes the client
-      redis = new Redis(config);
-      await redis.connect();
-      
+      client = new Redis(config);
+      await client.connect();
+
       // Test that reconnection worked by performing an operation
-      const result = await redis.ping();
+      const result = await client.ping();
       assert.strictEqual(result, 'PONG');
     });
   });
 
   describe('Error handling', () => {
     test('should emit error events', async () => {
-      redis = new Redis({ port: 9999, lazyConnect: true }); // Non-existent port
+      client = new Redis({ port: 9999, lazyConnect: true }); // Non-existent port
 
       // Try to connect and expect it to fail
       try {
-        await redis.connect();
+        await client.connect();
         assert.fail('Expected connection to fail');
       } catch (error) {
         // Connection error is expected
         assert.ok(error instanceof Error);
-        assert.ok(error.message.includes('connect') || error.message.includes('ECONNREFUSED') || error.message.includes('getaddrinfo'));
+        assert.ok(
+          error.message.includes('connect') ||
+            error.message.includes('ECONNREFUSED') ||
+            error.message.includes('getaddrinfo')
+        );
       }
     });
 
@@ -309,29 +313,29 @@ describe('Connection Management (ioredis compatibility)', () => {
       // Server check removed - test infrastructure should be running
 
       const config = getStandaloneConfig();
-      redis = new Redis(config);
-      await redis.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await redis.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+      client = new Redis(config);
+      await client.connect();
+
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
 
       // Try to increment a non-numeric value
-      await redis.set('text', 'not_a_number');
-      await assert.rejects(redis.incr('text'));
+      await client.set('text', 'not_a_number');
+      await assert.rejects(client.incr('text'));
 
       // Connection should still be usable
-      assert.strictEqual(await redis.ping(), 'PONG');
+      assert.strictEqual(await client.ping(), 'PONG');
     });
   });
 });
 
 describe('Pipeline Operations (ioredis compatibility)', () => {
-  let redis;
+  let client;
 
   before(() => {
     // Check if test servers are available
@@ -352,20 +356,20 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
 
     // Use test server configuration
     const config = getStandaloneConfig();
-    redis = new Redis(config);
-    await redis.connect();
-    
+    client = new Redis(config);
+    await client.connect();
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {
-      await redis.flushall();
+      await client.flushall();
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     }
 
     // Clean up any existing test data
     try {
-      await redis.del(
+      await client.del(
         'key1',
         'key2',
         'key3',
@@ -385,15 +389,15 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
   });
 
   afterEach(async () => {
-    if (redis) {
-      await redis.quit();
-      redis = null;
+    if (client) {
+      await client.quit();
+      client = null;
     }
   });
 
   describe('Basic pipeline operations', () => {
     test('should execute multiple commands in pipeline', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
 
       pipeline.set('key1', 'value1');
       pipeline.set('key2', 'value2');
@@ -412,7 +416,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     });
 
     test('should handle mixed command types in pipeline', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
 
       pipeline.set('string_key', 'string_value');
       pipeline.hset('hash_key', 'field', 'hash_value');
@@ -434,7 +438,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     });
 
     test('should handle errors in pipeline', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
 
       pipeline.set('number', '10');
       pipeline.incr('number'); // Should succeed
@@ -453,7 +457,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     });
 
     test('pipeline should be chainable', async () => {
-      const results = await redis
+      const results = await client
         .pipeline()
         .set('key1', 'value1')
         .set('key2', 'value2')
@@ -470,7 +474,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
 
   describe('Pipeline performance characteristics', () => {
     test('should batch commands efficiently', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
 
       // Add many commands
       for (let i = 0; i < 100; i++) {
@@ -492,7 +496,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     });
 
     test('should handle empty pipeline', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
       const results = await pipeline.exec();
       assert.deepStrictEqual(results, []);
     });
@@ -500,7 +504,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
 
   describe('Pipeline with transactions', () => {
     test('should support atomic transactions', async () => {
-      const multi = redis.multi();
+      const multi = client.multi();
 
       multi.set('counter', '0');
       multi.incr('counter');
@@ -518,9 +522,9 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     });
 
     test('should handle transaction rollback on error', async () => {
-      await redis.set('existing_string', 'text_value');
+      await client.set('existing_string', 'text_value');
 
-      const multi = redis.multi();
+      const multi = client.multi();
       multi.incr('existing_string'); // This will cause command to fail
       multi.set('should_not_be_set', 'value');
 
@@ -535,14 +539,14 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       assert.strictEqual(results?.[1]?.[1], 'OK');
 
       // Second command should have executed successfully
-      assert.strictEqual(await redis.exists('should_not_be_set'), 1);
+      assert.strictEqual(await client.exists('should_not_be_set'), 1);
     });
 
     test('should support WATCH for optimistic locking', async () => {
-      await redis.set('watched_key', '10');
+      await client.set('watched_key', '10');
 
       // Start watching
-      await redis.watch('watched_key');
+      await client.watch('watched_key');
 
       // Simulate concurrent modification
       const config = getStandaloneConfig();
@@ -552,23 +556,23 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       await otherClient.disconnect();
 
       // Transaction should fail due to watched key modification
-      const multi = redis.multi();
+      const multi = client.multi();
       multi.incr('watched_key');
 
       const results = await multi.exec();
       assert.strictEqual(results, null); // Transaction aborted
 
       // Verify original value from other client
-      assert.strictEqual(await redis.get('watched_key'), '20');
+      assert.strictEqual(await client.get('watched_key'), '20');
     });
   });
 
   describe('Pipeline error recovery', () => {
     test('should continue processing after command error', async () => {
       // Setup a key with string value that can't be incremented
-      await redis.set('non_numeric_key', 'not_a_number');
+      await client.set('non_numeric_key', 'not_a_number');
 
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
 
       pipeline.set('good1', 'value1');
       pipeline.incr('non_numeric_key'); // Will error
@@ -587,7 +591,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     });
 
     test('should handle pipeline abort', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
 
       pipeline.set('key1', 'value1');
       pipeline.set('key2', 'value2');
@@ -599,14 +603,14 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       assert.deepStrictEqual(results, []); // No commands executed
 
       // Verify no keys were set
-      assert.strictEqual(await redis.exists('key1'), 0);
-      assert.strictEqual(await redis.exists('key2'), 0);
+      assert.strictEqual(await client.exists('key1'), 0);
+      assert.strictEqual(await client.exists('key2'), 0);
     });
   });
 
   describe('Edge cases', () => {
     test('should handle very large pipelines', async () => {
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
       const commandCount = 1000;
 
       for (let i = 0; i < commandCount; i++) {
@@ -623,7 +627,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     test('should handle commands with large payloads', async () => {
       const largeValue = 'x'.repeat(100000); // 100KB value
 
-      const pipeline = redis.pipeline();
+      const pipeline = client.pipeline();
       pipeline.set('large_key', largeValue);
       pipeline.get('large_key');
 

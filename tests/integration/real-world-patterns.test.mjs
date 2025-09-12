@@ -20,7 +20,7 @@ import pkg from '../../dist/index.js';
 const { Redis } = pkg;
 
 describe('Real-World ioredis Usage Patterns', () => {
-  let redis;
+  let client;
 
   before(async () => {
     const config = {
@@ -31,57 +31,57 @@ describe('Real-World ioredis Usage Patterns', () => {
       ),
       connectTimeout: 5000,
     };
-    redis = new Redis(config);
+    client = new Redis(config);
 
-    await redis.connect();
-    
+    await client.connect();
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {
-      await redis.flushall();
+      await client.flushall();
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     } // Wait for connection
-    await redis.ping();
+    await client.ping();
   });
 
   afterEach(async () => {
-    if (redis) {
+    if (client) {
       // Clean up keys from each test to avoid interference
-      await redis.flushdb();
+      await client.flushdb();
     }
   });
 
   after(async () => {
-    if (redis) {
-      await redis.quit();
+    if (client) {
+      await client.quit();
     }
   });
 
   describe('Basic Connection Patterns', () => {
     test('should handle basic Redis constructor pattern from GitHub examples', async () => {
-      // Pattern: const redis = new Redis({ port, host, password })
+      // Pattern: const client = new Redis({ port, host, password })
 
-      await redis.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await redis.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    } // Found in GitHub repositories
-      assert.ok(redis !== undefined);
-      assert.strictEqual(typeof redis.ping, 'function');
+      await client.connect();
 
-      const result = await redis.ping();
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      } // Found in GitHub repositories
+      assert.ok(client !== undefined);
+      assert.strictEqual(typeof client.ping, 'function');
+
+      const result = await client.ping();
       assert.strictEqual(result, 'PONG');
     });
 
     test('should handle authentication patterns from production', async () => {
       // Pattern auth with host/port/password from production configs
       // Found in ElastiCache, Azure Cache configurations
-      const connectionTest = await redis.ping();
+      const connectionTest = await client.ping();
       assert.strictEqual(connectionTest, 'PONG');
     });
   });
@@ -89,22 +89,22 @@ describe('Real-World ioredis Usage Patterns', () => {
   describe('Basic Operations (from ioredis/examples/basic_operations.js)', () => {
     test('should handle string operations', async () => {
       // Direct pattern from ioredis examples
-      await redis.set('foo', 'bar');
-      const result = await redis.get('foo');
+      await client.set('foo', 'bar');
+      const result = await client.get('foo');
       assert.strictEqual(result, 'bar');
     });
 
     test('should handle complex operations with multiple arguments', async () => {
-      // Pattern: redis.zadd("sortedSet", 1, "one", 2, "dos")
-      await redis.zadd('sortedSet', 1, 'one', 2, 'dos');
-      const result = await redis.zrange('sortedSet', 0, 2, true);
+      // Pattern: client.zadd("sortedSet", 1, "one", 2, "dos")
+      await client.zadd('sortedSet', 1, 'one', 2, 'dos');
+      const result = await client.zrange('sortedSet', 0, 2, true);
       assert.deepStrictEqual(result, ['one', '1', 'dos', '2']);
     });
 
     test('should handle flattened arguments', async () => {
-      // Pattern: redis.sadd("set", 1, 3, 5, 7)
-      await redis.sadd('testset', 1, 3, 5, 7);
-      const result = await redis.smembers('testset');
+      // Pattern: client.sadd("set", 1, 3, 5, 7)
+      await client.sadd('testset', 1, 3, 5, 7);
+      const result = await client.smembers('testset');
       assert.deepStrictEqual(result, ['1', '3', '5', '7']);
     });
   });
@@ -118,24 +118,24 @@ describe('Real-World ioredis Usage Patterns', () => {
         description: 'I am a programmer',
       };
 
-      await redis.hset('user-hash', user);
+      await client.hset('user-hash', user);
 
-      const name = await redis.hget('user-hash', 'name');
+      const name = await client.hget('user-hash', 'name');
       assert.strictEqual(name, 'Bob');
 
-      const all = await redis.hgetall('user-hash');
+      const all = await client.hgetall('user-hash');
       assert.deepStrictEqual(all, user);
     });
 
     test('should handle individual hash operations', async () => {
-      await redis.hset('user-profile', 'username', 'alice');
-      await redis.hset('user-profile', 'email', 'alice@example.com');
+      await client.hset('user-profile', 'username', 'alice');
+      await client.hset('user-profile', 'email', 'alice@example.com');
 
-      const exists = await redis.hexists('user-profile', 'username');
+      const exists = await client.hexists('user-profile', 'username');
       assert.strictEqual(exists, 1);
 
-      await redis.hincrby('user-profile', 'login_count', 1);
-      const count = await redis.hget('user-profile', 'login_count');
+      await client.hincrby('user-profile', 'login_count', 1);
+      const count = await client.hget('user-profile', 'login_count');
       assert.strictEqual(count, '1');
     });
   });
@@ -151,7 +151,7 @@ describe('Real-World ioredis Usage Patterns', () => {
       };
 
       // Test basic connectivity which Bull relies on
-      const ping = await redis.ping();
+      const ping = await client.ping();
       assert.strictEqual(ping, 'PONG');
       assert.ok(connectionInfo.port !== undefined);
       assert.ok(connectionInfo.host !== undefined);
@@ -172,14 +172,14 @@ describe('Real-World ioredis Usage Patterns', () => {
       };
 
       // Simulate Bull's job storage pattern
-      await redis.hset('bull:email:12345', {
+      await client.hset('bull:email:12345', {
         dataJSON: JSON.stringify(jobData),
         optsJSON: JSON.stringify({ delay: 0, attempts: 3 }),
         progress: '0',
         delay: '0',
       });
 
-      const storedData = await redis.hget('bull:email:12345', 'dataJSON');
+      const storedData = await client.hget('bull:email:12345', 'dataJSON');
       const parsed = JSON.parse(storedData);
       assert.strictEqual(parsed.id, '12345');
       assert.strictEqual(parsed.type, 'email');
@@ -201,15 +201,15 @@ describe('Real-World ioredis Usage Patterns', () => {
       };
 
       // Set session with TTL (30 minutes)
-      await redis.setex(sessionId, 1800, JSON.stringify(sessionData));
+      await client.setex(sessionId, 1800, JSON.stringify(sessionData));
 
-      const retrieved = await redis.get(sessionId);
+      const retrieved = await client.get(sessionId);
       const parsed = JSON.parse(retrieved);
       assert.strictEqual(parsed.userId, '12345');
       assert.strictEqual(parsed.username, 'testuser');
 
       // Check TTL
-      const ttl = await redis.ttl(sessionId);
+      const ttl = await client.ttl(sessionId);
       assert.ok(ttl > 0);
       assert.ok(ttl <= 1800);
     });
@@ -231,10 +231,10 @@ describe('Real-World ioredis Usage Patterns', () => {
       };
 
       // Set with 1 hour expiry
-      await redis.setex(cacheKey, 3600, JSON.stringify(userData));
+      await client.setex(cacheKey, 3600, JSON.stringify(userData));
 
       // Retrieve and parse
-      const cached = await redis.get(cacheKey);
+      const cached = await client.get(cacheKey);
       const parsed = JSON.parse(cached);
       assert.strictEqual(parsed.id, 12345);
       assert.deepStrictEqual(parsed.roles, ['user', 'premium']);
@@ -244,17 +244,17 @@ describe('Real-World ioredis Usage Patterns', () => {
       const cacheKey = 'expensive:computation:result';
 
       // Simulate cache miss
-      let cached = await redis.get(cacheKey);
+      let cached = await client.get(cacheKey);
       assert.strictEqual(cached, null);
 
       // Simulate expensive computation
       const result = { computed: true, value: Math.random() };
 
       // Cache the result
-      await redis.setex(cacheKey, 300, JSON.stringify(result));
+      await client.setex(cacheKey, 300, JSON.stringify(result));
 
       // Verify cache hit
-      cached = await redis.get(cacheKey);
+      cached = await client.get(cacheKey);
       const parsed = JSON.parse(cached);
       assert.strictEqual(parsed.computed, true);
     });
@@ -266,11 +266,11 @@ describe('Real-World ioredis Usage Patterns', () => {
       const pageKey = 'page:views:/home';
 
       // Increment page views
-      await redis.incr(pageKey);
-      await redis.incr(pageKey);
-      await redis.incr(pageKey);
+      await client.incr(pageKey);
+      await client.incr(pageKey);
+      await client.incr(pageKey);
 
-      const views = await redis.get(pageKey);
+      const views = await client.get(pageKey);
       assert.strictEqual(parseInt(views), 3);
     });
 
@@ -278,18 +278,18 @@ describe('Real-World ioredis Usage Patterns', () => {
       // User activity tracking pattern
       const userKey = 'user:activity:12345';
 
-      await redis.hset(userKey, {
+      await client.hset(userKey, {
         last_login: Date.now().toString(),
         page_views: '15',
         sessions: '3',
       });
 
       // Increment counters
-      await redis.hincrby(userKey, 'page_views', 1);
-      await redis.hincrby(userKey, 'sessions', 1);
+      await client.hincrby(userKey, 'page_views', 1);
+      await client.hincrby(userKey, 'sessions', 1);
 
-      const pageViews = await redis.hget(userKey, 'page_views');
-      const sessions = await redis.hget(userKey, 'sessions');
+      const pageViews = await client.hget(userKey, 'page_views');
+      const sessions = await client.hget(userKey, 'sessions');
 
       assert.strictEqual(parseInt(pageViews), 16);
       assert.strictEqual(parseInt(sessions), 4);
@@ -302,19 +302,19 @@ describe('Real-World ioredis Usage Patterns', () => {
       const queueKey = 'tasks:pending';
 
       // Add tasks to queue
-      await redis.lpush(queueKey, JSON.stringify({ type: 'email', id: 1 }));
-      await redis.lpush(queueKey, JSON.stringify({ type: 'sms', id: 2 }));
-      await redis.lpush(queueKey, JSON.stringify({ type: 'push', id: 3 }));
+      await client.lpush(queueKey, JSON.stringify({ type: 'email', id: 1 }));
+      await client.lpush(queueKey, JSON.stringify({ type: 'sms', id: 2 }));
+      await client.lpush(queueKey, JSON.stringify({ type: 'push', id: 3 }));
 
       // Process tasks (FIFO with RPOP or LIFO with LPOP)
-      const task1 = await redis.rpop(queueKey);
-      const task2 = await redis.rpop(queueKey);
+      const task1 = await client.rpop(queueKey);
+      const task2 = await client.rpop(queueKey);
 
       assert.strictEqual(JSON.parse(task1).id, 1);
       assert.strictEqual(JSON.parse(task2).id, 2);
 
       // Check remaining queue length
-      const remaining = await redis.llen(queueKey);
+      const remaining = await client.llen(queueKey);
       assert.strictEqual(remaining, 1);
     });
   });
@@ -330,16 +330,16 @@ describe('Real-World ioredis Usage Patterns', () => {
       const now = Date.now();
 
       // Add current request timestamp
-      await redis.zadd(key, now, `req:${now}`);
+      await client.zadd(key, now, `req:${now}`);
 
       // Remove old entries (outside the window)
-      await redis.zremrangebyscore(key, 0, now - window * 1000);
+      await client.zremrangebyscore(key, 0, now - window * 1000);
 
       // Count current requests in window
-      const count = await redis.zcard(key);
+      const count = await client.zcard(key);
 
       // Set expiry on the key
-      await redis.expire(key, window);
+      await client.expire(key, window);
 
       assert.strictEqual(count, 1);
       assert.ok(count <= limit);
@@ -359,7 +359,7 @@ describe('Real-World ioredis Usage Patterns', () => {
       });
 
       // Publish message
-      const subscribers = await redis.publish(channel, message);
+      const subscribers = await client.publish(channel, message);
 
       // In a real scenario, subscribers would be >= 0
       assert.ok(subscribers >= 0);
@@ -371,7 +371,7 @@ describe('Real-World ioredis Usage Patterns', () => {
       // Test that the adapter handles basic error scenarios gracefully
       try {
         // Try to get a non-existent key (should return null, not throw)
-        const result = await redis.get('non:existent:key');
+        const result = await client.get('non:existent:key');
         assert.strictEqual(result, null);
       } catch (error) {
         // Should not throw for missing keys
@@ -381,11 +381,11 @@ describe('Real-World ioredis Usage Patterns', () => {
 
     test('should handle type mismatches gracefully', async () => {
       // Set a string value
-      await redis.set('string:key', 'value');
+      await client.set('string:key', 'value');
 
       try {
         // Try to perform a list operation on a string key
-        await redis.lpush('string:key', 'item');
+        await client.lpush('string:key', 'item');
         throw new Error('Should throw error for type mismatch');
       } catch (error) {
         // Should throw appropriate error for type mismatch

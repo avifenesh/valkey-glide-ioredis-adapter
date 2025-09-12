@@ -47,24 +47,24 @@ if (process.env.DISABLE_CLUSTER_TESTS !== 'true') {
 testModes.forEach(({ name: mode, createClient }) => {
   describe(`String Commands (${mode} mode)`, () => {
     describe('Basic String Operations', () => {
-      let redis;
+      let client;
 
       beforeEach(async () => {
-        redis = createClient();
-        await redis.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await redis.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+        client = createClient();
+        await client.connect();
+
+        // Clean slate: flush all data to prevent test pollution
+        // GLIDE's flushall is multislot safe
+        try {
+          await client.flushall();
+        } catch (error) {
+          console.warn('Warning: Could not flush database:', error.message);
+        }
       });
 
       afterEach(async () => {
-        if (redis) {
-          await redis.quit();
+        if (client) {
+          await client.quit();
         }
       });
 
@@ -72,8 +72,8 @@ testModes.forEach(({ name: mode, createClient }) => {
         const key = `test:${mode}:${Date.now()}`;
         const value = `hello-${mode}`;
 
-        await redis.set(key, value);
-        const result = await redis.get(key);
+        await client.set(key, value);
+        const result = await client.get(key);
 
         assert.strictEqual(result, value);
       });
@@ -82,26 +82,26 @@ testModes.forEach(({ name: mode, createClient }) => {
         const key = `test:expire:${mode}:${Date.now()}`;
         const value = `expire-${mode}`;
 
-        await redis.setex(key, 1, value);
-        const result = await redis.get(key);
+        await client.setex(key, 1, value);
+        const result = await client.get(key);
         assert.strictEqual(result, value);
 
-        const ttl = await redis.ttl(key);
+        const ttl = await client.ttl(key);
         assert.ok(ttl > 0);
       });
 
       it('should increment and decrement counters', async () => {
         const key = `test:counter:${mode}:${Date.now()}`;
 
-        await redis.set(key, '10');
+        await client.set(key, '10');
 
-        const incr1 = await redis.incr(key);
+        const incr1 = await client.incr(key);
         assert.strictEqual(incr1, 11);
 
-        const decr1 = await redis.decr(key);
+        const decr1 = await client.decr(key);
         assert.strictEqual(decr1, 10);
 
-        const incrBy = await redis.incrby(key, 5);
+        const incrBy = await client.incrby(key, 5);
         assert.strictEqual(incrBy, 15);
       });
 
@@ -114,7 +114,7 @@ testModes.forEach(({ name: mode, createClient }) => {
         const values = ['value1', 'value2', 'value3'];
 
         // MSET - set multiple keys
-        await redis.mset(
+        await client.mset(
           keys[0],
           values[0],
           keys[1],
@@ -124,7 +124,7 @@ testModes.forEach(({ name: mode, createClient }) => {
         );
 
         // MGET - get multiple keys
-        const results = await redis.mget(keys);
+        const results = await client.mget(keys);
         assert.deepStrictEqual(results, values);
       });
 
@@ -132,38 +132,38 @@ testModes.forEach(({ name: mode, createClient }) => {
         const key = `test:conditional:${mode}:${Date.now()}`;
 
         // SETNX - set if not exists (should succeed)
-        const result1 = await redis.setnx(key, 'first');
+        const result1 = await client.setnx(key, 'first');
         assert.strictEqual(result1, 1);
 
         // SETNX - set if not exists (should fail)
-        const result2 = await redis.setnx(key, 'second');
+        const result2 = await client.setnx(key, 'second');
         assert.strictEqual(result2, 0);
 
         // Value should still be 'first'
-        const value = await redis.get(key);
+        const value = await client.get(key);
         assert.strictEqual(value, 'first');
       });
     });
 
     describe('Advanced String Operations', () => {
-      let redis;
+      let client;
 
       beforeEach(async () => {
-        redis = createClient();
-        await redis.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await redis.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+        client = createClient();
+        await client.connect();
+
+        // Clean slate: flush all data to prevent test pollution
+        // GLIDE's flushall is multislot safe
+        try {
+          await client.flushall();
+        } catch (error) {
+          console.warn('Warning: Could not flush database:', error.message);
+        }
       });
 
       afterEach(async () => {
-        if (redis) {
-          await redis.quit();
+        if (client) {
+          await client.quit();
         }
       });
 
@@ -171,15 +171,15 @@ testModes.forEach(({ name: mode, createClient }) => {
         const key = `test:range:${mode}:${Date.now()}`;
         const value = 'Hello World';
 
-        await redis.set(key, value);
+        await client.set(key, value);
 
         // GETRANGE
-        const range = await redis.getrange(key, 0, 4);
+        const range = await client.getrange(key, 0, 4);
         assert.strictEqual(range, 'Hello');
 
         // SETRANGE
-        await redis.setrange(key, 6, 'Redis');
-        const modified = await redis.get(key);
+        await client.setrange(key, 6, 'Redis');
+        const modified = await client.get(key);
         assert.strictEqual(modified, 'Hello Redis');
       });
 
@@ -187,13 +187,13 @@ testModes.forEach(({ name: mode, createClient }) => {
         const key = `test:bits:${mode}:${Date.now()}`;
 
         // Set some bits
-        await redis.setbit(key, 0, 1);
-        await redis.setbit(key, 2, 1);
+        await client.setbit(key, 0, 1);
+        await client.setbit(key, 2, 1);
 
         // Get bits
-        const bit0 = await redis.getbit(key, 0);
-        const bit1 = await redis.getbit(key, 1);
-        const bit2 = await redis.getbit(key, 2);
+        const bit0 = await client.getbit(key, 0);
+        const bit1 = await client.getbit(key, 1);
+        const bit2 = await client.getbit(key, 2);
 
         assert.strictEqual(bit0, 1);
         assert.strictEqual(bit1, 0);

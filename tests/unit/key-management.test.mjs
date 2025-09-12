@@ -24,7 +24,7 @@ import pkg from '../../dist/index.js';
 const { Redis } = pkg;
 
 describe('Key Management - TTL & Persistence Patterns', () => {
-  let redis;
+  let client;
 
   beforeEach(async () => {
     const config = {
@@ -32,22 +32,22 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       port: parseInt(process.env.VALKEY_PORT || '6383'),
       lazyConnect: true,
     };
-    redis = new Redis(config);
+    client = new Redis(config);
 
-    await redis.connect();
-    
+    await client.connect();
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {
-      await redis.flushall();
+      await client.flushall();
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     }
   });
 
   afterEach(async () => {
-    if (redis) {
-      await redis.quit();
+    if (client) {
+      await client.quit();
     }
   });
 
@@ -62,34 +62,34 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       });
 
       // Set session with 30-minute TTL
-      await redis.setex(sessionKey, 1800, sessionData);
+      await client.setex(sessionKey, 1800, sessionData);
 
       // Verify TTL is set
-      const ttl = await redis.ttl(sessionKey);
+      const ttl = await client.ttl(sessionKey);
       assert.ok(ttl > 1790);
       assert.ok(ttl <= 1800);
 
       // Verify session data
-      const retrievedData = await redis.get(sessionKey);
+      const retrievedData = await client.get(sessionKey);
       assert.strictEqual(retrievedData, sessionData);
 
       // Extend session TTL (user activity)
-      await redis.expire(sessionKey, 3600);
+      await client.expire(sessionKey, 3600);
 
-      const newTtl = await redis.ttl(sessionKey);
+      const newTtl = await client.ttl(sessionKey);
       assert.ok(newTtl > 3590);
     });
 
     test('should implement rolling session expiration', async () => {
       const sessionKey = 'rolling:session:' + Math.random();
 
-      await redis.setex(sessionKey, 900, 'session_data'); // 15 minutes
+      await client.setex(sessionKey, 900, 'session_data'); // 15 minutes
 
       // Simulate user activity - refresh TTL
       await new Promise(resolve => setTimeout(resolve, 100).unref());
-      await redis.expire(sessionKey, 900); // Reset to 15 minutes
+      await client.expire(sessionKey, 900); // Reset to 15 minutes
 
-      const ttl = await redis.ttl(sessionKey);
+      const ttl = await client.ttl(sessionKey);
       assert.ok(ttl > 890);
     });
 
@@ -97,15 +97,15 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       const sessionKey = 'logout:session:' + Math.random();
 
       // Create session
-      await redis.setex(sessionKey, 3600, 'active_session');
-      assert.strictEqual(await redis.exists(sessionKey), 1);
+      await client.setex(sessionKey, 3600, 'active_session');
+      assert.strictEqual(await client.exists(sessionKey), 1);
 
       // Logout - remove session immediately
-      await redis.del(sessionKey);
-      assert.strictEqual(await redis.exists(sessionKey), 0);
+      await client.del(sessionKey);
+      assert.strictEqual(await client.exists(sessionKey), 0);
 
       // TTL should return -2 (key doesn't exist)
-      const ttl = await redis.ttl(sessionKey);
+      const ttl = await client.ttl(sessionKey);
       assert.strictEqual(ttl, -2);
     });
   });
@@ -122,14 +122,14 @@ describe('Key Management - TTL & Persistence Patterns', () => {
         cachedAt: Date.now(),
       });
 
-      await redis.setex(cacheKey, 3600, routeData); // 1 hour cache
+      await client.setex(cacheKey, 3600, routeData); // 1 hour cache
 
       // Verify cache hit
-      const cached = await redis.get(cacheKey);
+      const cached = await client.get(cacheKey);
       assert.strictEqual(cached, routeData);
 
       // Check remaining TTL
-      const ttl = await redis.ttl(cacheKey);
+      const ttl = await client.ttl(cacheKey);
       assert.ok(ttl <= 3600);
       assert.ok(ttl > 3500);
     });
@@ -138,23 +138,23 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       const baseKey = 'staggered:cache:' + Math.random();
 
       // Create multiple cache entries with different TTLs
-      await redis.setex(`${baseKey}:priority:high`, 300, 'high_priority_data'); // 5 min
-      await redis.setex(
+      await client.setex(`${baseKey}:priority:high`, 300, 'high_priority_data'); // 5 min
+      await client.setex(
         `${baseKey}:priority:medium`,
         600,
         'medium_priority_data'
       ); // 10 min
-      await redis.setex(`${baseKey}:priority:low`, 1200, 'low_priority_data'); // 20 min
+      await client.setex(`${baseKey}:priority:low`, 1200, 'low_priority_data'); // 20 min
 
       // Verify all exist
-      assert.strictEqual(await redis.exists(`${baseKey}:priority:high`), 1);
-      assert.strictEqual(await redis.exists(`${baseKey}:priority:medium`), 1);
-      assert.strictEqual(await redis.exists(`${baseKey}:priority:low`), 1);
+      assert.strictEqual(await client.exists(`${baseKey}:priority:high`), 1);
+      assert.strictEqual(await client.exists(`${baseKey}:priority:medium`), 1);
+      assert.strictEqual(await client.exists(`${baseKey}:priority:low`), 1);
 
       // Check TTLs are different
-      const ttlHigh = await redis.ttl(`${baseKey}:priority:high`);
-      const ttlMedium = await redis.ttl(`${baseKey}:priority:medium`);
-      const ttlLow = await redis.ttl(`${baseKey}:priority:low`);
+      const ttlHigh = await client.ttl(`${baseKey}:priority:high`);
+      const ttlMedium = await client.ttl(`${baseKey}:priority:medium`);
+      const ttlLow = await client.ttl(`${baseKey}:priority:low`);
 
       assert.ok(ttlHigh < ttlMedium);
       assert.ok(ttlMedium < ttlLow);
@@ -164,15 +164,15 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       const cacheKey = 'refresh:cache:' + Math.random();
 
       // Set initial cache
-      await redis.setex(cacheKey, 60, 'initial_data');
+      await client.setex(cacheKey, 60, 'initial_data');
 
       // Refresh cache with new data and extended TTL
-      await redis.setex(cacheKey, 120, 'refreshed_data');
+      await client.setex(cacheKey, 120, 'refreshed_data');
 
-      const data = await redis.get(cacheKey);
+      const data = await client.get(cacheKey);
       assert.strictEqual(data, 'refreshed_data');
 
-      const ttl = await redis.ttl(cacheKey);
+      const ttl = await client.ttl(cacheKey);
       assert.ok(ttl > 110);
     });
   });
@@ -182,14 +182,14 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       const rateLimitKey = 'rate:limit:' + Math.random();
 
       // Set rate limit counter with window expiration
-      await redis.setex(rateLimitKey, 3600, '1'); // 1 request in 1 hour window
+      await client.setex(rateLimitKey, 3600, '1'); // 1 request in 1 hour window
 
       // Increment counter (new request)
-      const currentCount = await redis.incr(rateLimitKey);
+      const currentCount = await client.incr(rateLimitKey);
       assert.strictEqual(currentCount, 2);
 
       // TTL should still be maintained after increment
-      const ttl = await redis.ttl(rateLimitKey);
+      const ttl = await client.ttl(rateLimitKey);
       assert.ok(ttl > 0);
       assert.ok(ttl <= 3600);
     });
@@ -199,20 +199,20 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
 
       // OTP expires in 5 minutes
-      await redis.setex(otpKey, 300, otpCode);
+      await client.setex(otpKey, 300, otpCode);
 
       // Verify OTP exists and is correct
-      const storedOtp = await redis.get(otpKey);
+      const storedOtp = await client.get(otpKey);
       assert.strictEqual(storedOtp, otpCode);
 
       // Check TTL
-      const ttl = await redis.ttl(otpKey);
+      const ttl = await client.ttl(otpKey);
       assert.ok(ttl <= 300);
       assert.ok(ttl > 290);
 
       // Consume OTP (delete after use)
-      await redis.del(otpKey);
-      assert.strictEqual(await redis.get(otpKey), null);
+      await client.del(otpKey);
+      assert.strictEqual(await client.get(otpKey), null);
     });
 
     test('should handle temporary upload tokens', async () => {
@@ -225,15 +225,15 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       });
 
       // Upload token expires in 15 minutes
-      await redis.setex(tokenKey, 900, tokenData);
+      await client.setex(tokenKey, 900, tokenData);
 
       // Verify token
-      const token = await redis.get(tokenKey);
+      const token = await client.get(tokenKey);
       assert.strictEqual(token, tokenData);
 
       // Remove token after use
-      await redis.del(tokenKey);
-      assert.strictEqual(await redis.exists(tokenKey), 0);
+      await client.del(tokenKey);
+      assert.strictEqual(await client.exists(tokenKey), 0);
     });
   });
 
@@ -247,14 +247,14 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       });
 
       // Set without TTL (persistent)
-      await redis.set(configKey, configData);
+      await client.set(configKey, configData);
 
       // TTL should be -1 (no expiration)
-      const ttl = await redis.ttl(configKey);
+      const ttl = await client.ttl(configKey);
       assert.strictEqual(ttl, -1);
 
       // Data should persist
-      const data = await redis.get(configKey);
+      const data = await client.get(configKey);
       assert.strictEqual(data, configData);
     });
 
@@ -262,18 +262,18 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       const dataKey = 'convert:persistent:' + Math.random();
 
       // Initially set with TTL
-      await redis.setex(dataKey, 3600, 'temporary_data');
+      await client.setex(dataKey, 3600, 'temporary_data');
 
-      let ttl = await redis.ttl(dataKey);
+      let ttl = await client.ttl(dataKey);
       assert.ok(ttl > 0);
 
       // Make it persistent
-      await redis.persist(dataKey);
+      await client.persist(dataKey);
 
-      ttl = await redis.ttl(dataKey);
+      ttl = await client.ttl(dataKey);
       assert.strictEqual(ttl, -1); // No expiration
 
-      const data = await redis.get(dataKey);
+      const data = await client.get(dataKey);
       assert.strictEqual(data, 'temporary_data');
     });
 
@@ -288,18 +288,18 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       });
 
       // Store in primary location (with TTL)
-      await redis.setex(primaryKey, 7200, importantData);
+      await client.setex(primaryKey, 7200, importantData);
 
       // Create backup (persistent)
-      await redis.set(backupKey, importantData);
+      await client.set(backupKey, importantData);
 
       // Primary should have TTL, backup should not
-      assert.ok((await redis.ttl(primaryKey)) > 0);
-      assert.strictEqual(await redis.ttl(backupKey), -1);
+      assert.ok((await client.ttl(primaryKey)) > 0);
+      assert.strictEqual(await client.ttl(backupKey), -1);
 
       // Both should have same data
-      assert.strictEqual(await redis.get(primaryKey), importantData);
-      assert.strictEqual(await redis.get(backupKey), importantData);
+      assert.strictEqual(await client.get(primaryKey), importantData);
+      assert.strictEqual(await client.get(backupKey), importantData);
     });
   });
 
@@ -308,19 +308,19 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       const baseKey = 'type:test:' + Math.random();
 
       // Create different data types
-      await redis.set(`${baseKey}`, 'string_value');
-      await redis.hset(`${baseKey}:hash`, 'field', 'value');
-      await redis.sadd(`${baseKey}:set`, 'member1', 'member2');
-      await redis.zadd(`${baseKey}:zset`, 1, 'member1');
-      await redis.lpush(`${baseKey}:list`, 'item1');
+      await client.set(`${baseKey}`, 'string_value');
+      await client.hset(`${baseKey}:hash`, 'field', 'value');
+      await client.sadd(`${baseKey}:set`, 'member1', 'member2');
+      await client.zadd(`${baseKey}:zset`, 1, 'member1');
+      await client.lpush(`${baseKey}:list`, 'item1');
 
       // Check types
-      assert.strictEqual(await redis.type(`${baseKey}`), 'string');
-      assert.strictEqual(await redis.type(`${baseKey}:hash`), 'hash');
-      assert.strictEqual(await redis.type(`${baseKey}:set`), 'set');
-      assert.strictEqual(await redis.type(`${baseKey}:zset`), 'zset');
-      assert.strictEqual(await redis.type(`${baseKey}:list`), 'list');
-      assert.strictEqual(await redis.type(`${baseKey}:nonexistent`), 'none');
+      assert.strictEqual(await client.type(`${baseKey}`), 'string');
+      assert.strictEqual(await client.type(`${baseKey}:hash`), 'hash');
+      assert.strictEqual(await client.type(`${baseKey}:set`), 'set');
+      assert.strictEqual(await client.type(`${baseKey}:zset`), 'zset');
+      assert.strictEqual(await client.type(`${baseKey}:list`), 'list');
+      assert.strictEqual(await client.type(`${baseKey}:nonexistent`), 'none');
     });
 
     test('should handle bulk key operations', async () => {
@@ -334,40 +334,40 @@ describe('Key Management - TTL & Persistence Patterns', () => {
 
       // Create multiple keys
       for (let i = 0; i < keys.length; i++) {
-        await redis.set(keys[i], `value_${i}`);
+        await client.set(keys[i], `value_${i}`);
       }
 
       // Check all exist
-      const existsCount = await redis.exists(...keys);
+      const existsCount = await client.exists(...keys);
       assert.strictEqual(existsCount, keys.length);
 
       // Delete multiple keys
-      const deletedCount = await redis.del(...keys);
+      const deletedCount = await client.del(...keys);
       assert.strictEqual(deletedCount, keys.length);
 
       // Verify all deleted
-      assert.strictEqual(await redis.exists(...keys), 0);
+      assert.strictEqual(await client.exists(...keys), 0);
     });
 
     test('should handle key pattern matching for maintenance', async () => {
       const prefix = 'pattern:' + Math.random();
 
       // Create keys with pattern
-      await redis.set(`${prefix}:user:123`, 'user_data');
-      await redis.set(`${prefix}:user:456`, 'user_data');
-      await redis.set(`${prefix}:session:abc`, 'session_data');
-      await redis.set(`${prefix}:session:def`, 'session_data');
-      await redis.set(`${prefix}:other:xyz`, 'other_data');
+      await client.set(`${prefix}:user:123`, 'user_data');
+      await client.set(`${prefix}:user:456`, 'user_data');
+      await client.set(`${prefix}:session:abc`, 'session_data');
+      await client.set(`${prefix}:session:def`, 'session_data');
+      await client.set(`${prefix}:other:xyz`, 'other_data');
 
       // Find keys by pattern
-      const userKeys = await redis.keys(`${prefix}:user:*`);
+      const userKeys = await client.keys(`${prefix}:user:*`);
       assert.strictEqual(userKeys.length, 2);
       assert.strictEqual(
         userKeys.every(key => key.includes('user')),
         true
       );
 
-      const sessionKeys = await redis.keys(`${prefix}:session:*`);
+      const sessionKeys = await client.keys(`${prefix}:session:*`);
       assert.strictEqual(sessionKeys.length, 2);
       assert.strictEqual(
         sessionKeys.every(key => key.includes('session')),
@@ -381,38 +381,38 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       const shortKey = 'short:lived:' + Math.random();
 
       // Set very short TTL
-      await redis.setex(shortKey, 2, 'short_lived_data');
+      await client.setex(shortKey, 2, 'short_lived_data');
 
       // Verify exists initially
-      assert.strictEqual(await redis.exists(shortKey), 1);
-      assert.ok((await redis.ttl(shortKey)) <= 2);
+      assert.strictEqual(await client.exists(shortKey), 1);
+      assert.ok((await client.ttl(shortKey)) <= 2);
 
       // Wait for expiration
       await new Promise(resolve => setTimeout(resolve, 2500).unref());
 
       // Should be expired
-      assert.strictEqual(await redis.exists(shortKey), 0);
-      assert.strictEqual(await redis.ttl(shortKey), -2);
-      assert.strictEqual(await redis.get(shortKey), null);
+      assert.strictEqual(await client.exists(shortKey), 0);
+      assert.strictEqual(await client.ttl(shortKey), -2);
+      assert.strictEqual(await client.get(shortKey), null);
     });
 
     test('should handle TTL updates and cancellations', async () => {
       const mutableKey = 'mutable:ttl:' + Math.random();
 
       // Set with initial TTL
-      await redis.setex(mutableKey, 300, 'mutable_data');
-      assert.ok((await redis.ttl(mutableKey)) <= 300);
+      await client.setex(mutableKey, 300, 'mutable_data');
+      assert.ok((await client.ttl(mutableKey)) <= 300);
 
       // Update TTL to longer duration
-      await redis.expire(mutableKey, 600);
-      assert.ok((await redis.ttl(mutableKey)) > 500);
+      await client.expire(mutableKey, 600);
+      assert.ok((await client.ttl(mutableKey)) > 500);
 
       // Cancel expiration (make persistent)
-      await redis.persist(mutableKey);
-      assert.strictEqual(await redis.ttl(mutableKey), -1);
+      await client.persist(mutableKey);
+      assert.strictEqual(await client.ttl(mutableKey), -1);
 
       // Data should still be there
-      assert.strictEqual(await redis.get(mutableKey), 'mutable_data');
+      assert.strictEqual(await client.get(mutableKey), 'mutable_data');
     });
   });
 
@@ -421,48 +421,48 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       const nonExistentKey = 'nonexistent:' + Math.random();
 
       // TTL on non-existent key should return -2
-      assert.strictEqual(await redis.ttl(nonExistentKey), -2);
+      assert.strictEqual(await client.ttl(nonExistentKey), -2);
 
       // EXPIRE on non-existent key should return 0
-      const expireResult = await redis.expire(nonExistentKey, 300);
+      const expireResult = await client.expire(nonExistentKey, 300);
       assert.strictEqual(expireResult, 0);
 
       // PERSIST on non-existent key should return 0
-      const persistResult = await redis.persist(nonExistentKey);
+      const persistResult = await client.persist(nonExistentKey);
       assert.strictEqual(persistResult, 0);
     });
 
     test('should handle invalid TTL values gracefully', async () => {
       const testKey = 'ttl:test:' + Math.random();
-      await redis.set(testKey, 'test_value');
+      await client.set(testKey, 'test_value');
 
       // Zero TTL should expire immediately
-      await redis.expire(testKey, 0);
+      await client.expire(testKey, 0);
 
       // Key should be expired/deleted
-      assert.strictEqual(await redis.exists(testKey), 0);
+      assert.strictEqual(await client.exists(testKey), 0);
     });
 
     test('should handle type operations on various data structures', async () => {
       const baseKey = 'type:edge:' + Math.random();
 
       // Test TYPE on fresh key (should be 'none')
-      assert.strictEqual(await redis.type(`${baseKey}:fresh`), 'none');
+      assert.strictEqual(await client.type(`${baseKey}:fresh`), 'none');
 
       // Create and delete key, then check type
-      await redis.set(`${baseKey}:temp`, 'temp');
-      await redis.del(`${baseKey}:temp`);
-      assert.strictEqual(await redis.type(`${baseKey}:temp`), 'none');
+      await client.set(`${baseKey}:temp`, 'temp');
+      await client.del(`${baseKey}:temp`);
+      assert.strictEqual(await client.type(`${baseKey}:temp`), 'none');
     });
 
     test('should handle concurrent TTL operations', async () => {
       const concurrentKey = 'concurrent:ttl:' + Math.random();
 
-      await redis.setex(concurrentKey, 3600, 'concurrent_data');
+      await client.setex(concurrentKey, 3600, 'concurrent_data');
 
       // Multiple TTL checks should be consistent
-      const ttl1 = await redis.ttl(concurrentKey);
-      const ttl2 = await redis.ttl(concurrentKey);
+      const ttl1 = await client.ttl(concurrentKey);
+      const ttl2 = await client.ttl(concurrentKey);
 
       // TTL values should be close (within a few seconds)
       assert.ok(Math.abs(ttl1 - ttl2) <= 5);

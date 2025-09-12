@@ -33,14 +33,14 @@ describe('Fastify Redis Plugin Compatibility', () => {
         showFriendlyErrorStack: true,
       });
       await client.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
     });
 
     it('should handle GET/SET operations with callbacks (fastify pattern)', async () => {
@@ -115,14 +115,14 @@ describe('Fastify Redis Plugin Compatibility', () => {
         port: parseInt(process.env.VALKEY_PORT || '6383'),
       });
       await client.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
     });
 
     it('should handle stream operations like fastify example', async () => {
@@ -223,14 +223,14 @@ describe('Fastify Redis Plugin Compatibility', () => {
         port: parseInt(process.env.VALKEY_PORT || '6383'),
       });
       await client.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
     });
 
     it('should handle pipeline for batch operations', async () => {
@@ -264,14 +264,14 @@ describe('Fastify Redis Plugin Compatibility', () => {
         port: parseInt(process.env.VALKEY_PORT || '6383'),
       });
       await client.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
     });
 
     it('should implement sliding window rate limit', async () => {
@@ -342,14 +342,14 @@ describe('Fastify Redis Plugin Compatibility', () => {
         port: parseInt(process.env.VALKEY_PORT || '6383'),
       });
       await client.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
     });
 
     it('should handle session storage like fastify-session-redis-store', async () => {
@@ -391,14 +391,14 @@ describe('Fastify Redis Plugin Compatibility', () => {
         port: parseInt(process.env.VALKEY_PORT || '6383'),
       });
       await client.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
     });
 
     it('should implement cache-aside pattern', async () => {
@@ -452,14 +452,14 @@ describe('Fastify Redis Plugin Compatibility', () => {
         port: parseInt(process.env.VALKEY_PORT || '6383'),
       });
       await client.connect();
-    
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
     });
 
     it('should implement simple distributed lock', async () => {

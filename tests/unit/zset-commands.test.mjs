@@ -18,25 +18,25 @@ const { Redis } = pkg;
 import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('ZSet Commands - Real-World Patterns', () => {
-  let redis;
+  let client;
 
   beforeEach(async () => {
     const config = getStandaloneConfig();
-    redis = new Redis(config);
+    client = new Redis(config);
 
-    await redis.connect();
-    
+    await client.connect();
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {
-      await redis.flushall();
+      await client.flushall();
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     }
   });
 
   afterEach(async () => {
-    await redis.quit();
+    await client.quit();
   });
 
   describe('Gaming Leaderboard Pattern', () => {
@@ -44,36 +44,36 @@ describe('ZSet Commands - Real-World Patterns', () => {
       const key = 'test:zadd:' + Math.random();
 
       // Add initial players
-      const result1 = await redis.zadd(key, 1000, 'player1');
+      const result1 = await client.zadd(key, 1000, 'player1');
       assert.strictEqual(result1, 1);
 
-      const result2 = await redis.zadd(key, 750, 'player2', 1200, 'player3');
+      const result2 = await client.zadd(key, 750, 'player2', 1200, 'player3');
       assert.strictEqual(result2, 2);
 
       // Update existing player score
-      const result3 = await redis.zadd(key, 1100, 'player1');
+      const result3 = await client.zadd(key, 1100, 'player1');
       assert.strictEqual(result3, 0); // No new members added
 
       // Verify final scores
-      const players = await redis.zrange(key, 0, -1);
+      const players = await client.zrange(key, 0, -1);
       assert.deepStrictEqual(players, ['player2', 'player1', 'player3']);
 
       // Check individual scores
-      const player1Score = await redis.zscore(key, 'player1');
+      const player1Score = await client.zscore(key, 'player1');
       assert.strictEqual(player1Score, '1100');
     });
 
     test('should increment player scores with ZINCRBY', async () => {
       const key = 'test:zincrby:' + Math.random();
 
-      await redis.zadd(key, 1000, 'player1');
+      await client.zadd(key, 1000, 'player1');
 
       // Player scores 50 points
-      const newScore = await redis.zincrby(key, 50, 'player1');
+      const newScore = await client.zincrby(key, 50, 'player1');
       assert.strictEqual(newScore, '1050');
 
       // New player gets their first score
-      const firstScore = await redis.zincrby(key, 100, 'newPlayer');
+      const firstScore = await client.zincrby(key, 100, 'newPlayer');
       assert.strictEqual(firstScore, '100');
     });
 
@@ -81,7 +81,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
       const key = 'test:zrevrange:' + Math.random();
 
       // Setup leaderboard
-      await redis.zadd(
+      await client.zadd(
         key,
         1000,
         'alice',
@@ -96,13 +96,13 @@ describe('ZSet Commands - Real-World Patterns', () => {
       );
 
       // Get top 3 players (names only for now)
-      const top3Names = await redis.zrevrange(key, 0, 2);
+      const top3Names = await client.zrevrange(key, 0, 2);
       assert.deepStrictEqual(top3Names, ['charlie', 'eve', 'alice']);
 
       // Verify their scores individually
-      const charlieScore = await redis.zscore(key, 'charlie');
-      const eveScore = await redis.zscore(key, 'eve');
-      const aliceScore = await redis.zscore(key, 'alice');
+      const charlieScore = await client.zscore(key, 'charlie');
+      const eveScore = await client.zscore(key, 'eve');
+      const aliceScore = await client.zscore(key, 'alice');
 
       assert.strictEqual(charlieScore, '1200');
       assert.strictEqual(eveScore, '1100');
@@ -112,7 +112,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
     test('should find player rank with ZREVRANK and ZSCORE', async () => {
       const key = 'test:zrevrank:' + Math.random();
 
-      await redis.zadd(
+      await client.zadd(
         key,
         1000,
         'alice',
@@ -124,20 +124,20 @@ describe('ZSet Commands - Real-World Patterns', () => {
         'diana'
       );
 
-      const rank = await redis.zrevrank(key, 'alice');
+      const rank = await client.zrevrank(key, 'alice');
       assert.strictEqual(rank, 1); // 2nd place (0-indexed, after charlie 1200, before diana 950)
 
-      const score = await redis.zscore(key, 'alice');
+      const score = await client.zscore(key, 'alice');
       assert.strictEqual(score, '1000');
 
-      const noRank = await redis.zrevrank(key, 'nonexistent');
+      const noRank = await client.zrevrank(key, 'nonexistent');
       assert.strictEqual(noRank, null);
     });
 
     test('should handle score range queries with ZRANGEBYSCORE', async () => {
       const key = 'test:zrangebyscore:' + Math.random();
 
-      await redis.zadd(
+      await client.zadd(
         key,
         500,
         'bronze1',
@@ -154,15 +154,15 @@ describe('ZSet Commands - Real-World Patterns', () => {
       );
 
       // Get silver tier players (750-999 points)
-      const silverPlayers = await redis.zrangebyscore(key, 750, 999);
+      const silverPlayers = await client.zrangebyscore(key, 750, 999);
       assert.deepStrictEqual(silverPlayers, ['silver1', 'silver2']);
 
       // Get gold+ players (1000+)
-      const goldPlayers = await redis.zrangebyscore(key, 1000, '+inf');
+      const goldPlayers = await client.zrangebyscore(key, 1000, '+inf');
       assert.deepStrictEqual(goldPlayers, ['gold1', 'gold2']);
 
       // Get bottom 2 players with LIMIT
-      const bottomPlayers = await redis.zrangebyscore(
+      const bottomPlayers = await client.zrangebyscore(
         key,
         '-inf',
         '+inf',
@@ -180,7 +180,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
       const now = Date.now();
 
       // Add activities with timestamps as scores
-      await redis.zadd(
+      await client.zadd(
         key,
         now - 3600000,
         'login', // 1 hour ago
@@ -193,7 +193,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
       );
 
       // Get recent activities (last 45 minutes)
-      const recentActivities = await redis.zrangebyscore(
+      const recentActivities = await client.zrangebyscore(
         key,
         now - 2700000, // 45 min ago
         now
@@ -210,7 +210,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
       const now = Date.now();
       const oneDayAgo = now - 86400000;
 
-      await redis.zadd(
+      await client.zadd(
         key,
         oneDayAgo - 3600000,
         'old_activity1',
@@ -223,10 +223,10 @@ describe('ZSet Commands - Real-World Patterns', () => {
       );
 
       // Remove activities older than 1 day
-      const removed = await redis.zremrangebyscore(key, '-inf', oneDayAgo);
+      const removed = await client.zremrangebyscore(key, '-inf', oneDayAgo);
       assert.strictEqual(removed, 2);
 
-      const remainingCount = await redis.zcard(key);
+      const remainingCount = await client.zcard(key);
       assert.strictEqual(remainingCount, 2);
     });
   });
@@ -236,7 +236,7 @@ describe('ZSet Commands - Real-World Patterns', () => {
       const key = 'test:priority:' + Math.random();
 
       // Add tasks with priority scores (higher = more important)
-      await redis.zadd(
+      await client.zadd(
         key,
         1,
         'low_priority_cleanup',
@@ -249,28 +249,28 @@ describe('ZSet Commands - Real-World Patterns', () => {
       );
 
       // Process highest priority task
-      const highestPriority = await redis.zpopmax(key);
+      const highestPriority = await client.zpopmax(key);
       assert.deepStrictEqual(highestPriority, [
         'critical_security_alert',
         '15',
       ]);
 
       // Process next highest
-      const nextHighest = await redis.zpopmax(key);
+      const nextHighest = await client.zpopmax(key);
       assert.deepStrictEqual(nextHighest, ['high_priority_payment', '10']);
 
       // Check remaining count
-      const remaining = await redis.zcard(key);
+      const remaining = await client.zcard(key);
       assert.strictEqual(remaining, 2);
     });
 
     test('should handle empty queue operations', async () => {
       const key = 'test:empty:' + Math.random();
 
-      const emptyResult = await redis.zpopmax(key);
+      const emptyResult = await client.zpopmax(key);
       assert.deepStrictEqual(emptyResult, []);
 
-      const emptyCount = await redis.zcard(key);
+      const emptyCount = await client.zcard(key);
       assert.strictEqual(emptyCount, 0);
     });
   });
@@ -280,14 +280,14 @@ describe('ZSet Commands - Real-World Patterns', () => {
       const key = 'test:complex:' + Math.random();
 
       // Add initial score
-      const result1 = await redis.zadd(key, 100, 'player1');
+      const result1 = await client.zadd(key, 100, 'player1');
       assert.strictEqual(result1, 1);
 
       // Update existing player score
-      const result2 = await redis.zadd(key, 200, 'player1');
+      const result2 = await client.zadd(key, 200, 'player1');
       assert.strictEqual(result2, 0); // No new members, but score updated
 
-      const finalScore = await redis.zscore(key, 'player1');
+      const finalScore = await client.zscore(key, 'player1');
       assert.strictEqual(finalScore, '200');
     });
 
@@ -299,14 +299,14 @@ describe('ZSet Commands - Real-World Patterns', () => {
       for (let i = 0; i < 100; i++) {
         members.push(i, `member${i}`);
       }
-      await redis.zadd(key, ...members);
+      await client.zadd(key, ...members);
 
       // Verify count
-      const count = await redis.zcard(key);
+      const count = await client.zcard(key);
       assert.strictEqual(count, 100);
 
       // Get specific ranges
-      const firstTen = await redis.zrange(key, 0, 9);
+      const firstTen = await client.zrange(key, 0, 9);
       assert.strictEqual(firstTen.length, 10);
     });
   });
@@ -316,13 +316,13 @@ describe('ZSet Commands - Real-World Patterns', () => {
       const key = 'test:nonexistent:' + Math.random();
 
       // Operations on non-existent keys
-      const rank = await redis.zrank(key, 'member');
+      const rank = await client.zrank(key, 'member');
       assert.strictEqual(rank, null);
 
-      const score = await redis.zscore(key, 'member');
+      const score = await client.zscore(key, 'member');
       assert.strictEqual(score, null);
 
-      const range = await redis.zrange(key, 0, -1);
+      const range = await client.zrange(key, 0, -1);
       assert.deepStrictEqual(range, []);
     });
 
@@ -330,21 +330,21 @@ describe('ZSet Commands - Real-World Patterns', () => {
       const key = 'test:' + Math.random();
 
       // Set a string value first
-      await redis.set(key, 'not-a-zset');
+      await client.set(key, 'not-a-zset');
 
       // ZSet operations on string should throw
       await assert.rejects(async () => {
-        await redis.zadd(key, 1, 'member');
+        await client.zadd(key, 1, 'member');
       });
       await assert.rejects(async () => {
-        await redis.zrange(key, 0, -1);
+        await client.zrange(key, 0, -1);
       });
     });
 
     test('should handle floating point scores correctly', async () => {
       const key = 'test:float:' + Math.random();
 
-      await redis.zadd(
+      await client.zadd(
         key,
         1.5,
         'member1',
@@ -355,20 +355,20 @@ describe('ZSet Commands - Real-World Patterns', () => {
       );
 
       // Get members in order
-      const range = await redis.zrange(key, 0, -1);
+      const range = await client.zrange(key, 0, -1);
       assert.deepStrictEqual(range, ['member1', 'member3', 'member2']);
 
       // Check individual scores
-      const score1 = await redis.zscore(key, 'member1');
-      const score2 = await redis.zscore(key, 'member2');
-      const score3 = await redis.zscore(key, 'member3');
+      const score1 = await client.zscore(key, 'member1');
+      const score2 = await client.zscore(key, 'member2');
+      const score3 = await client.zscore(key, 'member3');
 
       assert.ok(Math.abs(parseFloat(score1) - 1.5) < Math.pow(10, -10));
       assert.ok(Math.abs(parseFloat(score2) - 2.7) < Math.pow(10, -10));
       assert.ok(Math.abs(parseFloat(score3) - 1.5000001) < Math.pow(10, -10));
 
       // Test increment with float
-      const newScore = await redis.zincrby(key, 0.3, 'member1');
+      const newScore = await client.zincrby(key, 0.3, 'member1');
       assert.ok(Math.abs(parseFloat(newScore) - 1.8) < Math.pow(10, -10));
     });
   });

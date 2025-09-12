@@ -18,25 +18,25 @@ const { Redis } = pkg;
 import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('GraphQL Subscriptions Patterns', () => {
-  let redis;
+  let client;
 
   beforeEach(async () => {
     const config = getStandaloneConfig();
-    redis = new Redis(config);
+    client = new Redis(config);
 
-    await redis.connect();
-    
+    await client.connect();
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {
-      await redis.flushall();
+      await client.flushall();
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     }
   });
 
   afterEach(async () => {
-    await redis.quit();
+    await client.quit();
   });
 
   describe('Basic Pub/Sub Operations', () => {
@@ -50,7 +50,10 @@ describe('GraphQL Subscriptions Patterns', () => {
       };
 
       // Publish message
-      const subscribers = await redis.publish(channel, JSON.stringify(message));
+      const subscribers = await client.publish(
+        channel,
+        JSON.stringify(message)
+      );
       assert.strictEqual(typeof subscribers, 'number');
       assert.ok(subscribers >= 0); // No active subscribers initially
     });
@@ -66,7 +69,7 @@ describe('GraphQL Subscriptions Patterns', () => {
 
       // Publish multiple message types
       for (const message of messages) {
-        const result = await redis.publish(channel, JSON.stringify(message));
+        const result = await client.publish(channel, JSON.stringify(message));
         assert.strictEqual(typeof result, 'number');
       }
     });
@@ -89,7 +92,7 @@ describe('GraphQL Subscriptions Patterns', () => {
         },
       };
 
-      const published = await redis.publish(
+      const published = await client.publish(
         commentChannel,
         JSON.stringify(newComment)
       );
@@ -106,7 +109,7 @@ describe('GraphQL Subscriptions Patterns', () => {
         },
       };
 
-      const updatePublished = await redis.publish(
+      const updatePublished = await client.publish(
         commentChannel,
         JSON.stringify(updatedComment)
       );
@@ -140,7 +143,7 @@ describe('GraphQL Subscriptions Patterns', () => {
       ];
 
       for (const activity of activities) {
-        const subscribers = await redis.publish(
+        const subscribers = await client.publish(
           activityChannel,
           JSON.stringify(activity)
         );
@@ -164,7 +167,7 @@ describe('GraphQL Subscriptions Patterns', () => {
         },
       };
 
-      const result = await redis.publish(
+      const result = await client.publish(
         chatChannel,
         JSON.stringify(chatMessage)
       );
@@ -181,7 +184,7 @@ describe('GraphQL Subscriptions Patterns', () => {
         },
       };
 
-      const sysResult = await redis.publish(
+      const sysResult = await client.publish(
         chatChannel,
         JSON.stringify(systemMessage)
       );
@@ -209,7 +212,7 @@ describe('GraphQL Subscriptions Patterns', () => {
 
       // Publish to different notification channels
       for (const channel of channels) {
-        const result = await redis.publish(
+        const result = await client.publish(
           channel,
           JSON.stringify({
             type: channel.split(':')[1]?.toUpperCase() || 'UNKNOWN',
@@ -248,7 +251,7 @@ describe('GraphQL Subscriptions Patterns', () => {
       ];
 
       for (const event of globalEvents) {
-        const subscribers = await redis.publish(
+        const subscribers = await client.publish(
           globalChannel,
           JSON.stringify(event)
         );
@@ -272,10 +275,10 @@ describe('GraphQL Subscriptions Patterns', () => {
       };
 
       // Store subscription metadata
-      await redis.setex(metadataKey, 3600, JSON.stringify(subscriptionMeta)); // 1 hour TTL
+      await client.setex(metadataKey, 3600, JSON.stringify(subscriptionMeta)); // 1 hour TTL
 
       // Retrieve and verify
-      const stored = await redis.get(metadataKey);
+      const stored = await client.get(metadataKey);
       assert.ok(stored);
 
       if (stored) {
@@ -286,7 +289,7 @@ describe('GraphQL Subscriptions Patterns', () => {
 
       // Update last activity
       const updatedMeta = { ...subscriptionMeta, lastActivity: Date.now() };
-      await redis.setex(metadataKey, 3600, JSON.stringify(updatedMeta));
+      await client.setex(metadataKey, 3600, JSON.stringify(updatedMeta));
     });
 
     test('should handle subscription cleanup', async () => {
@@ -295,19 +298,19 @@ describe('GraphQL Subscriptions Patterns', () => {
       const channelMappingKey = `subscriptions:${subscriptionId}:channels`;
 
       // Setup subscription data
-      await redis.set(metadataKey, JSON.stringify({ id: subscriptionId }));
-      await redis.sadd(channelMappingKey, 'channel1', 'channel2', 'channel3');
+      await client.set(metadataKey, JSON.stringify({ id: subscriptionId }));
+      await client.sadd(channelMappingKey, 'channel1', 'channel2', 'channel3');
 
       // Verify data exists
-      assert.ok(await redis.get(metadataKey));
-      assert.strictEqual(await redis.scard(channelMappingKey), 3);
+      assert.ok(await client.get(metadataKey));
+      assert.strictEqual(await client.scard(channelMappingKey), 3);
 
       // Cleanup subscription
-      await redis.del(metadataKey, channelMappingKey);
+      await client.del(metadataKey, channelMappingKey);
 
       // Verify cleanup
-      assert.strictEqual(await redis.get(metadataKey), null);
-      assert.strictEqual(await redis.scard(channelMappingKey), 0);
+      assert.strictEqual(await client.get(metadataKey), null);
+      assert.strictEqual(await client.scard(channelMappingKey), 0);
     });
 
     test('should track active subscriptions per user', async () => {
@@ -318,22 +321,22 @@ describe('GraphQL Subscriptions Patterns', () => {
 
       // Add subscriptions to user's active list
       for (const subId of subscriptionIds) {
-        await redis.sadd(userSubscriptionsKey, subId);
-        await redis.expire(userSubscriptionsKey, 7200); // 2 hour TTL
+        await client.sadd(userSubscriptionsKey, subId);
+        await client.expire(userSubscriptionsKey, 7200); // 2 hour TTL
       }
 
       // Verify all subscriptions are tracked
-      const activeCount = await redis.scard(userSubscriptionsKey);
+      const activeCount = await client.scard(userSubscriptionsKey);
       assert.strictEqual(activeCount, 3);
 
-      const allSubs = await redis.smembers(userSubscriptionsKey);
+      const allSubs = await client.smembers(userSubscriptionsKey);
       for (const subId of subscriptionIds.slice(0, 2)) {
         assert.ok(allSubs.includes(subId));
       }
 
       // Remove one subscription
-      await redis.srem(userSubscriptionsKey, 'sub_2');
-      const updatedCount = await redis.scard(userSubscriptionsKey);
+      await client.srem(userSubscriptionsKey, 'sub_2');
+      const updatedCount = await client.scard(userSubscriptionsKey);
       assert.strictEqual(updatedCount, 2);
     });
   });
@@ -354,7 +357,7 @@ describe('GraphQL Subscriptions Patterns', () => {
 
       // Publish to multiple channels
       const publishPromises = channels.map(channel =>
-        redis.publish(channel, JSON.stringify({ ...batchMessage, channel }))
+        client.publish(channel, JSON.stringify({ ...batchMessage, channel }))
       );
 
       const results = await Promise.all(publishPromises);
@@ -376,19 +379,19 @@ describe('GraphQL Subscriptions Patterns', () => {
       };
 
       // Check if message already sent
-      const alreadySent = await redis.get(dedupKey);
+      const alreadySent = await client.get(dedupKey);
 
       if (!alreadySent) {
         // Mark as sent for 5 minutes
-        await redis.setex(dedupKey, 300, '1');
+        await client.setex(dedupKey, 300, '1');
 
         // Publish message
-        const result = await redis.publish(channel, JSON.stringify(message));
+        const result = await client.publish(channel, JSON.stringify(message));
         assert.strictEqual(typeof result, 'number');
       }
 
       // Attempt to send duplicate (should be blocked)
-      const duplicateAttempt = await redis.get(dedupKey);
+      const duplicateAttempt = await client.get(dedupKey);
       assert.ok(duplicateAttempt); // Should exist, blocking duplicate
     });
 
@@ -403,11 +406,11 @@ describe('GraphQL Subscriptions Patterns', () => {
 
       for (let i = 0; i < 7; i++) {
         // Attempt 7 subscriptions
-        const current = await redis.incr(rateLimitKey);
+        const current = await client.incr(rateLimitKey);
 
         if (current === 1) {
           // First request in window, set expiration
-          await redis.expire(rateLimitKey, windowSize);
+          await client.expire(rateLimitKey, windowSize);
         }
 
         if (current <= maxSubscriptions) {
@@ -422,7 +425,7 @@ describe('GraphQL Subscriptions Patterns', () => {
 
       assert.ok(currentCount <= maxSubscriptions);
 
-      const finalCount = await redis.get(rateLimitKey);
+      const finalCount = await client.get(rateLimitKey);
       assert.ok(parseInt(finalCount) > maxSubscriptions);
     });
   });
@@ -433,18 +436,18 @@ describe('GraphQL Subscriptions Patterns', () => {
 
       // Valid message
       const validMessage = { type: 'VALID', data: 'test' };
-      const validResult = await redis.publish(
+      const validResult = await client.publish(
         channel,
         JSON.stringify(validMessage)
       );
       assert.strictEqual(typeof validResult, 'number');
 
       // Invalid JSON (would be handled by subscriber)
-      const invalidResult = await redis.publish(channel, 'invalid-json{');
+      const invalidResult = await client.publish(channel, 'invalid-json{');
       assert.strictEqual(typeof invalidResult, 'number');
 
       // Empty message
-      const emptyResult = await redis.publish(channel, '');
+      const emptyResult = await client.publish(channel, '');
       assert.strictEqual(typeof emptyResult, 'number');
     });
 
@@ -454,10 +457,10 @@ describe('GraphQL Subscriptions Patterns', () => {
       const heartbeatKey = `subscription:heartbeat:${subscriptionId}`;
 
       // Set initial heartbeat
-      await redis.setex(heartbeatKey, 30, Date.now().toString());
+      await client.setex(heartbeatKey, 30, Date.now().toString());
 
       // Set subscription timeout (longer than heartbeat)
-      await redis.setex(
+      await client.setex(
         timeoutKey,
         60,
         JSON.stringify({
@@ -467,14 +470,14 @@ describe('GraphQL Subscriptions Patterns', () => {
       );
 
       // Simulate heartbeat update
-      await redis.setex(heartbeatKey, 30, Date.now().toString());
+      await client.setex(heartbeatKey, 30, Date.now().toString());
 
       // Check if subscription is still active
-      const isActive = await redis.get(timeoutKey);
+      const isActive = await client.get(timeoutKey);
       assert.ok(isActive);
 
       // Check heartbeat
-      const lastHeartbeat = await redis.get(heartbeatKey);
+      const lastHeartbeat = await client.get(heartbeatKey);
       assert.ok(lastHeartbeat);
     });
 
@@ -489,7 +492,7 @@ describe('GraphQL Subscriptions Patterns', () => {
         reconnectedAt: Date.now(),
       };
 
-      await redis.setex(reconnectKey, 300, JSON.stringify(connectionState));
+      await client.setex(reconnectKey, 300, JSON.stringify(connectionState));
 
       // Simulate publishing after reconnection
       const recoveryMessage = {
@@ -498,14 +501,14 @@ describe('GraphQL Subscriptions Patterns', () => {
         timestamp: Date.now(),
       };
 
-      const result = await redis.publish(
+      const result = await client.publish(
         recoveryChannel,
         JSON.stringify(recoveryMessage)
       );
       assert.strictEqual(typeof result, 'number');
 
       // Verify stored state
-      const stored = await redis.get(reconnectKey);
+      const stored = await client.get(reconnectKey);
       assert.ok(stored);
 
       if (stored) {

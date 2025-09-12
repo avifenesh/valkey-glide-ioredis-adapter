@@ -168,7 +168,7 @@ export class IoredisPubSubClient extends EventEmitter {
       this.socket.removeAllListeners();
       if (!this.socket.destroyed) {
         // Properly close the socket with a promise
-        await new Promise<void>((resolve) => {
+        await new Promise<void>(resolve => {
           const onClose = () => {
             resolve();
           };

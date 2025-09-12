@@ -18,25 +18,25 @@ const { Redis } = pkg;
 import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('NestJS Cache Integration Patterns', () => {
-  let redis;
+  let client;
 
   beforeEach(async () => {
     const config = getStandaloneConfig();
-    redis = new Redis(config);
+    client = new Redis(config);
 
-    await redis.connect();
-    
+    await client.connect();
+
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
     try {
-      await redis.flushall();
+      await client.flushall();
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
     }
   });
 
   afterEach(async () => {
-    await redis.quit();
+    await client.quit();
   });
 
   describe('Cache Manager Pattern', () => {
@@ -52,10 +52,10 @@ describe('NestJS Cache Integration Patterns', () => {
       };
 
       // Set with 60 second TTL
-      await redis.setex(cacheKey, 60, JSON.stringify(userProfile));
+      await client.setex(cacheKey, 60, JSON.stringify(userProfile));
 
       // Retrieve cached data
-      const cachedData = await redis.get(cacheKey);
+      const cachedData = await client.get(cacheKey);
       assert.ok(cachedData);
 
       if (cachedData) {
@@ -65,7 +65,7 @@ describe('NestJS Cache Integration Patterns', () => {
       }
 
       // Verify TTL is set
-      const ttl = await redis.ttl(cacheKey);
+      const ttl = await client.ttl(cacheKey);
       assert.ok(ttl > 0);
       assert.ok(ttl <= 60);
     });
@@ -73,10 +73,10 @@ describe('NestJS Cache Integration Patterns', () => {
     test('should handle cache miss gracefully', async () => {
       const nonExistentKey = 'cache:missing:' + Math.random();
 
-      const result = await redis.get(nonExistentKey);
+      const result = await client.get(nonExistentKey);
       assert.strictEqual(result, null);
 
-      const ttl = await redis.ttl(nonExistentKey);
+      const ttl = await client.ttl(nonExistentKey);
       assert.strictEqual(ttl, -2); // Key doesn't exist
     });
 
@@ -90,22 +90,22 @@ describe('NestJS Cache Integration Patterns', () => {
       const activityKey = `${baseKey}user:${userId}:activity`;
 
       // Set multiple related caches
-      await redis.setex(profileKey, 300, JSON.stringify({ name: 'Alice' }));
-      await redis.setex(
+      await client.setex(profileKey, 300, JSON.stringify({ name: 'Alice' }));
+      await client.setex(
         settingsKey,
         300,
         JSON.stringify({ notifications: true })
       );
-      await redis.setex(
+      await client.setex(
         activityKey,
         300,
         JSON.stringify({ lastLogin: Date.now() })
       );
 
       // Verify all caches exist
-      const profile = await redis.get(profileKey);
-      const settings = await redis.get(settingsKey);
-      const activity = await redis.get(activityKey);
+      const profile = await client.get(profileKey);
+      const settings = await client.get(settingsKey);
+      const activity = await client.get(activityKey);
 
       assert.ok(profile);
       assert.ok(settings);
@@ -113,7 +113,7 @@ describe('NestJS Cache Integration Patterns', () => {
 
       // Pattern-based cache invalidation (simulate)
       const pattern = `${baseKey}user:${userId}:*`;
-      const keys = await redis.keys(pattern);
+      const keys = await client.keys(pattern);
       assert.strictEqual(keys.length, 3);
     });
   });
@@ -135,7 +135,7 @@ describe('NestJS Cache Integration Patterns', () => {
       };
 
       // Check cache first
-      let cachedResult = await redis.get(cacheKey);
+      let cachedResult = await client.get(cacheKey);
       let userData;
 
       if (cachedResult) {
@@ -145,14 +145,14 @@ describe('NestJS Cache Integration Patterns', () => {
         userData = await expensiveUserLookup(userId);
 
         // Cache result with 5 minute TTL
-        await redis.setex(cacheKey, 300, JSON.stringify(userData));
+        await client.setex(cacheKey, 300, JSON.stringify(userData));
       }
 
       assert.strictEqual(userData.id, userId);
       assert.strictEqual(userData.name, 'Expensive User');
 
       // Second call should hit cache
-      const secondCall = await redis.get(cacheKey);
+      const secondCall = await client.get(cacheKey);
       assert.ok(secondCall);
 
       const cachedUser = JSON.parse(secondCall);
@@ -167,19 +167,19 @@ describe('NestJS Cache Integration Patterns', () => {
       const profileKey = `${cachePrefix}:profile:${userId}`;
       const settingsKey = `${cachePrefix}:settings:${userId}`;
 
-      await redis.setex(profileKey, 300, JSON.stringify({ name: 'Old Name' }));
-      await redis.setex(settingsKey, 300, JSON.stringify({ theme: 'light' }));
+      await client.setex(profileKey, 300, JSON.stringify({ name: 'Old Name' }));
+      await client.setex(settingsKey, 300, JSON.stringify({ theme: 'light' }));
 
       // Verify data is cached
-      assert.ok(await redis.get(profileKey));
-      assert.ok(await redis.get(settingsKey));
+      assert.ok(await client.get(profileKey));
+      assert.ok(await client.get(settingsKey));
 
       // Simulate cache eviction after update
-      await redis.del(profileKey, settingsKey);
+      await client.del(profileKey, settingsKey);
 
       // Verify cache is cleared
-      assert.strictEqual(await redis.get(profileKey), null);
-      assert.strictEqual(await redis.get(settingsKey), null);
+      assert.strictEqual(await client.get(profileKey), null);
+      assert.strictEqual(await client.get(settingsKey), null);
     });
   });
 
@@ -197,11 +197,11 @@ describe('NestJS Cache Integration Patterns', () => {
       };
 
       // Write-through cache and database simultaneously
-      await redis.setex(cacheKey, 600, JSON.stringify(productData));
+      await client.setex(cacheKey, 600, JSON.stringify(productData));
       // In real app: also update database here
 
       // Verify cache contains latest data
-      const cached = await redis.get(cacheKey);
+      const cached = await client.get(cacheKey);
       assert.ok(cached);
 
       const cachedProduct = JSON.parse(cached);
@@ -214,7 +214,7 @@ describe('NestJS Cache Integration Patterns', () => {
       const cacheKey = `cache:article:${articleId}`;
 
       // Cache-aside cache first
-      let cachedArticle = await redis.get(cacheKey);
+      let cachedArticle = await client.get(cacheKey);
 
       if (!cachedArticle) {
         // Simulate database fetch
@@ -227,7 +227,7 @@ describe('NestJS Cache Integration Patterns', () => {
         };
 
         // Store in cache
-        await redis.setex(cacheKey, 1800, JSON.stringify(articleFromDB)); // 30 min TTL
+        await client.setex(cacheKey, 1800, JSON.stringify(articleFromDB)); // 30 min TTL
         cachedArticle = JSON.stringify(articleFromDB);
       }
 
@@ -236,7 +236,7 @@ describe('NestJS Cache Integration Patterns', () => {
       assert.strictEqual(article.title, 'Redis Patterns in NestJS');
 
       // Subsequent calls should hit cache
-      const secondFetch = await redis.get(cacheKey);
+      const secondFetch = await client.get(cacheKey);
       assert.ok(secondFetch);
     });
 
@@ -247,11 +247,11 @@ describe('NestJS Cache Integration Patterns', () => {
       // Simulate multiple concurrent requests
       const concurrentRequests = async () => {
         // Try to acquire lock
-        const lockAcquired = await redis.setnx(lockKey, '1');
+        const lockAcquired = await client.setnx(lockKey, '1');
 
         if (lockAcquired) {
           // Only one request gets to generate cache
-          await redis.expire(lockKey, 10); // Lock expires in 10 seconds
+          await client.expire(lockKey, 10); // Lock expires in 10 seconds
 
           // Simulate expensive operation
           const expensiveData = {
@@ -261,17 +261,17 @@ describe('NestJS Cache Integration Patterns', () => {
           };
 
           // Cache the result
-          await redis.setex(popularKey, 300, JSON.stringify(expensiveData));
+          await client.setex(popularKey, 300, JSON.stringify(expensiveData));
 
           // Release lock
-          await redis.del(lockKey);
+          await client.del(lockKey);
 
           return expensiveData;
         } else {
           // Wait for cache to be populated
           let retries = 0;
           while (retries < 10) {
-            const cached = await redis.get(popularKey);
+            const cached = await client.get(popularKey);
             if (cached) {
               return JSON.parse(cached);
             }
@@ -313,31 +313,31 @@ describe('NestJS Cache Integration Patterns', () => {
 
       // Set caches and maintain tag mappings
       for (const cache of userCaches) {
-        await redis.setex(cache.key, 300, JSON.stringify(cache.data));
+        await client.setex(cache.key, 300, JSON.stringify(cache.data));
 
         // Maintain tag-to-keys mapping
         for (const tag of cache.tags) {
           const tagKey = `${baseKey}:tag:${tag}`;
-          await redis.sadd(tagKey, cache.key);
-          await redis.expire(tagKey, 300);
+          await client.sadd(tagKey, cache.key);
+          await client.expire(tagKey, 300);
         }
       }
 
       // Invalidate all caches tagged with 'user:1'
       const tagKey = `${baseKey}:tag:user:1`;
-      const keysToInvalidate = await redis.smembers(tagKey);
+      const keysToInvalidate = await client.smembers(tagKey);
 
       if (keysToInvalidate.length > 0) {
-        await redis.del(...keysToInvalidate);
-        await redis.del(tagKey); // Remove tag mapping
+        await client.del(...keysToInvalidate);
+        await client.del(tagKey); // Remove tag mapping
       }
 
       // Verify user:1 caches are gone
-      assert.strictEqual(await redis.get(`${baseKey}:user:1:profile`), null);
-      assert.strictEqual(await redis.get(`${baseKey}:user:1:posts`), null);
+      assert.strictEqual(await client.get(`${baseKey}:user:1:profile`), null);
+      assert.strictEqual(await client.get(`${baseKey}:user:1:posts`), null);
 
       // But user:2 cache remains
-      assert.ok(await redis.get(`${baseKey}:user:2:profile`));
+      assert.ok(await client.get(`${baseKey}:user:2:profile`));
     });
 
     test('should implement time-based cache refresh', async () => {
@@ -350,12 +350,12 @@ describe('NestJS Cache Integration Patterns', () => {
         timestamp: Date.now(),
       };
 
-      await redis.setex(refreshKey, 60, JSON.stringify(initialData));
-      await redis.set(lastRefreshKey, Date.now().toString());
+      await client.setex(refreshKey, 60, JSON.stringify(initialData));
+      await client.set(lastRefreshKey, Date.now().toString());
 
       // Simulate time passing (would be actual time in real app)
       const currentTime = Date.now();
-      const lastRefresh = parseInt((await redis.get(lastRefreshKey)) || '0');
+      const lastRefresh = parseInt((await client.get(lastRefreshKey)) || '0');
       const refreshInterval = 30000; // 30 seconds
 
       if (currentTime - lastRefresh > refreshInterval) {
@@ -365,11 +365,11 @@ describe('NestJS Cache Integration Patterns', () => {
           timestamp: currentTime,
         };
 
-        await redis.setex(refreshKey, 60, JSON.stringify(newData));
-        await redis.set(lastRefreshKey, currentTime.toString());
+        await client.setex(refreshKey, 60, JSON.stringify(newData));
+        await client.set(lastRefreshKey, currentTime.toString());
       }
 
-      const cached = await redis.get(refreshKey);
+      const cached = await client.get(refreshKey);
       assert.ok(cached);
 
       const cachedData = JSON.parse(cached);
@@ -385,30 +385,30 @@ describe('NestJS Cache Integration Patterns', () => {
       // Simulate cache operations with statistics
       const trackCacheOperation = async operation => {
         const field = operation === 'miss' ? 'misses' : 'hits';
-        await redis.hincrby(statsKey, field, 1);
-        await redis.hincrby(statsKey, 'total', 1);
+        await client.hincrby(statsKey, field, 1);
+        await client.hincrby(statsKey, 'total', 1);
       };
 
       // Cache miss
-      let data = await redis.get(dataKey);
+      let data = await client.get(dataKey);
       if (!data) {
         await trackCacheOperation('miss');
 
         // Simulate data generation
         data = JSON.stringify({ value: 'generated_data' });
-        await redis.setex(dataKey, 300, data);
+        await client.setex(dataKey, 300, data);
       } else {
         await trackCacheOperation('hit');
       }
 
       // Cache hit
-      data = await redis.get(dataKey);
+      data = await client.get(dataKey);
       if (data) {
         await trackCacheOperation('hit');
       }
 
       // Check statistics
-      const stats = await redis.hgetall(statsKey);
+      const stats = await client.hgetall(statsKey);
       assert.strictEqual(parseInt(stats.misses || '0'), 1);
       assert.strictEqual(parseInt(stats.hits || '0'), 1);
       assert.strictEqual(parseInt(stats.total || '0'), 2);
@@ -435,20 +435,20 @@ describe('NestJS Cache Integration Patterns', () => {
 
       // Warm up cache
       const warmupPromises = criticalData.map(item =>
-        redis.setex(item.key, 3600, JSON.stringify(item.data))
+        client.setex(item.key, 3600, JSON.stringify(item.data))
       );
 
       await Promise.all(warmupPromises);
 
       // Verify all critical data is cached
       for (const item of criticalData) {
-        const cached = await redis.get(item.key);
+        const cached = await client.get(item.key);
         assert.ok(cached);
 
         const parsed = JSON.parse(cached);
         assert.deepStrictEqual(parsed, item.data);
 
-        const ttl = await redis.ttl(item.key);
+        const ttl = await client.ttl(item.key);
         assert.ok(ttl > 3500); // Confirm long TTL
       }
     });
@@ -461,13 +461,13 @@ describe('NestJS Cache Integration Patterns', () => {
       // Simulate cache operation with fallback
       const cacheWithFallback = async (key, fallbackData) => {
         try {
-          const cached = await redis.get(key);
+          const cached = await client.get(key);
           if (cached) {
             return JSON.parse(cached);
           }
 
           // Cache miss - store fallback data
-          await redis.setex(key, 60, JSON.stringify(fallbackData));
+          await client.setex(key, 60, JSON.stringify(fallbackData));
           return fallbackData;
         } catch (error) {
           // Cache failure - return fallback data without caching
@@ -486,24 +486,24 @@ describe('NestJS Cache Integration Patterns', () => {
       const expiringKey = 'cache:expiring:' + Math.random();
 
       // Set cache with very short TTL
-      await redis.setex(
+      await client.setex(
         expiringKey,
         1,
         JSON.stringify({ data: 'short_lived' })
       );
 
       // Verify it exists initially
-      let cached = await redis.get(expiringKey);
+      let cached = await client.get(expiringKey);
       assert.ok(cached);
 
       // Wait for expiration
       await new Promise(resolve => setTimeout(resolve, 1100).unref());
 
       // Verify it's expired
-      cached = await redis.get(expiringKey);
+      cached = await client.get(expiringKey);
       assert.strictEqual(cached, null);
 
-      const ttl = await redis.ttl(expiringKey);
+      const ttl = await client.ttl(expiringKey);
       assert.strictEqual(ttl, -2); // Key expired and removed
     });
   });
