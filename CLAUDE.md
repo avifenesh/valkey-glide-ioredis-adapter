@@ -10,18 +10,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run dev` - Run both build:watch and test:watch concurrently
 
 ### Testing
-- `npm test` - Run all tests using dual-mode test runner (tests both standalone and cluster)
+- `npm test` - Run all tests sequentially using test-sequential.sh
+- `npm run test:parallel` - Run tests in dual-mode (standalone + cluster)
 - `npm run test:standalone` - Run tests in standalone mode only
 - `npm run test:cluster` - Run tests in cluster mode only
 - `npm run test:cov` - Run tests with code coverage (c8)
-- `npm run test:cov:standalone` - Coverage for standalone mode only
-- `npm run test:cov:cluster` - Coverage for cluster mode only
 - `npm run test:junit` - Run tests with JUnit XML output
 - `npm run test:unit` - Run unit tests only (both modes)
-- `npm run test:unit:standalone` - Unit tests in standalone mode
-- `npm run test:unit:cluster` - Unit tests in cluster mode
 - `npm run test:types` - Type-check test TypeScript files
-- `npm run test:single` - Run single test with Node.js built-in test runner
+- `npm run test:single` - Run single test with Node.js test runner
 
 ### Direct Test Commands (bypass npm scripts)
 - `./scripts/test-dual-mode.sh` - Run dual-mode tests (standalone + cluster)
@@ -41,13 +38,18 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm test tests/integration/` - Run integration tests only
 - `npm test tests/cluster/` - Run cluster-specific tests
 - `npm test tests/unit/json-commands.test.mjs` - Run specific test file
-- `npm run test:json` - Run JSON module tests specifically
+- `npm run test:json` - Run JSON module tests (tests/unit/json-commands.test.ts)
 - `npm run test:modules` - Run both JSON and Search module tests
 
-### Node.js Native Test Commands
-- `VALKEY_HOST=localhost VALKEY_PORT=6383 timeout 30 node --test tests/unit/smoke.test.mjs` - Run specific test with timeout
+### Running Single Tests
+- `VALKEY_HOST=localhost VALKEY_PORT=6383 node --test tests/unit/string-commands.test.mjs` - Run specific test file
 - `VALKEY_HOST=localhost VALKEY_PORT=6383 node --test --test-reporter=spec tests/unit/*.test.mjs` - Run with spec reporter
-- `ENABLE_CLUSTER_TESTS=true node --test tests/cluster/*.test.mjs` - Run cluster tests directly
+- `./scripts/test-runner.sh tests/unit/json-commands.test.mjs` - Run specific test with infrastructure management
+
+### Valkey Server Management
+- `npm run valkey:start` - Start local Valkey server with JSON module
+- `npm run valkey:stop` - Stop local Valkey server
+- `npm run valkey:test` - Start Valkey server in test mode
 
 ### Build & Release
 - `npm run clean` - Remove dist/ directory
@@ -56,13 +58,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `npm run release:dry` - Test release without publishing
 - `npm run release:patch|minor|major` - Create specific version releases
 - `npm run version:patch|minor|major` - Update version without git tag
-
-### Docker Infrastructure
-- `npm run valkey:start` - Start valkey-bundle Docker container with JSON/Search modules
-- `npm run valkey:stop` - Stop valkey-bundle Docker container
-- `npm run valkey:test` - Start valkey-bundle in test mode
-- `docker-compose -f docker-compose.test.yml up -d` - Start test infrastructure
-- `docker-compose -f docker-compose.cluster.yml up -d` - Start cluster infrastructure
 
 ## Architecture
 
@@ -114,18 +109,19 @@ ioredis-compatible Results
 - Connection options, command parameters, result types
 
 **Testing Infrastructure** (`tests/`):
-- `utils/test-modes.mjs` - Dual-mode testing framework for standalone/cluster test execution
-- `utils/test-config.mjs` - Configuration helpers
-- `global-setup.mjs` - Minimal global test setup
-- `unit/` - Comprehensive unit tests for all commands
+- `global-setup.mjs` - Global test cleanup to prevent hanging
+- `utils/test-config.mjs` - Configuration helpers for test connections
+- `utils/valkey-bundle-config.mjs` - JSON module test configuration
+- `unit/` - Unit tests for commands (29 test files)
 - `integration/` - Real-world integration tests (Bull, Socket.IO, Express sessions)
 - `cluster/` - Cluster-specific tests
+- `bullmq-adapted/` - BullMQ adapter tests
 
 ### Current Implementation Status
 
 **✅ Production Ready Features:**
 - All Valkey data types (String, Hash, List, Set, ZSet) - 100% functional
-- ValkeyJSON module support - 29 commands implemented and tested
+- ValkeyJSON module support - 29 commands implemented and tested (requires Valkey server with JSON module)
 - Bull/BullMQ integration - Complete compatibility with createClient factory pattern
 - Express sessions (connect-redis), Socket.IO adapter, rate limiting - All validated
 - Transaction support (MULTI/EXEC, WATCH/UNWATCH) with proper pipeline handling
@@ -156,7 +152,7 @@ ioredis-compatible Results
 - ✅ Full JSONPath support for complex document operations
 - ✅ Array and object manipulation methods
 - ✅ Atomic operations on JSON documents
-- ✅ Requires valkey-bundle Docker container or server with JSON module loaded
+- ✅ Requires Valkey server with JSON module loaded
 
 **ValkeySearch (RediSearch v2 compatible)**:
 - ⚠️ Not yet implemented - Pending GLIDE support for valkey-bundle module command syntax
@@ -188,7 +184,7 @@ ioredis-compatible Results
 - **Unit tests** for each command module (`tests/unit/*.test.mjs`)
 - **Integration tests** for real-world patterns (`tests/integration/*.test.mjs`)
 - **Dual-mode tests** automatically run against both standalone and cluster
-- **Module testing** requires valkey-bundle Docker container
+- **Module testing** requires Valkey server with JSON module
 - **All tests use Node.js built-in test runner** (no Jest)
 - **Sequential test execution** (`--test-concurrency=1`) for connection stability
 
@@ -217,50 +213,36 @@ ioredis-compatible Results
   - Covers `dist/**/*.js` files
 
 ### Test Infrastructure
-- `tests/global-setup.mjs` - Minimal global test setup for Node.js test runner
-- `tests/utils/test-modes.mjs` - Dual-mode testing framework (standalone/cluster)
-- `tests/utils/test-config.mjs` - Test configuration helpers
+- `tests/global-setup.mjs` - Global cleanup handler for Node.js test runner
+- `tests/utils/test-config.mjs` - Test configuration helpers (getStandaloneConfig, checkTestServers)
+- `tests/utils/valkey-bundle-config.mjs` - Module testing configuration
 
 ### Shell Scripts (`scripts/`)
-- `test-runner.sh` - Main test runner with infrastructure management
-  - Auto-starts Docker containers if needed
-  - Supports coverage, JUnit output, specific test paths
-  - Handles both standalone and cluster modes
+- `test-sequential.sh` - Default test runner for `npm test` (prevents hanging)
+- `test-runner.sh` - Single mode test runner with infrastructure management
 - `test-dual-mode.sh` - Runs tests in both standalone and cluster modes
-  - Sequential execution: standalone first, then cluster
-  - Automatic infrastructure setup and teardown
-  - Combined exit status reporting
-- `start-valkey-bundle.sh` / `stop-valkey-bundle.sh` - Module container management
-- `start-test-cluster.sh` / `stop-test-cluster.sh` - Local cluster setup
+- `test-runner-batch.sh` - Batch test runner
+- `start-valkey-bundle.sh` / `stop-valkey-bundle.sh` - Valkey bundle container management
+- `start-test-cluster.sh` / `stop-test-cluster.sh` - Test cluster management
 - `release.sh` - Semantic release management
-
-### Docker Configurations
-- `docker-compose.valkey-bundle.yml` - Valkey with JSON/Search modules (port 6380)
-- `docker-compose.test.yml` - Complete test infrastructure
-  - Standalone server with modules (port 6383)
-  - 3-node cluster setup (ports 17000-17002)
-- `docker-compose.cluster.yml` - Simplified all-in-one cluster container
 
 ## Testing Environment
 
 ### Standard Test Setup
-- **Default ports**: Standalone on 6383, Cluster on 17000-17002
-- **Auto-infrastructure**: Test scripts automatically start Docker containers if needed
+- **Default connection**: localhost:6383 for standalone tests
+- **Cluster setup**: Ports 17000-17002 for cluster tests (if configured)
 - **Environment variables**:
-  - `VALKEY_HOST` / `VALKEY_PORT` - Override standalone connection
+  - `VALKEY_HOST` / `VALKEY_PORT` - Override standalone connection (default: localhost:6383)
   - `VALKEY_CLUSTER_NODES` - Override cluster nodes (comma-separated)
   - `ENABLE_CLUSTER_TESTS=true` - Enable cluster mode testing
   - `DISABLE_STANDALONE_TESTS=true` - Skip standalone tests
   - `DISABLE_CLUSTER_TESTS=true` - Skip cluster tests
-  - `SKIP_INFRA_MANAGEMENT=true` - Don't auto-start infrastructure
-  - `KEEP_INFRA=1` - Don't stop infrastructure after tests
 
-### Module Testing (JSON/Search)
-- **valkey-bundle required**: Docker container with modules pre-loaded
-- **Start**: `npm run valkey:start` or `docker-compose -f docker-compose.valkey-bundle.yml up -d`
-- **Port**: 6380 (separate from standard test port 6383)
-- **Health checks**: Ensures modules are loaded before tests run
+### Module Testing (JSON)
+- **JSON module required**: Valkey server must have JSON module loaded
 - **Module detection**: Tests automatically detect if JSON module is available
+- **Configuration**: Uses `tests/utils/valkey-bundle-config.mjs` for module tests
+- **Default port**: 6383
 
 ### Test Execution Patterns
 - **Sequential execution**: `--test-concurrency=1` for connection stability
@@ -450,24 +432,24 @@ it('should handle mode-specific features', async () => {
   - `index.ts` - Complete ioredis-compatible TypeScript definitions
 
 ### Test Suite (`tests/`)
-- **Utilities** (`utils/`):
-  - `test-modes.mjs` - Dual-mode testing framework
-  - `test-config.mjs` - Configuration helpers
-  - `valkey-bundle-config.mjs` - Module testing config
+- **Configuration** (`utils/`):
+  - `test-config.mjs` - Connection configuration helpers
+  - `valkey-bundle-config.mjs` - JSON module testing config
+  - `global-setup.mjs` - Test cleanup handler
 
 - **Test Files**:
-  - `unit/*.test.mjs` - Command module tests
+  - `unit/*.test.mjs` - Command module tests (29 files)
   - `integration/*.test.mjs` - Library integration tests
   - `cluster/*.test.mjs` - Cluster-specific tests
+  - `bullmq-adapted/*.test.mjs` - BullMQ adapter tests
 
 ### Infrastructure
 - **Scripts** (`scripts/`):
-  - `test-runner.sh` - Main test runner with auto-infrastructure
+  - `test-sequential.sh` - Default test runner (prevents hanging)
+  - `test-runner.sh` - Infrastructure-aware test runner
   - `test-dual-mode.sh` - Dual-mode test orchestrator
-  - `start-valkey-bundle.sh` - Module container management
+  - `test-runner-batch.sh` - Batch test runner
+  - `start-valkey-bundle.sh` / `stop-valkey-bundle.sh` - Valkey container management
+  - `start-test-cluster.sh` / `stop-test-cluster.sh` - Cluster setup
   - `release.sh` - Semantic release helper
 
-- **Docker Configs**:
-  - `docker-compose.test.yml` - Main test infrastructure
-  - `docker-compose.cluster.yml` - Simplified cluster setup
-  - `docker-compose.valkey-bundle.yml` - JSON/Search modules

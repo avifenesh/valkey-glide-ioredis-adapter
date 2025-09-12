@@ -3,15 +3,7 @@
  * Tests basic cluster functionality with our Cluster
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { describe, it, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../../dist/index.js';
 const { Cluster } = pkg;
