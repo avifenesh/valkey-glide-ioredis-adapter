@@ -24,7 +24,7 @@ export async function set(
   const internal = asInternal(client);
   await internal.ensureConnection();
   if (key === '' || key === null || key === undefined) {
-    throw new Error("ERR invalid key");
+    throw new Error('ERR invalid key');
   }
   const normalizedKey = internal.normalizeKey(key);
   const normalizedValue = ParameterTranslator.normalizeValue(value);

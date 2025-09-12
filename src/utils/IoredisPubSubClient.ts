@@ -191,7 +191,7 @@ export class IoredisPubSubClient extends EventEmitter {
       );
       this.emit('error', error);
       // Sliding window: drop oldest data to make room for new data
-      const bytesToDrop = (this.buffer.length + data.length) - this.maxBufferSize;
+      const bytesToDrop = this.buffer.length + data.length - this.maxBufferSize;
       if (bytesToDrop < this.buffer.length) {
         this.buffer = this.buffer.subarray(bytesToDrop);
       } else {
