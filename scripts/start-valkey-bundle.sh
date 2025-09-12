@@ -89,12 +89,32 @@ stop_existing_containers() {
 start_valkey_bundle() {
     log "🚀 Starting Valkey Bundle with JSON and Search modules..."
     
-    # Start the container
-    if docker_compose_cmd -f docker-compose.valkey-bundle.yml up -d; then
-        log_success "✅ Valkey Bundle container started"
+    # Check if docker-compose file exists
+    if [ -f "docker-compose.valkey-bundle.yml" ]; then
+        # Start the container using docker-compose
+        if docker_compose_cmd -f docker-compose.valkey-bundle.yml up -d; then
+            log_success "✅ Valkey Bundle container started"
+        else
+            log_error "❌ Failed to start Valkey Bundle container"
+            exit 1
+        fi
     else
-        log_error "❌ Failed to start Valkey Bundle container"
-        exit 1
+        # Fallback: start container directly with docker run
+        log "📦 Docker-compose file not found, starting container directly..."
+        if docker run -d \
+            --name valkey-test-standalone \
+            -p 6383:6379 \
+            valkey/valkey-bundle:8.1-bookworm \
+            valkey-server \
+            --bind 0.0.0.0 \
+            --port 6379 \
+            --loadmodule /opt/valkey-stack/lib/valkey-json.so \
+            --loadmodule /opt/valkey-stack/lib/valkey-search.so; then
+            log_success "✅ Valkey Bundle container started directly"
+        else
+            log_error "❌ Failed to start Valkey Bundle container directly"
+            exit 1
+        fi
     fi
 }
 
@@ -106,9 +126,13 @@ wait_for_valkey_bundle() {
     log "⏳ Waiting for Valkey Bundle to be ready with all modules..."
     
     while true; do
-        if docker_compose_cmd -f docker-compose.valkey-bundle.yml ps valkey-bundle | grep -q "healthy"; then
-            log_success "✅ Valkey Bundle is healthy"
-            break
+        # Check if container is healthy (works for both docker-compose and direct run)
+        if docker ps --filter "name=valkey-test-standalone" --format "{{.Status}}" | grep -q "Up"; then
+            # Test if we can connect to the service
+            if nc -z localhost 6383 2>/dev/null; then
+                log_success "✅ Valkey Bundle is healthy and accessible"
+                break
+            fi
         fi
         
         local current_time=$(date +%s)
@@ -116,8 +140,10 @@ wait_for_valkey_bundle() {
         
         if [ $elapsed -ge $timeout ]; then
             log_error "❌ Timeout waiting for Valkey Bundle to be ready"
+            log "Container status:"
+            docker ps --filter "name=valkey-test-standalone"
             log "Container logs:"
-            docker_compose_cmd -f docker-compose.valkey-bundle.yml logs valkey-bundle
+            docker logs valkey-test-standalone 2>/dev/null || echo "No logs available"
             exit 1
         fi
         

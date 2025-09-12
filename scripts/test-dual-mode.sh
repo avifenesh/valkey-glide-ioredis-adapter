@@ -68,13 +68,15 @@ fi
 # Phase 1: Test Standalone Mode
 echo -e "\n${GREEN}=== Phase 1: Standalone Mode Tests ===${NC}"
 
-# Check for existing infrastructure or start new
+# Use environment variables for connection details
+export VALKEY_HOST=${VALKEY_HOST:-localhost}
+export VALKEY_PORT=${VALKEY_PORT:-6383}
+
+# Check for existing infrastructure or use environment-provided service
 if docker ps | grep -q test-valkey-standalone; then
     echo -e "${YELLOW}Using existing standalone infrastructure${NC}"
-    export VALKEY_HOST=localhost
-    export VALKEY_PORT=6383
     DOCKER_CLEANUP=false
-else
+elif [ -f "docker-compose.test.yml" ]; then
     # Try to use docker-compose.test.yml infrastructure
     echo -e "${YELLOW}Starting test infrastructure...${NC}"
     docker compose -f docker-compose.test.yml up -d valkey-standalone >/dev/null 2>&1 || true
@@ -87,29 +89,26 @@ else
         sleep 1
     done
     
-    export VALKEY_HOST=localhost
-    export VALKEY_PORT=6383
-    # Fallback: if not reachable, try bundled script
+    # Check if container is reachable
     if ! nc -z "$VALKEY_HOST" "$VALKEY_PORT" 2>/dev/null; then
-        echo -e "${YELLOW}Docker compose not available or service not up. Falling back to bundled Valkey...${NC}"
-        ./scripts/start-valkey-bundle.sh --test >/dev/null 2>&1 || true
-        # Wait for bundle
-        for i in {1..30}; do
-            if nc -z "$VALKEY_HOST" "$VALKEY_PORT" 2>/dev/null; then
-                break
-            fi
-            sleep 1
-        done
-        if ! nc -z "$VALKEY_HOST" "$VALKEY_PORT" 2>/dev/null; then
-            echo -e "${RED}Failed to start standalone Valkey on ${VALKEY_HOST}:${VALKEY_PORT}${NC}"
-            exit 1
-        fi
+        echo -e "${YELLOW}Docker compose container not reachable. Checking environment service...${NC}"
         DOCKER_CLEANUP=false
-        echo -e "${GREEN}✓ Standalone infrastructure ready (bundled)${NC}"
     else
         DOCKER_CLEANUP=true
         echo -e "${GREEN}✓ Standalone infrastructure ready${NC}"
     fi
+else
+    echo -e "${YELLOW}No docker-compose files found. Using environment-provided service...${NC}"
+    DOCKER_CLEANUP=false
+fi
+
+# Check if service is reachable (either from docker or environment)
+if ! nc -z "$VALKEY_HOST" "$VALKEY_PORT" 2>/dev/null; then
+    echo -e "${RED}Failed to connect to Valkey service at ${VALKEY_HOST}:${VALKEY_PORT}${NC}"
+    echo -e "${YELLOW}Please ensure Valkey is running and accessible${NC}"
+    exit 1
+else
+    echo -e "${GREEN}✓ Valkey service is accessible at ${VALKEY_HOST}:${VALKEY_PORT}${NC}"
 fi
 
 # Run standalone tests

@@ -116,6 +116,8 @@ jobs:
       run: npm test -- --testPathIgnorePatterns="/tests/cluster/"
       env:
         CI: true
+        VALKEY_HOST: localhost
+        VALKEY_PORT: 6379
         VALKEY_BUNDLE_HOST: localhost
         VALKEY_BUNDLE_PORT: 6379
         VALKEY_HOST: localhost
