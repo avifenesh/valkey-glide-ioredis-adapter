@@ -190,9 +190,15 @@ export class IoredisPubSubClient extends EventEmitter {
         `Buffer overflow: exceeds maximum size of ${this.maxBufferSize} bytes`
       );
       this.emit('error', error);
-      // Clear buffer to recover
-      this.buffer = Buffer.alloc(BUFFER_LIMITS.INITIAL_BUFFER_SIZE);
-      return;
+      // Sliding window: drop oldest data to make room for new data
+      const bytesToDrop = (this.buffer.length + data.length) - this.maxBufferSize;
+      if (bytesToDrop < this.buffer.length) {
+        this.buffer = this.buffer.subarray(bytesToDrop);
+      } else {
+        // If new data itself is too large, keep only the last maxBufferSize bytes of new data
+        this.buffer = Buffer.alloc(0);
+        data = data.subarray(data.length - this.maxBufferSize);
+      }
     }
 
     this.buffer = Buffer.concat([this.buffer, data]);
