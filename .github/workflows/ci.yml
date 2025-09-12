@@ -35,7 +35,7 @@ jobs:
         ports:
           - 6383:6379
         options: >-
-          --health-cmd "valkey-cli ping"
+          --health-cmd "valkey-cli -p 6379 ping"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -59,18 +59,18 @@ jobs:
     - name: Wait for Valkey Bundle and verify modules
       run: |
         echo "Waiting for Valkey Bundle with modules..."
-        # Install redis-cli for testing compatibility (valkey-cli has same protocol)
-        sudo apt-get update && sudo apt-get install -y redis-tools
+        # Install valkey-cli for testing
+        sudo apt-get update && sudo apt-get install -y valkey-tools
         
         for i in {1..30}; do
-          if redis-cli -h localhost -p 6383 ping > /dev/null 2>&1; then
+          if valkey-cli -h localhost -p 6383 ping > /dev/null 2>&1; then
             echo "✅ Valkey Bundle is ready!"
             echo "📦 Checking loaded modules..."
-            redis-cli -h localhost -p 6383 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"
+            valkey-cli -h localhost -p 6383 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"
             echo "🔍 Testing JSON command..."
-            redis-cli -h localhost -p 6383 JSON.SET test_ci_key '$' '"test"' || echo "⚠️  JSON module not available"
+            valkey-cli -h localhost -p 6383 JSON.SET test_ci_key '$' '"test"' || echo "⚠️  JSON module not available"
             echo "🔍 Testing Search command..."
-            redis-cli -h localhost -p 6383 FT.CREATE test_ci_idx ON JSON PREFIX 1 "test:" SCHEMA name TEXT || echo "⚠️  Search module not available"
+            valkey-cli -h localhost -p 6383 FT.CREATE test_ci_idx ON JSON PREFIX 1 "test:" SCHEMA name TEXT || echo "⚠️  Search module not available"
             break
           fi
           echo "⏳ Waiting for Valkey Bundle... ($i/30)"
