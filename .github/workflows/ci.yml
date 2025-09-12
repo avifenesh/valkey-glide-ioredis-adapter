@@ -192,57 +192,12 @@ jobs:
         # Final test
         valkey-cli -p 6379 ping
 
-    - name: Run core tests (skip module-specific tests)
-      run: |
-        echo "🧪 Running core functionality tests on macOS with Valkey..."
-        echo "ℹ️  Skipping JSON/Search module tests (modules not available in basic Valkey)"
-        
-        # Run tests with timeout to prevent hanging in CI
-        gtimeout 300 npm test 2>/dev/null || {
-          echo "⚠️  Tests timed out or failed - this is expected on macOS without Valkey modules"
-          echo "✅ Core Valkey functionality testing completed"
-          exit 0
-        }
+    - name: Run all tests (same as local testing)
+      run: npm test
       env:
         CI: true
-        SKIP_MODULE_TESTS: true
         VALKEY_HOST: localhost
         VALKEY_PORT: 6379
-
-    - name: Test basic adapter functionality with Valkey
-      run: |
-        echo "🔧 Testing basic adapter functionality with Valkey server..."
-        gtimeout 60 node -e "
-          const { Redis } = require('./dist/index.js');
-          const redis = new Redis({ host: 'localhost', port: 6379 });
-          
-          (async () => {
-            try {
-              await redis.set('test:macos:valkey', 'hello-valkey');
-              const result = await redis.get('test:macos:valkey');
-              console.log('✅ Basic Valkey SET/GET test passed:', result);
-              
-              await redis.hset('test:valkey:hash', 'field', 'valkey-value');
-              const hashResult = await redis.hget('test:valkey:hash', 'field');
-              console.log('✅ Basic Valkey HSET/HGET test passed:', hashResult);
-              
-              await redis.quit();
-              console.log('✅ macOS + Valkey compatibility test completed successfully');
-              
-              // Force exit to prevent hanging
-              process.exit(0);
-            } catch (error) {
-              console.error('❌ Valkey basic test failed:', error.message);
-              process.exit(1);
-            }
-          })().catch((error) => {
-            console.error('❌ Unhandled error:', error.message);
-            process.exit(1);
-          });
-        " || {
-          echo "⚠️  Basic test timed out - this may indicate connection issues but is not critical"
-          exit 0
-        }
 
     - name: Cleanup Valkey server
       if: always()
