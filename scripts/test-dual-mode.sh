@@ -55,9 +55,38 @@ trap cleanup SIGINT SIGTERM
 echo -e "${GREEN}=== Dual Mode Test Runner (Standalone + Cluster) ===${NC}"
 
 # Determine test files to run
-if [ $# -gt 0 ]; then
-    # Use provided test paths
-    TEST_PATHS="$@"
+# Filter out Jest-specific arguments that Node.js doesn't understand
+FILTERED_ARGS=()
+SKIP_CLUSTER_TESTS=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --testPathIgnorePatterns=*)
+            # Extract the pattern and check if cluster tests should be skipped
+            PATTERN=$(echo "$arg" | sed 's/--testPathIgnorePatterns=//')
+            if [[ "$PATTERN" == *"cluster"* ]]; then
+                echo -e "${YELLOW}Ignoring cluster tests as requested${NC}"
+                SKIP_CLUSTER_TESTS=true
+            fi
+            ;;
+        --testNamePattern=*)
+            # Skip Jest-specific test name patterns
+            echo -e "${YELLOW}Ignoring Jest test name pattern: $arg${NC}"
+            ;;
+        --coverage|--coverageDirectory=*|--coverageReporters=*)
+            # Skip Jest-specific coverage options
+            echo -e "${YELLOW}Ignoring Jest coverage option: $arg${NC}"
+            ;;
+        *)
+            # Keep other arguments
+            FILTERED_ARGS+=("$arg")
+            ;;
+    esac
+done
+
+if [ ${#FILTERED_ARGS[@]} -gt 0 ]; then
+    # Use provided test paths (filtered)
+    TEST_PATHS="${FILTERED_ARGS[*]}"
     echo -e "${YELLOW}Running tests from: ${TEST_PATHS}${NC}"
 else
     # Run all tests
@@ -128,7 +157,12 @@ STANDALONE_EXIT=$?
 CHILD_PID=""
 
 # Phase 2: Test Cluster Mode
-echo -e "\n${GREEN}=== Phase 2: Cluster Mode Tests ===${NC}"
+if [ "$SKIP_CLUSTER_TESTS" = "true" ]; then
+    echo -e "\n${YELLOW}=== Phase 2: Cluster Mode Tests (SKIPPED) ===${NC}"
+    echo -e "${YELLOW}Cluster tests skipped as requested${NC}"
+    CLUSTER_EXIT=0
+else
+    echo -e "\n${GREEN}=== Phase 2: Cluster Mode Tests ===${NC}"
 
 # Check for existing cluster infrastructure or start new
 if nc -z localhost 17000 2>/dev/null; then
@@ -189,6 +223,7 @@ fi
 wait $CHILD_PID
 CLUSTER_EXIT=$?
 CHILD_PID=""
+fi
 
 # Summary
 echo -e "\n${GREEN}=== Dual Mode Test Summary ===${NC}"
