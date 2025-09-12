@@ -58,13 +58,13 @@ for i in $(seq 0 $BATCH_SIZE $TOTAL_FILES); do
   echo -e "\n${YELLOW}Running batch $BATCH_NUM (${FILE_COUNT} files)...${NC}"
   
   if [ "$COVERAGE" = "1" ] && command -v c8 &> /dev/null; then
-    c8 --silent node --test --test-concurrency=1 --import "$GLOBAL_IMPORT" $BATCH_FILES
+    if ! c8 --silent node --test --test-concurrency=1 --import "$GLOBAL_IMPORT" $BATCH_FILES; then
+      FAILED_TESTS="$FAILED_TESTS Batch $BATCH_NUM"
+    fi
   else
-    node --test --test-concurrency=1 --import "$GLOBAL_IMPORT" $BATCH_FILES
-  fi
-  
-  if [ $? -ne 0 ]; then
-    FAILED_TESTS="$FAILED_TESTS Batch $BATCH_NUM"
+    if ! node --test --test-concurrency=1 --import "$GLOBAL_IMPORT" $BATCH_FILES; then
+      FAILED_TESTS="$FAILED_TESTS Batch $BATCH_NUM"
+    fi
   fi
 done
 
