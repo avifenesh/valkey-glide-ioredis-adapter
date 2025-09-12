@@ -78,21 +78,58 @@ jobs:
         done
 
     - name: Run unit tests
-      run: npm run test:standalone -- tests/unit/
+      run: |
+        echo "🔍 Checking Valkey health before unit tests..."
+        for i in {1..5}; do
+          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
+            echo "✅ Valkey is healthy"
+            break
+          else
+            echo "⚠️ Valkey not ready, waiting... ($i/5)"
+            sleep 2
+          fi
+        done
+        npm run test:standalone -- tests/unit/
       env:
         CI: true
         VALKEY_HOST: localhost
         VALKEY_PORT: 6383
 
     - name: Run integration tests
-      run: npm run test:standalone -- tests/integration/
+      run: |
+        echo "⏳ Waiting 3s to reduce server load..."
+        sleep 3
+        echo "🔍 Checking Valkey health before integration tests..."
+        for i in {1..5}; do
+          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
+            echo "✅ Valkey is healthy"
+            break
+          else
+            echo "⚠️ Valkey not ready, waiting... ($i/5)"
+            sleep 2
+          fi
+        done
+        npm run test:standalone -- tests/integration/
       env:
         CI: true
         VALKEY_HOST: localhost
         VALKEY_PORT: 6383
 
     - name: Run cluster tests
-      run: npm run test:standalone -- tests/cluster/
+      run: |
+        echo "⏳ Waiting 3s to reduce server load..."
+        sleep 3
+        echo "🔍 Checking Valkey health before cluster tests..."
+        for i in {1..5}; do
+          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
+            echo "✅ Valkey is healthy"
+            break
+          else
+            echo "⚠️ Valkey not ready, waiting... ($i/5)"
+            sleep 2
+          fi
+        done
+        npm run test:standalone -- tests/cluster/
       env:
         CI: true
         VALKEY_HOST: localhost
@@ -168,7 +205,20 @@ jobs:
     - name: Run unit tests only (no JSON/module tests)
       run: |
         echo "🧪 Running unit tests only on macOS (no JSON/module support)"
-        npm run test:standalone -- tests/unit/
+        # Health check Valkey before tests
+        echo "🔍 Checking Valkey health..."
+        for i in {1..5}; do
+          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
+            echo "✅ Valkey is healthy"
+            break
+          else
+            echo "⚠️ Valkey not ready, waiting... ($i/5)"
+            sleep 2
+          fi
+        done
+        
+        # Exclude JSON and module-dependent tests
+        find tests/unit -name "*.test.mjs" ! -name "*json*" ! -name "*module*" ! -name "*search*" | xargs npm run test:standalone --
       env:
         CI: true
         VALKEY_HOST: localhost
@@ -178,6 +228,22 @@ jobs:
     - name: Run basic integration tests (no modules)
       run: |
         echo "🧪 Running basic integration tests on macOS (no JSON/module support)"
+        # Wait a bit to reduce server load
+        echo "⏳ Waiting 5s to reduce server load..."
+        sleep 5
+        
+        # Health check Valkey before tests
+        echo "🔍 Checking Valkey health..."
+        for i in {1..5}; do
+          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
+            echo "✅ Valkey is healthy"
+            break
+          else
+            echo "⚠️ Valkey not ready, waiting... ($i/5)"
+            sleep 2
+          fi
+        done
+        
         npm run test:standalone -- tests/integration/simple-adapter.test.mjs tests/integration/fastify-redis.test.mjs
       env:
         CI: true
