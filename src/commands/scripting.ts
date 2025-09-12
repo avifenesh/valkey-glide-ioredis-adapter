@@ -2,27 +2,6 @@ import { BaseClient } from '../BaseClient';
 import { ParameterTranslator } from '../utils/ParameterTranslator';
 import { RedisKey, RedisValue } from '../types';
 
-// Maintain a per-client script cache similar to ioredis behavior
-// Map<BaseClient, Map<SHA1, { script: any; source: string }>>
-const scriptCaches = new WeakMap<
-  BaseClient,
-  Map<string, { script: any; source: string }>
->();
-
-function getCache(client: BaseClient) {
-  let cache = scriptCaches.get(client);
-  if (!cache) {
-    cache = new Map();
-    scriptCaches.set(client, cache);
-  }
-  return cache;
-}
-
-function sha1(text: string): string {
-  const crypto = require('crypto');
-  return crypto.createHash('sha1').update(text).digest('hex');
-}
-
 export async function evalScript(
   client: BaseClient,
   script: string,
@@ -30,7 +9,6 @@ export async function evalScript(
   ...keysAndArgs: any[]
 ): Promise<any> {
   await (client as any).ensureConnection();
-  const { Script } = require('@valkey/valkey-glide');
 
   const keys = keysAndArgs
     .slice(0, numKeys)
@@ -39,15 +17,14 @@ export async function evalScript(
     .slice(numKeys)
     .map((v: RedisValue) => ParameterTranslator.normalizeValue(v));
 
-  const glideScript = new Script(script);
-
-  const id = sha1(script);
-  getCache(client).set(id, { script: glideScript, source: script });
-
-  return await (client as any).glideClient.invokeScript(glideScript, {
-    keys,
-    args,
-  });
+  // Execute using EVAL directly to ensure compatibility across environments
+  return await (client as any).glideClient.customCommand([
+    'EVAL',
+    script,
+    String(numKeys),
+    ...keys,
+    ...args,
+  ]);
 }
 
 export async function evalsha(
@@ -65,22 +42,7 @@ export async function evalsha(
     .slice(numKeys)
     .map((v: RedisValue) => ParameterTranslator.normalizeValue(v));
 
-  // First check local cache (faster)
-  const cache = getCache(client);
-  if (cache.has(sha1sum)) {
-    try {
-      const cached = cache.get(sha1sum)!;
-      return await (client as any).glideClient.invokeScript(cached.script, {
-        keys,
-        args,
-      });
-    } catch (err: any) {
-      // If cached script fails, try server
-      // Fall through to server attempt
-    }
-  }
-
-  // Try to execute using EVALSHA on the server
+  // Execute using EVALSHA on the server
   try {
     const result = await (client as any).glideClient.customCommand([
       'EVALSHA',
@@ -107,22 +69,15 @@ export async function scriptLoad(
   script: string
 ): Promise<string> {
   await (client as any).ensureConnection();
-  const { Script } = require('@valkey/valkey-glide');
-  const id = sha1(script);
-  const glideScript = new Script(script);
 
-  // Actually load the script to the server
+  // Load the script on the server and return the SHA1 provided by Valkey/Redis
   const result = await (client as any).glideClient.customCommand([
     'SCRIPT',
     'LOAD',
     script,
   ]);
 
-  // Cache it locally as well
-  getCache(client).set(id, { script: glideScript, source: script });
-
-  // Return the SHA1 hash
-  return String(result) || id;
+  return String(result);
 }
 
 export async function scriptExists(
