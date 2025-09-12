@@ -4,36 +4,19 @@
  * Based on Twitter, Instagram, Discord, LinkedIn production usage patterns
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
 
-describe('Set Commands - Social Network & Analytics Patterns', () => {
+describeForEachMode('Set Commands - Social Network & Analytics Patterns', mode => {
   let client;
+  let tag;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    client = new Redis(config);
-
+    client = await createClient(mode);
     await client.connect();
-
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+    await flushAll(client);
+    tag = keyTag('s');
   });
 
   afterEach(async () => {
@@ -43,8 +26,8 @@ describe('Set Commands - Social Network & Analytics Patterns', () => {
   describe('Twitter-Style Follower/Following System', () => {
     test('should manage follower relationships with SADD/SREM', async () => {
       const userId = 'user_' + Math.random();
-      const followersKey = `followers:${userId}`;
-      const followingKey = `following:${userId}`;
+      const followersKey = `${tag}:followers:${userId}`;
+      const followingKey = `${tag}:following:${userId}`;
 
       // User gets new followers
       const result1 = await client.sadd(

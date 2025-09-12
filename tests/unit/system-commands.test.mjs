@@ -10,28 +10,17 @@
  * - GitHub's system diagnostics
  */
 
-import { describe, test, beforeEach, afterEach } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll } from '../setup/dual-mode.mjs';
 
-describe('System Commands - Monitoring & Metrics', () => {
+describeForEachMode('System Commands - Monitoring & Metrics', mode => {
   let client;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    client = new Redis(config);
-
+    client = await createClient(mode);
     await client.connect();
-
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+    await flushAll(client);
   });
 
   afterEach(async () => {

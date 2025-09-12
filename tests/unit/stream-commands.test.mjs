@@ -4,36 +4,19 @@
  * Based on Kafka-style streaming, Discord message delivery, Slack real-time updates
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
 
-describe('Stream Commands - Event Sourcing & Microservices', () => {
+describeForEachMode('Stream Commands - Event Sourcing & Microservices', mode => {
   let client;
+  let tag;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    client = new Redis(config);
-
+    client = await createClient(mode);
     await client.connect();
-
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+    await flushAll(client);
+    tag = keyTag('x');
   });
 
   afterEach(async () => {
@@ -42,7 +25,7 @@ describe('Stream Commands - Event Sourcing & Microservices', () => {
 
   describe('Event Sourcing Patterns', () => {
     test('should implement user action event streaming with XADD', async () => {
-      const streamKey = 'user_actions:' + Math.random();
+      const streamKey = `${tag}:user_actions:${Math.random()}`;
 
       // Record user events
       const loginEvent = await client.xadd(

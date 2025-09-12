@@ -10,28 +10,19 @@
  * - GitHub's repository metadata scanning
  */
 
-import { describe, test, beforeEach, afterEach } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
 
-describe('Scan Operations - Production Iteration Patterns', () => {
+describeForEachMode('Scan Operations - Production Iteration Patterns', mode => {
   let client;
+  let tag;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    client = new Redis(config);
-
+    client = await createClient(mode);
     await client.connect();
-
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+    await flushAll(client);
+    tag = keyTag('scan');
   });
 
   afterEach(async () => {
@@ -42,7 +33,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
 
   describe('Database SCAN Operations', () => {
     test('should implement safe key iteration with SCAN cursor', async () => {
-      const testKey = 'scan_test:basic:' + Math.random();
+      const testKey = `${tag}:scan_test:basic:${Math.random()}`;
 
       // Create a simple test key
       await client.set(testKey, 'test_value');
@@ -60,7 +51,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
     });
 
     test('should handle large dataset scanning like Netflix recommendations', async () => {
-      const prefix = 'netflix:' + Math.random() + ':';
+      const prefix = `${tag}:netflix:${Math.random()}:`;
 
       // Create many recommendation keys
       for (let userId = 1; userId <= 50; userId++) {
@@ -103,7 +94,7 @@ describe('Scan Operations - Production Iteration Patterns', () => {
     });
 
     test('should implement key expiration scanning for cleanup', async () => {
-      const prefix = 'temp:' + Math.random() + ':';
+      const prefix = `${tag}:temp:${Math.random()}:`;
 
       // Create temporary session keys with TTL
       for (let i = 1; i <= 10; i++) {

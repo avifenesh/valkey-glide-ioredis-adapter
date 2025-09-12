@@ -3,36 +3,19 @@
  * Real-world patterns queues, task queues, activity logs, job processing
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
 
-describe('List Commands - Real-World Patterns', () => {
+describeForEachMode('List Commands - Real-World Patterns', mode => {
   let client;
+  let tag;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    client = new Redis(config);
-
+    client = await createClient(mode);
     await client.connect();
-
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+    await flushAll(client);
+    tag = keyTag('l');
   });
 
   afterEach(async () => {
@@ -41,7 +24,7 @@ describe('List Commands - Real-World Patterns', () => {
 
   describe('Task Queue Implementation', () => {
     test('should manage task queue with LPUSH/RPOP', async () => {
-      const queueKey = 'queue:tasks:' + Math.random();
+      const queueKey = `${tag}:queue:tasks:${Math.random()}`;
 
       // Add tasks to queue (FIFO - First In, First Out)
       const result1 = await client.lpush(queueKey, 'task1');
@@ -63,7 +46,7 @@ describe('List Commands - Real-World Patterns', () => {
     });
 
     test('should implement priority queue with LPUSH/LPOP', async () => {
-      const priorityKey = 'queue:priority:' + Math.random();
+      const priorityKey = `${tag}:queue:priority:${Math.random()}`;
 
       // Add high-priority tasks at head
       await client.lpush(priorityKey, 'normal_task');

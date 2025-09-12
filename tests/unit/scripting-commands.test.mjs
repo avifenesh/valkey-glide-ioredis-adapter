@@ -3,32 +3,21 @@
  * Tests for Lua scripting functionality
  */
 
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll } from '../setup/dual-mode.mjs';
 
-describe('Scripting Commands', () => {
+describeForEachMode('Scripting Commands', mode => {
   let client;
 
   beforeEach(async () => {
-    client = new Redis(getStandaloneConfig());
+    client = await createClient(mode);
     await client.connect();
-
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
-    await client.flushdb();
+    await flushAll(client);
   });
 
   afterEach(async () => {
     if (client) {
-      await client.flushdb();
       await client.disconnect();
     }
   });

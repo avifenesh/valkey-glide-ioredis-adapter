@@ -10,28 +10,19 @@
  * - Discord's temporary data cleanup
  */
 
-import { describe, test, beforeEach, afterEach } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, keyTag, flushAll } from '../setup/dual-mode.mjs';
 
-describe('Key Management - TTL & Persistence Patterns', () => {
+describeForEachMode('Key Management - TTL & Persistence Patterns', mode => {
   let client;
+  let tag;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    client = new Redis(config);
-
+    client = await createClient(mode);
     await client.connect();
-
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+    await flushAll(client);
+    tag = keyTag('km');
   });
 
   afterEach(async () => {
@@ -313,7 +304,7 @@ describe('Key Management - TTL & Persistence Patterns', () => {
     });
 
     test('should handle bulk key operations', async () => {
-      const keyPrefix = 'bulk:' + Math.random();
+      const keyPrefix = `${tag}:bulk:${Math.random()}`;
       const keys = [
         `${keyPrefix}:key1`,
         `${keyPrefix}:key2`,
@@ -339,7 +330,7 @@ describe('Key Management - TTL & Persistence Patterns', () => {
     });
 
     test('should handle key pattern matching for maintenance', async () => {
-      const prefix = 'pattern:' + Math.random();
+      const prefix = `${tag}:pattern:${Math.random()}`;
 
       // Create keys with pattern
       await client.set(`${prefix}:user:123`, 'user_data');

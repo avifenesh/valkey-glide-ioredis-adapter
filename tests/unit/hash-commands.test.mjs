@@ -3,36 +3,19 @@
  * Real-world patterns storage, user profiles, object caching, shopping carts
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
 
-describe('Hash Commands - Real-World Patterns', () => {
+describeForEachMode('Hash Commands - Real-World Patterns', mode => {
   let client;
+  let tag;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    client = new Redis(config);
-
+    client = await createClient(mode);
     await client.connect();
-
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+    await flushAll(client);
+    tag = keyTag('h');
   });
 
   afterEach(async () => {
@@ -41,7 +24,7 @@ describe('Hash Commands - Real-World Patterns', () => {
 
   describe('User Session Management', () => {
     test('should manage user session data with HSET/HGET', async () => {
-      const sessionKey = 'session:' + Math.random();
+      const sessionKey = `${tag}:session:${Math.random()}`;
 
       // Create session
       const result1 = await client.hset(sessionKey, 'userId', '12345');
@@ -68,7 +51,7 @@ describe('Hash Commands - Real-World Patterns', () => {
     });
 
     test('should handle bulk session operations with HMGET/HMSET', async () => {
-      const sessionKey = 'session:bulk:' + Math.random();
+      const sessionKey = `${tag}:session:bulk:${Math.random()}`;
 
       // Set multiple fields at once with object
       const sessionData = {
@@ -103,7 +86,7 @@ describe('Hash Commands - Real-World Patterns', () => {
     });
 
     test('should update session counters with HINCRBY', async () => {
-      const sessionKey = 'session:counter:' + Math.random();
+      const sessionKey = `${tag}:session:counter:${Math.random()}`;
 
       // Initialize session with login count
       await client.hset(sessionKey, 'loginCount', '1');
@@ -123,7 +106,7 @@ describe('Hash Commands - Real-World Patterns', () => {
 
   describe('User Profile Caching', () => {
     test('should cache user profiles with HGETALL', async () => {
-      const profileKey = 'profile:user:' + Math.random();
+      const profileKey = `${tag}:profile:user:${Math.random()}`;
 
       // Store user profile
       const profileData = {
@@ -148,7 +131,7 @@ describe('Hash Commands - Real-World Patterns', () => {
     });
 
     test('should handle profile field operations', async () => {
-      const profileKey = 'profile:fields:' + Math.random();
+      const profileKey = `${tag}:profile:fields:${Math.random()}`;
 
       await client.hset(profileKey, 'name', 'Bob Smith', 'age', '30');
 
@@ -175,7 +158,7 @@ describe('Hash Commands - Real-World Patterns', () => {
 
   describe('Shopping Cart Implementation', () => {
     test('should manage shopping cart items', async () => {
-      const cartKey = 'cart:user:' + Math.random();
+      const cartKey = `${tag}:cart:user:${Math.random()}`;
 
       // Add items to cart
       await client.hset(
@@ -217,7 +200,7 @@ describe('Hash Commands - Real-World Patterns', () => {
     });
 
     test('should handle cart item quantity updates', async () => {
-      const cartKey = 'cart:quantity:' + Math.random();
+      const cartKey = `${tag}:cart:quantity:${Math.random()}`;
 
       // Add item with quantity
       await client.hset(cartKey, 'item_quantity_1', '3');
@@ -238,7 +221,7 @@ describe('Hash Commands - Real-World Patterns', () => {
 
   describe('Advanced Hash Operations', () => {
     test('should handle floating point increments', async () => {
-      const metricsKey = 'metrics:' + Math.random();
+      const metricsKey = `${tag}:metrics:${Math.random()}`;
 
       // Initialize metrics
       await client.hset(metricsKey, 'cpu_usage', '45.5');
@@ -263,7 +246,7 @@ describe('Hash Commands - Real-World Patterns', () => {
     });
 
     test('should handle conditional field setting with HSETNX', async () => {
-      const configKey = 'config:app:' + Math.random();
+      const configKey = `${tag}:config:app:${Math.random()}`;
 
       // Set default configuration
       const result1 = await client.hsetnx(configKey, 'theme', 'light');
@@ -282,7 +265,7 @@ describe('Hash Commands - Real-World Patterns', () => {
     });
 
     test('should handle bulk field deletion', async () => {
-      const tempKey = 'temp:data:' + Math.random();
+      const tempKey = `${tag}:temp:data:${Math.random()}`;
 
       // Create hash with multiple fields
       await client.hmset(tempKey, {
@@ -311,7 +294,7 @@ describe('Hash Commands - Real-World Patterns', () => {
 
   describe('Error Handling and Edge Cases', () => {
     test('should handle operations on non-existent hashes', async () => {
-      const nonExistentKey = 'nonexistent:hash:' + Math.random();
+      const nonExistentKey = `${tag}:nonexistent:hash:${Math.random()}`;
 
       // Operations on non-existent hash should return appropriate defaults
       const value = await client.hget(nonExistentKey, 'field');
@@ -337,7 +320,7 @@ describe('Hash Commands - Real-World Patterns', () => {
     });
 
     test('should handle type conflicts gracefully', async () => {
-      const stringKey = 'string:key:' + Math.random();
+      const stringKey = `${tag}:string:key:${Math.random()}`;
 
       // Set a string value
       await client.set(stringKey, 'not-a-hash');
@@ -352,7 +335,7 @@ describe('Hash Commands - Real-World Patterns', () => {
     });
 
     test('should handle empty field names and values', async () => {
-      const edgeCaseKey = 'edge:case:' + Math.random();
+      const edgeCaseKey = `${tag}:edge:case:${Math.random()}`;
 
       // Test empty value
       const result = await client.hset(edgeCaseKey, 'empty_value', '');
