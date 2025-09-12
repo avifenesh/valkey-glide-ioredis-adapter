@@ -39,6 +39,9 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --memory=2g
+          --cpus=2
+          --ulimit nofile=65536:65536
 
     steps:
     - name: Checkout code
@@ -71,34 +74,39 @@ jobs:
             valkey-cli -h localhost -p 6383 JSON.SET test_ci_key '$' '"test"' || echo "⚠️  JSON module not available"
             echo "🔍 Testing Search command..."
             valkey-cli -h localhost -p 6383 FT.CREATE test_ci_idx ON JSON PREFIX 1 "test:" SCHEMA name TEXT || echo "⚠️  Search module not available"
+            
+            echo "🔧 Configuring Valkey for testing..."
+            # Optimize Valkey for testing
+            valkey-cli -h localhost -p 6383 CONFIG SET maxmemory-policy allkeys-lru
+            valkey-cli -h localhost -p 6383 CONFIG SET tcp-keepalive 60
+            valkey-cli -h localhost -p 6383 CONFIG SET timeout 300
+            valkey-cli -h localhost -p 6383 CONFIG SET save ""
+            echo "✅ Valkey configured for testing"
             break
           fi
           echo "⏳ Waiting for Valkey Bundle... ($i/30)"
           sleep 2
         done
 
-    - name: Run unit tests
+    - name: Run all tests sequentially to reduce server load
       run: |
-        echo "🔍 Checking Valkey health before unit tests..."
-        for i in {1..5}; do
+        echo "🔍 Checking Valkey health before tests..."
+        for i in {1..10}; do
           if valkey-cli -p 6383 ping > /dev/null 2>&1; then
             echo "✅ Valkey is healthy"
             break
           else
-            echo "⚠️ Valkey not ready, waiting... ($i/5)"
-            sleep 2
+            echo "⚠️ Valkey not ready, waiting... ($i/10)"
+            sleep 3
           fi
         done
+        
+        echo "🧪 Running unit tests..."
         npm run test:standalone -- tests/unit/
-      env:
-        CI: true
-        VALKEY_HOST: localhost
-        VALKEY_PORT: 6383
-
-    - name: Run integration tests
-      run: |
-        echo "⏳ Waiting 3s to reduce server load..."
-        sleep 3
+        
+        echo "⏳ Waiting 10s to reduce server load..."
+        sleep 10
+        
         echo "🔍 Checking Valkey health before integration tests..."
         for i in {1..5}; do
           if valkey-cli -p 6383 ping > /dev/null 2>&1; then
@@ -106,19 +114,16 @@ jobs:
             break
           else
             echo "⚠️ Valkey not ready, waiting... ($i/5)"
-            sleep 2
+            sleep 3
           fi
         done
+        
+        echo "🧪 Running integration tests..."
         npm run test:standalone -- tests/integration/
-      env:
-        CI: true
-        VALKEY_HOST: localhost
-        VALKEY_PORT: 6383
-
-    - name: Run cluster tests
-      run: |
-        echo "⏳ Waiting 3s to reduce server load..."
-        sleep 3
+        
+        echo "⏳ Waiting 10s to reduce server load..."
+        sleep 10
+        
         echo "🔍 Checking Valkey health before cluster tests..."
         for i in {1..5}; do
           if valkey-cli -p 6383 ping > /dev/null 2>&1; then
@@ -126,9 +131,11 @@ jobs:
             break
           else
             echo "⚠️ Valkey not ready, waiting... ($i/5)"
-            sleep 2
+            sleep 3
           fi
         done
+        
+        echo "🧪 Running cluster tests..."
         npm run test:standalone -- tests/cluster/
       env:
         CI: true
@@ -202,48 +209,40 @@ jobs:
         # Final test
         valkey-cli -p 6383 ping
 
-    - name: Run unit tests only (no JSON/module tests)
+    - name: Run tests sequentially on macOS (no JSON/module tests)
       run: |
-        echo "🧪 Running unit tests only on macOS (no JSON/module support)"
+        echo "🧪 Running tests on macOS (no JSON/module support)"
         # Health check Valkey before tests
         echo "🔍 Checking Valkey health..."
-        for i in {1..5}; do
+        for i in {1..10}; do
           if valkey-cli -p 6383 ping > /dev/null 2>&1; then
             echo "✅ Valkey is healthy"
             break
           else
-            echo "⚠️ Valkey not ready, waiting... ($i/5)"
-            sleep 2
+            echo "⚠️ Valkey not ready, waiting... ($i/10)"
+            sleep 3
           fi
         done
         
+        echo "🧪 Running unit tests (excluding JSON/module tests)..."
         # Exclude JSON and module-dependent tests
         find tests/unit -name "*.test.mjs" ! -name "*json*" ! -name "*module*" ! -name "*search*" | xargs npm run test:standalone --
-      env:
-        CI: true
-        VALKEY_HOST: localhost
-        VALKEY_PORT: 6383
-        SKIP_MODULE_TESTS: true
-
-    - name: Run basic integration tests (no modules)
-      run: |
-        echo "🧪 Running basic integration tests on macOS (no JSON/module support)"
-        # Wait a bit to reduce server load
-        echo "⏳ Waiting 5s to reduce server load..."
-        sleep 5
         
-        # Health check Valkey before tests
-        echo "🔍 Checking Valkey health..."
+        echo "⏳ Waiting 15s to reduce server load..."
+        sleep 15
+        
+        echo "🔍 Checking Valkey health before integration tests..."
         for i in {1..5}; do
           if valkey-cli -p 6383 ping > /dev/null 2>&1; then
             echo "✅ Valkey is healthy"
             break
           else
             echo "⚠️ Valkey not ready, waiting... ($i/5)"
-            sleep 2
+            sleep 3
           fi
         done
         
+        echo "🧪 Running basic integration tests..."
         npm run test:standalone -- tests/integration/simple-adapter.test.mjs tests/integration/fastify-redis.test.mjs
       env:
         CI: true
