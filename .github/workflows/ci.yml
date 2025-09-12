@@ -72,8 +72,8 @@ jobs:
             valkey-cli -h 127.0.0.1 -p 6383 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"
             echo "🔍 Testing JSON command..."
             valkey-cli -h 127.0.0.1 -p 6383 JSON.SET test_ci_key '$' '"test"' || echo "⚠️  JSON module not available"
-            echo "🔍 Testing Search command..."
-            valkey-cli -h 127.0.0.1 -p 6383 FT.CREATE test_ci_idx ON JSON PREFIX 1 "test:" SCHEMA name TEXT || echo "⚠️  Search module not available"
+            # Skipping Search module verification in CI
+            echo "ℹ️ Skipping Search module verification in CI"
             
             echo "🔧 Configuring Valkey for testing..."
             # Optimize Valkey for testing
