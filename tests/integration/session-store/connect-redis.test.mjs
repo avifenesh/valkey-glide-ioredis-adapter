@@ -5,83 +5,37 @@
  * for Express session management - a critical use case for web applications.
  */
 
-import { describe, test, beforeEach, afterEach, before } from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 // Using dynamic imports for CommonJS modules
 const express = (await import('express')).default;
 const session = (await import('express-session')).default;
 import { RedisStore } from 'connect-redis';
 const supertest = (await import('supertest')).default;
-import pkg from '../../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll, keyTag } from '../../setup/dual-mode.mjs';
 
-async function checkTestServers() {
-  try {
-    const config = getStandaloneConfig();
-    const testClient = new Redis(config);
-    await testClient.connect();
-    await testClient.ping();
-    await testClient.quit();
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms).unref());
 }
-describe('Express Session Store Integration', () => {
+describeForEachMode('Express Session Store Integration', mode => {
   let app;
   let redisClient;
   let storeClient; // Separate client for the store
   let request;
-  const keyPrefix = 'TEST:session:';
-
-  before(async () => {
-    // Check if test servers are available
-    const serversAvailable = await checkTestServers();
-    if (!serversAvailable) {
-      throw new Error(
-        'Test servers not available - Server connection required for session store integration tests'
-      );
-      return;
-    }
-  });
+  let keyPrefix;
 
   beforeEach(async () => {
-    // Fail tests if servers are not available
-    const serversAvailable = await checkTestServers();
-    if (!serversAvailable) {
-      throw new Error(
-        'Test servers not available - Server connection required for session store integration tests'
-      );
-    }
-
-    // Setup Redis clients with our adapter
-    const config = getStandaloneConfig();
-
-    // Client for the store (stays connected) - no keyPrefix for store
-    storeClient = new Redis({
-      ...config,
-      // No keyPrefix here - connect-redis manages its own prefix
-    });
+    // Setup Redis clients with our adapter in selected mode
+    storeClient = await createClient(mode);
     await storeClient.connect();
 
     // Client for test operations - use same config as store for accessing data
-    redisClient = new Redis({
-      ...config,
-      // No keyPrefix here either - we'll use full keys for test operations
-    });
+    redisClient = await createClient(mode);
     await redisClient.connect();
 
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await redisClient.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+    await flushAll(redisClient);
+    const tag = keyTag('sess');
+    keyPrefix = `${tag}:TEST:session:`;
 
     // Create Express app with session management
     app = express();
@@ -158,7 +112,7 @@ describe('Express Session Store Integration', () => {
 
     if (redisClient) {
       try {
-        await redisClient.flushall();
+        await flushAll(redisClient);
       } catch {
         // Ignore cleanup errors
       }
@@ -339,11 +293,7 @@ describe('Express Session Store Integration', () => {
 
     test('should handle Redis connection errors gracefully', async () => {
       // Create a new client for this test to avoid affecting the store's client
-      const config = getStandaloneConfig();
-      const testClient = new Redis({
-        ...config,
-        keyPrefix: keyPrefix,
-      });
+      const testClient = await createClient(mode);
       await testClient.connect();
 
       // Disconnect the test client (not the store's client)

@@ -3,34 +3,12 @@
  * These tests are adapted from ioredis patterns to ensure compatibility
  */
 
-import {
-  describe,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { describe, test, beforeEach, afterEach, before } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import {
-  getStandaloneConfig,
-  checkTestServers,
-} from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
 
-describe('Connection Management (ioredis compatibility)', () => {
+describeForEachMode('Connection Management (ioredis compatibility)', mode => {
   let client;
-
-  before(() => {
-    // Check if test servers are available
-    const serversAvailable = checkTestServers();
-    if (!serversAvailable) {
-      throw new Error(
-        'Test servers not available. Please start Redis server before running tests.'
-      );
-    }
-  });
 
   afterEach(async () => {
     if (client) {
@@ -40,104 +18,35 @@ describe('Connection Management (ioredis compatibility)', () => {
   });
 
   describe('Client creation patterns', () => {
-    test('should create client with default options', async () => {
-      // Server check removed - test infrastructure should be running
-
-      const config = getStandaloneConfig();
-      client = new Redis(config);
+    test('should connect and ping', async () => {
+      client = await createClient(mode);
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
-
-      // Basic connectivity test
+      await flushAll(client);
       const result = await client.ping();
       assert.strictEqual(result, 'PONG');
     });
 
-    test('should create client with port and host', async () => {
-      // Server check removed - test infrastructure should be running
+    // Standalone-only constructor signatures (port/host, URL) validated elsewhere
 
-      const config = getStandaloneConfig();
-      client = new Redis(config.port, config.host);
+    test('should support basic pipeline after connect', async () => {
+      client = await createClient(mode);
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
-
-      const result = await client.ping();
-      assert.strictEqual(result, 'PONG');
+      await flushAll(client);
+      const tag = keyTag('pl');
+      const pipeline = client.pipeline();
+      pipeline.set(`${tag}:p:a`, '1');
+      pipeline.get(`${tag}:p:a`);
+      const res = await pipeline.exec();
+      assert.ok(Array.isArray(res));
+      assert.strictEqual(res[1][1], '1');
     });
 
-    test('should create client with options object', async () => {
-      // Server check removed - test infrastructure should be running
+    // URL constructor also standalone-only
 
-      const config = getStandaloneConfig();
-      client = new Redis({
-        port: config.port,
-        host: config.host,
-        retryDelayOnFailover: 100,
-        maxRetriesPerRequest: 3,
-      });
+    test('should set and get after connect', async () => {
+      client = await createClient(mode);
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
-
-      const result = await client.ping();
-      assert.strictEqual(result, 'PONG');
-    });
-
-    test('should create client with redis:// URL', async () => {
-      // Server check removed - test infrastructure should be running
-
-      const config = getStandaloneConfig();
-      client = new Redis(`redis://${config.host}:${config.port}/0`);
-      await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
-
-      const result = await client.ping();
-      assert.strictEqual(result, 'PONG');
-    });
-
-    test('should handle database selection', async () => {
-      // Server check removed - test infrastructure should be running
-
-      const config = getStandaloneConfig();
-      client = new Redis({ port: config.port, host: config.host, db: 1 });
-      await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
-
-      // Test that we're using the correct database
+      await flushAll(client);
       await client.set('dbtest', 'value');
       assert.strictEqual(await client.get('dbtest'), 'value');
     });
@@ -147,8 +56,7 @@ describe('Connection Management (ioredis compatibility)', () => {
     test('should emit ready event when connected', async () => {
       // Server check removed - test infrastructure should be running
 
-      const config = getStandaloneConfig();
-      client = new Redis(config);
+      client = await createClient(mode);
 
       let readyListener;
       const readyPromise = new Promise((resolve, reject) => {
@@ -165,13 +73,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       });
 
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
 
       await readyPromise;
       client.off('ready', readyListener);
@@ -182,8 +84,7 @@ describe('Connection Management (ioredis compatibility)', () => {
     test('should emit connect event', async () => {
       // Server check removed - test infrastructure should be running
 
-      const config = getStandaloneConfig();
-      client = new Redis(config);
+      client = await createClient(mode);
 
       let connectListener;
       const connectPromise = new Promise((resolve, reject) => {
@@ -200,13 +101,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       });
 
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
 
       await connectPromise;
       client.off('connect', connectListener);
@@ -215,16 +110,9 @@ describe('Connection Management (ioredis compatibility)', () => {
     test('should emit end event when disconnected', async () => {
       // Server check removed - test infrastructure should be running
 
-      const config = getStandaloneConfig();
-      client = new Redis(config);
+      client = await createClient(mode);
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
 
       let endListener;
       const endPromise = new Promise((resolve, reject) => {
@@ -263,16 +151,9 @@ describe('Connection Management (ioredis compatibility)', () => {
     test('should handle reconnection', async () => {
       // Server check removed - test infrastructure should be running
 
-      const config = getStandaloneConfig();
-      client = new Redis({ ...config, retryDelayOnFailover: 10 });
+      client = await createClient(mode);
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
 
       // Simulate connection loss and recovery
       await client.disconnect();
@@ -281,7 +162,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // Create a new connection since disconnect() closes the client
-      client = new Redis(config);
+      client = await createClient(mode);
       await client.connect();
 
       // Test that reconnection worked by performing an operation
@@ -292,6 +173,10 @@ describe('Connection Management (ioredis compatibility)', () => {
 
   describe('Error handling', () => {
     test('should emit error events', async () => {
+      if (mode === 'cluster') return; // skip cluster for invalid port pattern
+      const mod = await import('../../dist/index.js');
+      const api = mod.default ?? mod;
+      const { Redis } = api;
       client = new Redis({ port: 9999, lazyConnect: true }); // Non-existent port
 
       // Try to connect and expect it to fail
@@ -310,19 +195,9 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     test('should handle command errors gracefully', async () => {
-      // Server check removed - test infrastructure should be running
-
-      const config = getStandaloneConfig();
-      client = new Redis(config);
+      client = await createClient(mode);
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
 
       // Try to increment a non-numeric value
       await client.set('text', 'not_a_number');
@@ -334,58 +209,15 @@ describe('Connection Management (ioredis compatibility)', () => {
   });
 });
 
-describe('Pipeline Operations (ioredis compatibility)', () => {
+describeForEachMode('Pipeline Operations (ioredis compatibility)', mode => {
   let client;
-
-  before(() => {
-    // Check if test servers are available
-    const serversAvailable = checkTestServers();
-    if (!serversAvailable) {
-      throw new Error(
-        'Test servers not available. Please start Redis server before running tests.'
-      );
-    }
-  });
+  let tag;
 
   beforeEach(async () => {
-    // Health check before each test
-    const serversAvailable = checkTestServers();
-    if (!serversAvailable) {
-      throw new Error('Test servers became unavailable during test execution');
-    }
-
-    // Use test server configuration
-    const config = getStandaloneConfig();
-    client = new Redis(config);
+    client = await createClient(mode);
     await client.connect();
-
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
-
-    // Clean up any existing test data
-    try {
-      await client.del(
-        'key1',
-        'key2',
-        'key3',
-        'string_key',
-        'hash_key',
-        'list_key',
-        'number',
-        'text',
-        'watched_key',
-        'non_numeric_key',
-        'good1',
-        'good2'
-      );
-    } catch {
-      // Ignore cleanup errors
-    }
+    await flushAll(client);
+    tag = keyTag('pl');
   });
 
   afterEach(async () => {
@@ -399,10 +231,10 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     test('should execute multiple commands in pipeline', async () => {
       const pipeline = client.pipeline();
 
-      pipeline.set('key1', 'value1');
-      pipeline.set('key2', 'value2');
-      pipeline.get('key1');
-      pipeline.get('key2');
+      pipeline.set(`${tag}:key1`, 'value1');
+      pipeline.set(`${tag}:key2`, 'value2');
+      pipeline.get(`${tag}:key1`);
+      pipeline.get(`${tag}:key2`);
 
       const results = await pipeline.exec();
 
@@ -418,12 +250,12 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     test('should handle mixed command types in pipeline', async () => {
       const pipeline = client.pipeline();
 
-      pipeline.set('string_key', 'string_value');
-      pipeline.hset('hash_key', 'field', 'hash_value');
-      pipeline.lpush('list_key', 'list_value');
-      pipeline.get('string_key');
-      pipeline.hget('hash_key', 'field');
-      pipeline.lpop('list_key');
+      pipeline.set(`${tag}:string_key`, 'string_value');
+      pipeline.hset(`${tag}:hash_key`, 'field', 'hash_value');
+      pipeline.lpush(`${tag}:list_key`, 'list_value');
+      pipeline.get(`${tag}:string_key`);
+      pipeline.hget(`${tag}:hash_key`, 'field');
+      pipeline.lpop(`${tag}:list_key`);
 
       const results = await pipeline.exec();
 
@@ -440,11 +272,11 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     test('should handle errors in pipeline', async () => {
       const pipeline = client.pipeline();
 
-      pipeline.set('number', '10');
-      pipeline.incr('number'); // Should succeed
-      pipeline.set('text', 'abc');
-      pipeline.incr('text'); // Should fail
-      pipeline.get('number'); // Should succeed
+      pipeline.set(`${tag}:number`, '10');
+      pipeline.incr(`${tag}:number`); // Should succeed
+      pipeline.set(`${tag}:text`, 'abc');
+      pipeline.incr(`${tag}:text`); // Should fail
+      pipeline.get(`${tag}:number`); // Should succeed
 
       const results = await pipeline.exec();
 
@@ -459,9 +291,9 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     test('pipeline should be chainable', async () => {
       const results = await client
         .pipeline()
-        .set('key1', 'value1')
-        .set('key2', 'value2')
-        .mget('key1', 'key2')
+        .set(`${tag}:key1`, 'value1')
+        .set(`${tag}:key2`, 'value2')
+        .mget(`${tag}:key1`, `${tag}:key2`)
         .exec();
 
       assert.deepStrictEqual(results, [
@@ -506,10 +338,10 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     test('should support atomic transactions', async () => {
       const multi = client.multi();
 
-      multi.set('counter', '0');
-      multi.incr('counter');
-      multi.incr('counter');
-      multi.get('counter');
+      multi.set(`${tag}:counter`, '0');
+      multi.incr(`${tag}:counter`);
+      multi.incr(`${tag}:counter`);
+      multi.get(`${tag}:counter`);
 
       const results = await multi.exec();
 
@@ -522,11 +354,11 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     });
 
     test('should handle transaction rollback on error', async () => {
-      await client.set('existing_string', 'text_value');
+      await client.set(`${tag}:existing_string`, 'text_value');
 
       const multi = client.multi();
-      multi.incr('existing_string'); // This will cause command to fail
-      multi.set('should_not_be_set', 'value');
+      multi.incr(`${tag}:existing_string`); // This will cause command to fail
+      multi.set(`${tag}:should_not_be_set`, 'value');
 
       const results = await multi.exec();
 
@@ -539,46 +371,45 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       assert.strictEqual(results?.[1]?.[1], 'OK');
 
       // Second command should have executed successfully
-      assert.strictEqual(await client.exists('should_not_be_set'), 1);
+      assert.strictEqual(await client.exists(`${tag}:should_not_be_set`), 1);
     });
 
     test('should support WATCH for optimistic locking', async () => {
-      await client.set('watched_key', '10');
+      await client.set(`${tag}:watched_key`, '10');
 
       // Start watching
-      await client.watch('watched_key');
+      await client.watch(`${tag}:watched_key`);
 
       // Simulate concurrent modification
-      const config = getStandaloneConfig();
-      const otherClient = new Redis(config);
+      const otherClient = await createClient(mode);
       await otherClient.connect();
-      await otherClient.set('watched_key', '20');
+      await otherClient.set(`${tag}:watched_key`, '20');
       await otherClient.disconnect();
 
       // Transaction should fail due to watched key modification
       const multi = client.multi();
-      multi.incr('watched_key');
+      multi.incr(`${tag}:watched_key`);
 
       const results = await multi.exec();
       assert.strictEqual(results, null); // Transaction aborted
 
       // Verify original value from other client
-      assert.strictEqual(await client.get('watched_key'), '20');
+      assert.strictEqual(await client.get(`${tag}:watched_key`), '20');
     });
   });
 
   describe('Pipeline error recovery', () => {
     test('should continue processing after command error', async () => {
       // Setup a key with string value that can't be incremented
-      await client.set('non_numeric_key', 'not_a_number');
+      await client.set(`${tag}:non_numeric_key`, 'not_a_number');
 
       const pipeline = client.pipeline();
 
-      pipeline.set('good1', 'value1');
-      pipeline.incr('non_numeric_key'); // Will error
-      pipeline.set('good2', 'value2');
-      pipeline.get('good1');
-      pipeline.get('good2');
+      pipeline.set(`${tag}:good1`, 'value1');
+      pipeline.incr(`${tag}:non_numeric_key`); // Will error
+      pipeline.set(`${tag}:good2`, 'value2');
+      pipeline.get(`${tag}:good1`);
+      pipeline.get(`${tag}:good2`);
 
       const results = await pipeline.exec();
 
@@ -593,8 +424,8 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
     test('should handle pipeline abort', async () => {
       const pipeline = client.pipeline();
 
-      pipeline.set('key1', 'value1');
-      pipeline.set('key2', 'value2');
+      pipeline.set(`${tag}:key1`, 'value1');
+      pipeline.set(`${tag}:key2`, 'value2');
 
       // Abort before execution
       pipeline.discard();
@@ -603,8 +434,8 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       assert.deepStrictEqual(results, []); // No commands executed
 
       // Verify no keys were set
-      assert.strictEqual(await client.exists('key1'), 0);
-      assert.strictEqual(await client.exists('key2'), 0);
+      assert.strictEqual(await client.exists(`${tag}:key1`), 0);
+      assert.strictEqual(await client.exists(`${tag}:key2`), 0);
     });
   });
 
@@ -614,7 +445,7 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       const commandCount = 1000;
 
       for (let i = 0; i < commandCount; i++) {
-        pipeline.set(`large_key_${i}`, `large_value_${i}`);
+        pipeline.set(`${tag}:large_key_${i}`, `large_value_${i}`);
       }
 
       const results = await pipeline.exec();
@@ -628,8 +459,8 @@ describe('Pipeline Operations (ioredis compatibility)', () => {
       const largeValue = 'x'.repeat(100000); // 100KB value
 
       const pipeline = client.pipeline();
-      pipeline.set('large_key', largeValue);
-      pipeline.get('large_key');
+      pipeline.set(`${tag}:large_key`, largeValue);
+      pipeline.get(`${tag}:large_key`);
 
       const results = await pipeline.exec();
 

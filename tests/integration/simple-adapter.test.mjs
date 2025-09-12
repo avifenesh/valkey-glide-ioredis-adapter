@@ -3,54 +3,25 @@
  * Tests that our ioredis adapter can connect and perform basic operations
  */
 
-import { describe, test, beforeEach, afterEach, before } from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig, checkTestServers } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
 
-describe('Simple Adapter Integration Test', () => {
+describeForEachMode('Simple Adapter Integration Test', mode => {
   let adapter;
   let keyPrefix;
 
-  before(async () => {
-    // Check if test servers are available
-    const serversAvailable = await checkTestServers();
-    if (!serversAvailable) {
-      throw new Error(
-        'Test servers not available. Please start Redis server before running tests.'
-      );
-    }
-  });
-
   beforeEach(async () => {
-    // Health check before each test
-    const serversAvailable = await checkTestServers();
-    if (!serversAvailable) {
-      throw new Error('Test servers became unavailable during test execution');
-    }
-
-    const config = await getStandaloneConfig();
-    adapter = new Redis(config);
+    adapter = await createClient(mode);
     await adapter.connect();
-    // Ensure clean state for each test (cluster-safe in GLIDE)
-    try {
-      await adapter.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
-    // Use a per-test key prefix (not strictly required with flushall, but harmless)
-    keyPrefix = `test:${Date.now()}:${Math.random().toString(36).slice(2)}:`;
+    await flushAll(adapter);
+    const tag = keyTag('it');
+    keyPrefix = `${tag}:test:${Date.now()}:${Math.random().toString(36).slice(2)}:`;
   });
 
   afterEach(async () => {
     if (adapter) {
-      try {
-        // Clean slate via cluster-safe FLUSHALL
-        await adapter.flushall();
-      } catch {
-        // Ignore cleanup errors
-      }
+      await flushAll(adapter).catch(() => {});
       await adapter.disconnect();
     }
   });

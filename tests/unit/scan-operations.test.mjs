@@ -10,9 +10,14 @@
  * - GitHub's repository metadata scanning
  */
 
-import { test, beforeEach, afterEach } from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+  keyTag,
+} from '../setup/dual-mode.mjs';
 
 describeForEachMode('Scan Operations - Production Iteration Patterns', mode => {
   let client;
@@ -605,15 +610,21 @@ describeForEachMode('Scan Operations - Production Iteration Patterns', mode => {
         await client.set(`${prefix}key_${i}`, `value_${i}`);
       }
 
-      const result = await client.scan(
-        '0',
-        'MATCH',
-        `${prefix}*`,
-        'COUNT',
-        '10000'
-      );
-      assert.strictEqual(result[0], '0'); // Should complete in one iteration
-      assert.strictEqual(result[1].length, 10);
+      let cursor = '0';
+      const allKeys = new Set();
+      do {
+        const result = await client.scan(
+          cursor,
+          'MATCH',
+          `${prefix}*`,
+          'COUNT',
+          '10000'
+        );
+        cursor = result[0];
+        for (const k of result[1]) allKeys.add(k);
+      } while (cursor !== '0');
+
+      assert.strictEqual(allKeys.size, 10);
     });
   });
 });

@@ -77,7 +77,7 @@ if docker ps | grep -q test-valkey-standalone; then
 else
     # Try to use docker-compose.test.yml infrastructure
     echo -e "${YELLOW}Starting test infrastructure...${NC}"
-    docker compose -f docker-compose.test.yml up -d valkey-standalone >/dev/null 2>&1
+    docker compose -f docker-compose.test.yml up -d valkey-standalone >/dev/null 2>&1 || true
     
     # Wait for container to be ready
     for i in {1..30}; do
@@ -89,8 +89,27 @@ else
     
     export VALKEY_HOST=localhost
     export VALKEY_PORT=6383
-    DOCKER_CLEANUP=true
-    echo -e "${GREEN}✓ Standalone infrastructure ready${NC}"
+    # Fallback: if not reachable, try bundled script
+    if ! nc -z "$VALKEY_HOST" "$VALKEY_PORT" 2>/dev/null; then
+        echo -e "${YELLOW}Docker compose not available or service not up. Falling back to bundled Valkey...${NC}"
+        ./scripts/start-valkey-bundle.sh --test >/dev/null 2>&1 || true
+        # Wait for bundle
+        for i in {1..30}; do
+            if nc -z "$VALKEY_HOST" "$VALKEY_PORT" 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        if ! nc -z "$VALKEY_HOST" "$VALKEY_PORT" 2>/dev/null; then
+            echo -e "${RED}Failed to start standalone Valkey on ${VALKEY_HOST}:${VALKEY_PORT}${NC}"
+            exit 1
+        fi
+        DOCKER_CLEANUP=false
+        echo -e "${GREEN}✓ Standalone infrastructure ready (bundled)${NC}"
+    else
+        DOCKER_CLEANUP=true
+        echo -e "${GREEN}✓ Standalone infrastructure ready${NC}"
+    fi
 fi
 
 # Run standalone tests

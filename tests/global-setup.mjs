@@ -1,8 +1,41 @@
 // Global test setup to ensure DB cleanup after each test across the suite
 // Minimal global setup — no diagnostics or process hooks
-import { after } from 'node:test';
+import { after, afterEach } from 'node:test';
 
 // Global cleanup to ensure all connections are closed after tests
+afterEach(async () => {
+  // Proactively close any clients created during a test to avoid lingering handles
+  try {
+    const pkg = await import('../dist/index.js');
+    const { Redis } = pkg;
+    if (Redis.forceCloseAllClients) {
+      await Promise.race([
+        Redis.forceCloseAllClients(300),
+        new Promise(resolve => {
+          const t = setTimeout(resolve, 500);
+          if (typeof t.unref === 'function') t.unref();
+        }),
+      ]);
+    }
+
+    // Optional leak check: ensure no clients remain after cleanup
+    try {
+      const active =
+        typeof Redis.getActiveClientCount === 'function'
+          ? Redis.getActiveClientCount()
+          : 0;
+      if (active > 0) {
+        const msg = `Leak check: ${active} Redis clients still active after test`;
+        if (process.env.LEAK_STRICT === '1') {
+          throw new Error(msg);
+        } else {
+          console.warn(msg);
+        }
+      }
+    } catch {}
+  } catch {}
+});
+
 after(async () => {
   // Import Redis dynamically to avoid circular dependencies
   try {

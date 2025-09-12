@@ -10,28 +10,27 @@
  * - Trading platforms' real-time price updates
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+  keyTag,
+} from '../setup/dual-mode.mjs';
 
-describe('Pub/Sub Patterns - Real-World Message Routing', () => {
+describeForEachMode('Pub/Sub Patterns - Real-World Message Routing', mode => {
   let publisher;
   let subscriber;
+  let tag;
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    publisher = new Redis(config);
-    subscriber = new Redis(config);
+    publisher = await createClient(mode);
+    subscriber = await createClient(mode);
+    await publisher.connect();
+    await subscriber.connect();
+    await flushAll(publisher);
+    tag = keyTag('ps');
   });
 
   afterEach(async () => {
@@ -57,9 +56,9 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Subscribe to specific Slack-style channels
       await subscriber.subscribe(
-        'channel:general',
-        'channel:random',
-        'channel:tech-discuss'
+        `${tag}:channel:general`,
+        `${tag}:channel:random`,
+        `${tag}:channel:tech-discuss`
       );
 
       subscriber.on('message', (_channel, message) => {
@@ -71,7 +70,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Simulate Slack messages to different channels
       await publisher.publish(
-        'channel:general',
+        `${tag}:channel:general`,
         JSON.stringify({
           user: 'alice',
           text: 'Good morning everyone',
@@ -81,7 +80,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       );
 
       await publisher.publish(
-        'channel:tech-discuss',
+        `${tag}:channel:tech-discuss`,
         JSON.stringify({
           user: 'bob_dev',
           text: 'Anyone tried the new Redis features?',
@@ -91,7 +90,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       );
 
       await publisher.publish(
-        'channel:random',
+        `${tag}:channel:random`,
         JSON.stringify({
           user: 'charlie',
           text: 'Coffee break time ☕',
@@ -106,13 +105,13 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       assert.strictEqual(receivedMessages.length, 3);
 
       const generalMsg = receivedMessages.find(
-        m => m.channel === 'channel:general'
+        m => m.channel === `${tag}:channel:general`
       );
       const techMsg = receivedMessages.find(
-        m => m.channel === 'channel:tech-discuss'
+        m => m.channel === `${tag}:channel:tech-discuss`
       );
       const randomMsg = receivedMessages.find(
-        m => m.channel === 'channel:random'
+        m => m.channel === `${tag}:channel:random`
       );
 
       assert.ok(generalMsg !== undefined);
@@ -133,7 +132,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       const dmMessages = [];
 
       // Subscribe to direct message patterns (Slack DM format)
-      await subscriber.psubscribe('dm:user123:*', 'dm:*:user123');
+      await subscriber.psubscribe(`${tag}:dm:user123:*`, `${tag}:dm:*:user123`);
 
       subscriber.on('pmessage', (_pattern, channel, message) => {
         dmMessages.push({ channel, message });
@@ -143,7 +142,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Send DM from user456 to user123
       await publisher.publish(
-        'dm:user456:user123',
+        `${tag}:dm:user456:user123`,
         JSON.stringify({
           from: 'user456',
           to: 'user123',
@@ -155,7 +154,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
 
       // Send DM from user123 to user789 (should also match pattern)
       await publisher.publish(
-        'dm:user123:user789',
+        `${tag}:dm:user123:user789`,
         JSON.stringify({
           from: 'user123',
           to: 'user789',
@@ -170,7 +169,7 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       assert.ok(dmMessages.length >= 1);
 
       const incomingDM = dmMessages.find(
-        m => m.channel === 'dm:user456:user123'
+        m => m.channel === `${tag}:dm:user456:user123`
       );
       assert.ok(incomingDM !== undefined);
 
@@ -662,10 +661,6 @@ describe('Pub/Sub Patterns - Real-World Message Routing', () => {
       const messages = [];
 
       console.log('\n🔍 DEBUG core pubsub test');
-      console.log(`Publisher config: ${JSON.stringify(getStandaloneConfig())}`);
-      console.log(
-        `Subscriber config: ${JSON.stringify(getStandaloneConfig())}`
-      );
 
       // Test connection first
       try {

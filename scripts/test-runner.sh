@@ -123,14 +123,39 @@ else
                 INFRA_STARTED=true
                 echo -e "${GREEN}✓ Test infrastructure started${NC}"
             else
-                echo -e "${RED}Failed to start test infrastructure${NC}"
-                echo -e "${YELLOW}Please ensure Docker is running or start Valkey manually${NC}"
-                exit 1
+                echo -e "${YELLOW}Docker not available or container not healthy. Falling back to bundled Valkey...${NC}"
+                ./scripts/start-valkey-bundle.sh --test >/dev/null 2>&1 || true
+                # Wait for bundle
+                for i in {1..30}; do
+                    if check_valkey; then
+                        break
+                    fi
+                    sleep 1
+                done
+                if check_valkey; then
+                    INFRA_STARTED=false
+                    echo -e "${GREEN}✓ Bundled Valkey started${NC}"
+                else
+                    echo -e "${RED}Failed to start Valkey (docker and bundled)${NC}"
+                    exit 1
+                fi
             fi
         else
-            echo -e "${RED}Valkey is not running and Docker is not available${NC}"
-            echo -e "${YELLOW}Please start Valkey on ${VALKEY_HOST}:${VALKEY_PORT} or install Docker${NC}"
-            exit 1
+            echo -e "${YELLOW}Docker not available. Starting bundled Valkey...${NC}"
+            ./scripts/start-valkey-bundle.sh --test >/dev/null 2>&1 || true
+            for i in {1..30}; do
+                if check_valkey; then
+                    break
+                fi
+                sleep 1
+            done
+            if check_valkey; then
+                INFRA_STARTED=false
+                echo -e "${GREEN}✓ Bundled Valkey started${NC}"
+            else
+                echo -e "${RED}Failed to start bundled Valkey on ${VALKEY_HOST}:${VALKEY_PORT}${NC}"
+                exit 1
+            fi
         fi
     else
         echo -e "${GREEN}✓ Valkey is accessible${NC}"
@@ -176,6 +201,9 @@ else
   echo -e "${YELLOW}Running all test files${NC}"
 fi
 
+# Configure overall test timeout (seconds). Can be overridden by TEST_TIMEOUT_SECONDS env var.
+TIMEOUT_SECONDS=${TEST_TIMEOUT_SECONDS:-0}
+
 if [ -z "$TEST_FILES" ]; then
   echo -e "${YELLOW}No *.test.mjs files found. Skipping.${NC}"
   TEST_EXIT=0
@@ -201,23 +229,29 @@ else
       $REPORTER_ARGS \
       $TEST_FILES &
     TEST_PID=$!
-    # Wait with timeout to prevent hanging
-    ( sleep 90 && kill -TERM $TEST_PID 2>/dev/null && sleep 2 && kill -KILL $TEST_PID 2>/dev/null ) &
-    TIMEOUT_PID=$!
+    # Wait with optional timeout to prevent hanging
+    TIMEOUT_PID=""
+    if [ "$TIMEOUT_SECONDS" -gt 0 ]; then
+      ( sleep $TIMEOUT_SECONDS && kill -TERM $TEST_PID 2>/dev/null && sleep 2 && kill -KILL $TEST_PID 2>/dev/null ) &
+      TIMEOUT_PID=$!
+    fi
     wait $TEST_PID
     TEST_EXIT=$?
-    kill $TIMEOUT_PID 2>/dev/null || true
+    if [ -n "$TIMEOUT_PID" ]; then kill $TIMEOUT_PID 2>/dev/null || true; fi
   else
     node --test --test-concurrency=1 $OPT_IMPORT \
       $REPORTER_ARGS \
       $TEST_FILES &
     TEST_PID=$!
-    # Wait with timeout to prevent hanging
-    ( sleep 90 && kill -TERM $TEST_PID 2>/dev/null && sleep 2 && kill -KILL $TEST_PID 2>/dev/null ) &
-    TIMEOUT_PID=$!
+    # Wait with optional timeout to prevent hanging
+    TIMEOUT_PID=""
+    if [ "$TIMEOUT_SECONDS" -gt 0 ]; then
+      ( sleep $TIMEOUT_SECONDS && kill -TERM $TEST_PID 2>/dev/null && sleep 2 && kill -KILL $TEST_PID 2>/dev/null ) &
+      TIMEOUT_PID=$!
+    fi
     wait $TEST_PID
     TEST_EXIT=$?
-    kill $TIMEOUT_PID 2>/dev/null || true
+    if [ -n "$TIMEOUT_PID" ]; then kill $TIMEOUT_PID 2>/dev/null || true; fi
   fi
   TEST_PID=""
   set -e
@@ -252,4 +286,8 @@ if [ "$INFRA_STARTED" = true ] && [ "$KEEP_INFRA" != "1" ]; then
   fi
 fi
 
+# Clear any lingering trap timeouts
+trap - SIGINT SIGTERM
+
+# Exit with test status
 exit $TEST_EXIT

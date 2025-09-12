@@ -3,7 +3,7 @@
  * Real-world patterns, rankings, time-series data, priority queues
  */
 
-import { test, beforeEach, afterEach } from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
 

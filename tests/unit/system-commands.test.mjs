@@ -10,7 +10,7 @@
  * - GitHub's system diagnostics
  */
 
-import { test, beforeEach, afterEach } from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import { describeForEachMode, createClient, flushAll } from '../setup/dual-mode.mjs';
 

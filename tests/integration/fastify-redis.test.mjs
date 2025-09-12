@@ -5,13 +5,9 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import clusterPkg from '../../dist/Cluster.js';
-const { Cluster } = clusterPkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
 
-describe('Fastify Redis Plugin Compatibility', () => {
+describeForEachMode('Fastify Redis Plugin Compatibility', mode => {
   let client;
 
   afterEach(async () => {
@@ -24,23 +20,9 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
   describe('Basic Operations (as used by fastify/redis)', () => {
     beforeEach(async () => {
-      // Fastify plugin typically creates client like this
-      client = new Redis({
-        ...getStandaloneConfig(),
-        family: 4,
-        // Common fastify options
-        lazyConnect: false,
-        showFriendlyErrorStack: true,
-      });
+      client = await createClient(mode);
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
     });
 
     it('should handle GET/SET operations with callbacks (fastify pattern)', async () => {
@@ -110,16 +92,9 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
   describe('Redis Streams (as used in fastify examples)', () => {
     beforeEach(async () => {
-      client = new Redis(getStandaloneConfig());
+      client = await createClient(mode);
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
     });
 
     it('should handle stream operations like fastify example', async () => {
@@ -166,8 +141,8 @@ describe('Fastify Redis Plugin Compatibility', () => {
     let publisher;
 
     beforeEach(async () => {
-      subscriber = new Redis(getStandaloneConfig());
-      publisher = new Redis(getStandaloneConfig());
+      subscriber = await createClient(mode);
+      publisher = await createClient(mode);
       await subscriber.connect();
       await publisher.connect();
     });
@@ -209,16 +184,9 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
   describe('Pipeline Operations (batch processing)', () => {
     beforeEach(async () => {
-      client = new Redis(getStandaloneConfig());
+      client = await createClient(mode);
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
     });
 
     it('should handle pipeline for batch operations', async () => {
@@ -247,16 +215,9 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
   describe('Rate Limiting Patterns', () => {
     beforeEach(async () => {
-      client = new Redis(getStandaloneConfig());
+      client = await createClient(mode);
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
     });
 
     it('should implement sliding window rate limit', async () => {
@@ -322,16 +283,9 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
   describe('Session Storage Patterns', () => {
     beforeEach(async () => {
-      client = new Redis(getStandaloneConfig());
+      client = await createClient(mode);
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
     });
 
     it('should handle session storage like fastify-session-redis-store', async () => {
@@ -368,16 +322,9 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
   describe('Caching Patterns', () => {
     beforeEach(async () => {
-      client = new Redis(getStandaloneConfig());
+      client = await createClient(mode);
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
     });
 
     it('should implement cache-aside pattern', async () => {
@@ -426,16 +373,9 @@ describe('Fastify Redis Plugin Compatibility', () => {
 
   describe('Distributed Locking (Redlock pattern)', () => {
     beforeEach(async () => {
-      client = new Redis(getStandaloneConfig());
+      client = await createClient(mode);
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
     });
 
     it('should implement simple distributed lock', async () => {
@@ -478,7 +418,7 @@ describe('Fastify Redis Plugin Compatibility', () => {
   describe('Client Instance Management', () => {
     it('should support providing existing client instance', async () => {
       // Pattern used by fastify plugin
-      const existingClient = new Redis(getStandaloneConfig());
+      const existingClient = await createClient(mode);
       await existingClient.connect();
 
       await existingClient.set('test', 'value');

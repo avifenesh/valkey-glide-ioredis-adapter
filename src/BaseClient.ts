@@ -2983,6 +2983,13 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
       this.subscribedShardedChannels.size === 0
     ) {
       this.isInSubscriberMode = false;
+      // In event-based pub/sub, close the TCP pub/sub connection when no subscriptions remain
+      if (this.options.enableEventBasedPubSub && this.ioredisCompatiblePubSub) {
+        try {
+          await this.ioredisCompatiblePubSub.disconnect();
+        } catch {}
+        this.ioredisCompatiblePubSub = undefined as unknown as IoredisPubSubClient;
+      }
     }
 
     return this.subscribedChannels.size;
@@ -3001,8 +3008,16 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
     }
 
     if (this.options.enableEventBasedPubSub) {
-      // Event-based mode: Use GLIDE subscriber with binary-safe encoding/decoding
-      await this.updateSubscriberClient();
+      // ioredis-compatible mode: Use IoredisPubSubClient for Socket.IO compatibility
+      if (this.ioredisCompatiblePubSub) {
+        if (patterns.length === 0) {
+          await this.ioredisCompatiblePubSub.punsubscribe();
+        } else {
+          for (const pattern of patterns) {
+            await this.ioredisCompatiblePubSub.punsubscribe(pattern);
+          }
+        }
+      }
     } else {
       // GLIDE mode: Use callback mechanism with separate subscriber client
       await this.updateSubscriberClient();
@@ -3020,6 +3035,13 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
       this.subscribedShardedChannels.size === 0
     ) {
       this.isInSubscriberMode = false;
+      // In event-based pub/sub, close the TCP pub/sub connection when no subscriptions remain
+      if (this.options.enableEventBasedPubSub && this.ioredisCompatiblePubSub) {
+        try {
+          await this.ioredisCompatiblePubSub.disconnect();
+        } catch {}
+        this.ioredisCompatiblePubSub = undefined as unknown as IoredisPubSubClient;
+      }
     }
 
     return this.subscribedPatterns.size;

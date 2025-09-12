@@ -10,23 +10,104 @@ export async function info(
 ): Promise<string> {
   const internal = asInternal(client);
   await internal.ensureConnection();
-  
+
   // GlideClient has info(), GlideClusterClient doesn't
   if (!client.isCluster && 'info' in internal.glideClient) {
     if (section) {
       // GlideClient.info() doesn't accept string sections, needs customCommand
-      const result = await internal.glideClient.customCommand(['INFO', section]);
+      const result = await internal.glideClient.customCommand([
+        'INFO',
+        section,
+      ]);
       return ParameterTranslator.convertGlideString(result) || '';
     } else {
       const result = await internal.glideClient.info();
       return ParameterTranslator.convertGlideString(result) || '';
     }
   }
-  
+
   // Cluster client or section specified: use customCommand
   const args = section ? ['INFO', section] : ['INFO'];
   const result = await internal.glideClient.customCommand(args);
-  return ParameterTranslator.convertGlideString(result) || '';
+
+  // Convert possibly clustered response into a single string
+  let aggregated = '';
+  if (
+    client.isCluster &&
+    result &&
+    typeof result === 'object' &&
+    !Buffer.isBuffer(result)
+  ) {
+    if (Array.isArray(result)) {
+      aggregated = result
+        .map(
+          (entry: any) =>
+            ParameterTranslator.convertGlideString(entry?.value) || ''
+        )
+        .filter(s => s && s.length > 0)
+        .join('\r\n');
+    } else {
+      const parts = Object.values(result as Record<string, any>)
+        .map(
+          v =>
+            ParameterTranslator.convertGlideString((v as any)?.value ?? v) || ''
+        )
+        .filter(s => s && s.length > 0);
+      aggregated = parts.join('\r\n');
+    }
+  } else {
+    aggregated = ParameterTranslator.convertGlideString(result) || '';
+  }
+
+  // If no specific section requested, ensure common fields exist by merging server/memory sections
+  if (!section) {
+    const ensureSections = async (sec: string): Promise<string> => {
+      const secRes = await internal.glideClient.customCommand(['INFO', sec]);
+      if (
+        client.isCluster &&
+        secRes &&
+        typeof secRes === 'object' &&
+        !Buffer.isBuffer(secRes)
+      ) {
+        if (Array.isArray(secRes)) {
+          return secRes
+            .map(
+              (entry: any) =>
+                ParameterTranslator.convertGlideString(entry?.value) || ''
+            )
+            .filter(s => s && s.length > 0)
+            .join('\r\n');
+        }
+        return Object.values(secRes as Record<string, any>)
+          .map(
+            v =>
+              ParameterTranslator.convertGlideString((v as any)?.value ?? v) ||
+              ''
+          )
+          .filter(s => s && s.length > 0)
+          .join('\r\n');
+      }
+      return ParameterTranslator.convertGlideString(secRes) || '';
+    };
+
+    // If redis_version not found, try to append server section
+    if (!aggregated.includes('redis_version')) {
+      const serverInfo = await ensureSections('server');
+      if (serverInfo) {
+        aggregated = aggregated ? aggregated + '\r\n' + serverInfo : serverInfo;
+      }
+    }
+
+    // If used_memory not found, try to append memory section
+    if (!aggregated.includes('used_memory')) {
+      const memoryInfo = await ensureSections('memory');
+      if (memoryInfo) {
+        aggregated = aggregated ? aggregated + '\r\n' + memoryInfo : memoryInfo;
+      }
+    }
+  }
+
+  return aggregated;
 }
 
 export async function client(
