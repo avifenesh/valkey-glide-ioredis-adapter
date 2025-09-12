@@ -158,11 +158,22 @@ describe('Express Session Store Integration', () => {
 
     if (redisClient) {
       try {
-        // Clean up session data
-        const keys = await redisClient.keys(`${keyPrefix}*`);
-        if (keys.length > 0) {
-          await redisClient.del(...keys);
-        }
+        // Clean up session data using SCAN
+        let cursor = '0';
+        const keys = [];
+        do {
+          const res = await redisClient.scan(
+            cursor,
+            'MATCH',
+            `${keyPrefix}*`,
+            'COUNT',
+            200
+          );
+          cursor = Array.isArray(res) ? res[0] : '0';
+          const batch = Array.isArray(res) ? res[1] : [];
+          if (Array.isArray(batch) && batch.length) keys.push(...batch);
+        } while (cursor !== '0');
+        if (keys.length > 0) await redisClient.del(...keys);
       } catch {
         // Ignore cleanup errors
       }
@@ -187,11 +198,27 @@ describe('Express Session Store Integration', () => {
       // Note: connect-redis stores keys with its own prefix
       // Add a small delay to ensure session is written
       await delay(100);
-      const sessionKeys = await redisClient.keys(`${keyPrefix}sess:*`);
-      assert.ok(
-        sessionKeys.length > 0,
-        `No session keys found. Looking for pattern: ${keyPrefix}sess:*`
-      );
+      // Find session keys using SCAN to avoid blocking
+      {
+        let cursor = '0';
+        let count = 0;
+        do {
+          const res = await redisClient.scan(
+            cursor,
+            'MATCH',
+            `${keyPrefix}sess:*`,
+            'COUNT',
+            200
+          );
+          cursor = Array.isArray(res) ? res[0] : '0';
+          const batch = Array.isArray(res) ? res[1] : [];
+          count += Array.isArray(batch) ? batch.length : 0;
+        } while (cursor !== '0');
+        assert.ok(
+          count > 0,
+          `No session keys found. Looking for pattern: ${keyPrefix}sess:*`
+        );
+      }
     });
 
     test('should maintain session across requests', async () => {
@@ -299,11 +326,27 @@ describe('Express Session Store Integration', () => {
       // Check session exists in Redis with TTL
       // Add a small delay to ensure session is written
       await delay(100);
-      const sessionKeys = await redisClient.keys(`${keyPrefix}sess:*`);
-      assert.ok(sessionKeys.length > 0);
+      // Use SCAN to find a session key and verify TTL
+      let cursor = '0';
+      let firstKey = null;
+      do {
+        const res = await redisClient.scan(
+          cursor,
+          'MATCH',
+          `${keyPrefix}sess:*`,
+          'COUNT',
+          200
+        );
+        cursor = Array.isArray(res) ? res[0] : '0';
+        const batch = Array.isArray(res) ? res[1] : [];
+        if (!firstKey && Array.isArray(batch) && batch.length) {
+          firstKey = batch[0];
+        }
+      } while (cursor !== '0' && !firstKey);
+      assert.ok(firstKey, 'Expected at least one session key');
 
-      if (sessionKeys[0]) {
-        const ttl = await redisClient.ttl(sessionKeys[0]);
+      if (firstKey) {
+        const ttl = await redisClient.ttl(firstKey);
         assert.ok(ttl > 0);
         assert.ok(ttl <= 3600); // Should be <= 1 hour
       }
@@ -336,9 +379,25 @@ describe('Express Session Store Integration', () => {
       // Wait a small amount of time to ensure TTL starts counting
       await delay(500);
 
-      const sessionKeys = await redisClient.keys(`${keyPrefix}sess:*`);
-      if (sessionKeys[0]) {
-        const ttl = await redisClient.ttl(sessionKeys[0]);
+      // Find a session key using SCAN
+      cursor = '0';
+      firstKey = null;
+      do {
+        const res = await redisClient.scan(
+          cursor,
+          'MATCH',
+          `${keyPrefix}sess:*`,
+          'COUNT',
+          200
+        );
+        cursor = Array.isArray(res) ? res[0] : '0';
+        const batch = Array.isArray(res) ? res[1] : [];
+        if (!firstKey && Array.isArray(batch) && batch.length) {
+          firstKey = batch[0];
+        }
+      } while (cursor !== '0' && !firstKey);
+      if (firstKey) {
+        const ttl = await redisClient.ttl(firstKey);
         // TTL should be set and should be <= 3600
         assert.ok(ttl > 0);
         assert.ok(ttl <= 3600);
@@ -346,7 +405,7 @@ describe('Express Session Store Integration', () => {
         // If TTL is exactly 3600, wait a bit more to see it decrease
         if (ttl === 3600) {
           await delay(1100); // Wait just over 1 second
-          const updatedTtl = await redisClient.ttl(sessionKeys[0]);
+          const updatedTtl = await redisClient.ttl(firstKey);
           assert.ok(updatedTtl < 3600); // Should now be decreasing
         }
       }

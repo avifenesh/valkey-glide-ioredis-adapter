@@ -9,15 +9,7 @@ import assert from 'node:assert';
 
 import pkg from '../../dist/index.js';
 const { Redis, Cluster } = pkg;
-
-// Test configuration
-function getStandaloneConfig() {
-  return {
-    host: process.env.VALKEY_HOST || 'localhost',
-    port: parseInt(process.env.VALKEY_PORT || '6383'),
-    lazyConnect: true,
-  };
-}
+import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 function getClusterConfig() {
   return [

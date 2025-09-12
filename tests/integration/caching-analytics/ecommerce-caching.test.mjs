@@ -70,12 +70,17 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       console.warn('Warning: Could not flush database:', error.message);
     }
 
-    // Clean up any existing test data at the start
+    // Clean up any existing test data at the start using SCAN
     try {
-      const allKeys = await redisClient.keys('*');
-      if (allKeys.length > 0) {
-        await redisClient.del(...allKeys);
-      }
+      let cursor = '0';
+      const keys = [];
+      do {
+        const res = await redisClient.scan(cursor, 'MATCH', '*', 'COUNT', 500);
+        cursor = Array.isArray(res) ? res[0] : '0';
+        const batch = Array.isArray(res) ? res[1] : [];
+        if (Array.isArray(batch) && batch.length) keys.push(...batch);
+      } while (cursor !== '0');
+      if (keys.length > 0) await redisClient.del(...keys);
     } catch {
       // Ignore cleanup errors
     }
@@ -84,11 +89,16 @@ describe('Caching, Analytics & E-commerce Integration', () => {
   afterEach(async () => {
     if (redisClient) {
       try {
-        // Clean up all test data
-        const keys = await redisClient.keys('*');
-        if (keys.length > 0) {
-          await redisClient.del(...keys);
-        }
+        // Clean up all test data using SCAN
+        let cursor = '0';
+        const keys = [];
+        do {
+          const res = await redisClient.scan(cursor, 'MATCH', '*', 'COUNT', 500);
+          cursor = Array.isArray(res) ? res[0] : '0';
+          const batch = Array.isArray(res) ? res[1] : [];
+          if (Array.isArray(batch) && batch.length) keys.push(...batch);
+        } while (cursor !== '0');
+        if (keys.length > 0) await redisClient.del(...keys);
       } catch {
         // Ignore cleanup errors
       }

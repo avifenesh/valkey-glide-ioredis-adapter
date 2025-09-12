@@ -10,28 +10,17 @@
  * - GitHub's repository metadata scanning
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
+import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('Scan Operations - Production Iteration Patterns', () => {
   let client;
 
   beforeEach(async () => {
-    const config = {
-      host: 'localhost',
-      port: parseInt(process.env.VALKEY_PORT || '6383'),
-      lazyConnect: true,
-    };
+    const config = getStandaloneConfig();
     client = new Redis(config);
 
     await client.connect();

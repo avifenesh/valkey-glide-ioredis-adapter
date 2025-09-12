@@ -10,28 +10,17 @@
  * - Discord's temporary data cleanup
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
+import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('Key Management - TTL & Persistence Patterns', () => {
   let client;
 
   beforeEach(async () => {
-    const config = {
-      host: 'localhost',
-      port: parseInt(process.env.VALKEY_PORT || '6383'),
-      lazyConnect: true,
-    };
+    const config = getStandaloneConfig();
     client = new Redis(config);
 
     await client.connect();
@@ -359,20 +348,24 @@ describe('Key Management - TTL & Persistence Patterns', () => {
       await client.set(`${prefix}:session:def`, 'session_data');
       await client.set(`${prefix}:other:xyz`, 'other_data');
 
-      // Find keys by pattern
-      const userKeys = await client.keys(`${prefix}:user:*`);
-      assert.strictEqual(userKeys.length, 2);
-      assert.strictEqual(
-        userKeys.every(key => key.includes('user')),
-        true
-      );
+      // Find keys by pattern using SCAN
+      const scanCount = async pattern => {
+        let cursor = '0';
+        let total = 0;
+        do {
+          const res = await client.scan(cursor, 'MATCH', pattern, 'COUNT', 200);
+          cursor = Array.isArray(res) ? res[0] : '0';
+          const batch = Array.isArray(res) ? res[1] : [];
+          total += Array.isArray(batch) ? batch.length : 0;
+        } while (cursor !== '0');
+        return total;
+      };
 
-      const sessionKeys = await client.keys(`${prefix}:session:*`);
-      assert.strictEqual(sessionKeys.length, 2);
-      assert.strictEqual(
-        sessionKeys.every(key => key.includes('session')),
-        true
-      );
+      const userCount = await scanCount(`${prefix}:user:*`);
+      assert.strictEqual(userCount, 2);
+
+      const sessionCount = await scanCount(`${prefix}:session:*`);
+      assert.strictEqual(sessionCount, 2);
     });
   });
 

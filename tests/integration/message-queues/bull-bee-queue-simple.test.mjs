@@ -25,10 +25,7 @@ describe('Message Queue Systems Integration (No Workers)', () => {
   const keyPrefix = 'TEST:queues:';
 
   beforeEach(async () => {
-    const config = {
-      host: 'localhost',
-      port: parseInt(process.env.VALKEY_PORT || '6383'),
-    };
+    const config = await getStandaloneConfig();
     redisClient = new Redis({
       ...config,
       keyPrefix: keyPrefix,
@@ -46,10 +43,22 @@ describe('Message Queue Systems Integration (No Workers)', () => {
   afterEach(async () => {
     if (redisClient) {
       try {
-        const keys = await redisClient.keys(`${keyPrefix}*`);
-        if (keys.length > 0) {
-          await redisClient.del(...keys);
-        }
+        // Clean up keys using SCAN with per-suite prefix
+        let cursor = '0';
+        const keys = [];
+        do {
+          const res = await redisClient.scan(
+            cursor,
+            'MATCH',
+            `${keyPrefix}*`,
+            'COUNT',
+            200
+          );
+          cursor = Array.isArray(res) ? res[0] : '0';
+          const batch = Array.isArray(res) ? res[1] : [];
+          if (Array.isArray(batch) && batch.length) keys.push(...batch);
+        } while (cursor !== '0');
+        if (keys.length > 0) await redisClient.del(...keys);
       } catch {
         // Ignore cleanup errors
       }
@@ -61,11 +70,7 @@ describe('Message Queue Systems Integration (No Workers)', () => {
     let queue;
 
     beforeEach(async () => {
-      const config = {
-        host: 'localhost',
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
-      };
-
+      const config = await getStandaloneConfig();
       // Create Bull queue with our Redis adapter
       queue = new Queue('test-bull-queue', {
         createClient: type => {
@@ -308,10 +313,7 @@ describe('Message Queue Systems Integration (No Workers)', () => {
 
   describe('Integration Features', () => {
     test('Bull supports custom Redis commands', async () => {
-      const config = {
-        host: 'localhost',
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
-      };
+      const config = await getStandaloneConfig();
 
       const testClient = new Redis(config);
       await testClient.connect();

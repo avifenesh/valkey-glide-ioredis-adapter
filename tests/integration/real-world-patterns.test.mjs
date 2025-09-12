@@ -6,31 +6,18 @@
  * and Stack Overflow.
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { describe, test, afterEach, before, after } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis } = pkg;
+import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describe('Real-World ioredis Usage Patterns', () => {
   let client;
 
   before(async () => {
-    const config = {
-      host: process.env.REDIS_HOST || process.env.VALKEY_HOST || 'localhost',
-      port: parseInt(
-        process.env.REDIS_PORT || process.env.VALKEY_PORT || '6383',
-        10
-      ),
-      connectTimeout: 5000,
-    };
+    const base = getStandaloneConfig();
+    const config = { ...base, connectTimeout: 5000 };
     client = new Redis(config);
 
     await client.connect();
@@ -144,9 +131,10 @@ describe('Real-World ioredis Usage Patterns', () => {
     test('should handle Bull queue Redis configuration', async () => {
       // Pattern from Bull production usage
       // Bull passes RedisOpts directly to ioredis constructor
+      const base = getStandaloneConfig();
       const connectionInfo = {
-        port: parseInt(process.env.VALKEY_PORT || '6383'),
-        host: 'localhost',
+        port: base.port,
+        host: base.host,
         db: 0,
       };
 

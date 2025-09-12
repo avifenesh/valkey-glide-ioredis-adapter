@@ -7,11 +7,11 @@
 
 import { RedisKey, RedisValue } from '../types';
 import { TimeUnit } from '@valkey/valkey-glide';
+import { LRUCache } from './LRUCache';
 
 export class ParameterTranslator {
-  // Performance optimization: Cache for frequently used parameter translations
-  private static readonly setOptionsCache = new Map<string, any>();
-  private static readonly MAX_CACHE_SIZE = 1000; // Prevent unbounded memory growth
+  // Performance optimization: LRU cache for frequently used parameter translations
+  private static readonly setOptionsCache = new LRUCache<string, any>(1000);
   /**
    * Converts SET command arguments from ioredis format to GLIDE format.
    * @param args - ioredis SET arguments: key, value, [EX seconds], [PX milliseconds], [NX|XX]
@@ -124,14 +124,7 @@ export class ParameterTranslator {
 
     const result = Object.keys(options).length > 0 ? options : undefined;
 
-    // Cache the result for future use
-    if (this.setOptionsCache.size >= this.MAX_CACHE_SIZE) {
-      // Clear cache if it gets too large (simple LRU-like behavior)
-      const firstKey = this.setOptionsCache.keys().next().value;
-      if (firstKey !== undefined) {
-        this.setOptionsCache.delete(firstKey);
-      }
-    }
+    // Cache the result (LRU cache handles eviction automatically)
     this.setOptionsCache.set(cacheKey, result === undefined ? null : result);
 
     return result;
