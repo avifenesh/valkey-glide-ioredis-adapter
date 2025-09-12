@@ -39,6 +39,9 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+          --memory=2g
+          --cpus=2
+          --ulimit nofile=65536:65536
 
     steps:
     - name: Checkout code
@@ -112,63 +115,14 @@ jobs:
           sleep 2
         done
 
-    - name: Run unit tests
-      run: |
-        echo "🔍 Checking Valkey health before unit tests..."
-        for i in {1..5}; do
-          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
-            echo "✅ Valkey is healthy"
-            break
-          else
-            echo "⚠️ Valkey not ready, waiting... ($i/5)"
-            sleep 2
-          fi
-        done
-        npm run test:standalone -- tests/unit/
+    - name: Run all tests (including JSON/Search modules and cluster tests)
+      run: npm test
       env:
         CI: true
         VALKEY_HOST: localhost
         VALKEY_PORT: 6383
-
-    - name: Run integration tests
-      run: |
-        echo "⏳ Waiting 3s to reduce server load..."
-        sleep 3
-        echo "🔍 Checking Valkey health before integration tests..."
-        for i in {1..5}; do
-          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
-            echo "✅ Valkey is healthy"
-            break
-          else
-            echo "⚠️ Valkey not ready, waiting... ($i/5)"
-            sleep 2
-          fi
-        done
-        npm run test:standalone -- tests/integration/
-      env:
-        CI: true
-        VALKEY_HOST: localhost
-        VALKEY_PORT: 6383
-
-    - name: Run cluster tests
-      run: |
-        echo "⏳ Waiting 3s to reduce server load..."
-        sleep 3
-        echo "🔍 Checking Valkey health before cluster tests..."
-        for i in {1..5}; do
-          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
-            echo "✅ Valkey is healthy"
-            break
-          else
-            echo "⚠️ Valkey not ready, waiting... ($i/5)"
-            sleep 2
-          fi
-        done
-        npm run test:standalone -- tests/cluster/
-      env:
-        CI: true
-        VALKEY_HOST: localhost
-        VALKEY_PORT: 6383
+        VALKEY_BUNDLE_HOST: localhost
+        VALKEY_BUNDLE_PORT: 6383
         VALKEY_CLUSTER_NODES: localhost:17000,localhost:17001,localhost:17002
         ENABLE_CLUSTER_TESTS: true
 
@@ -241,54 +195,12 @@ jobs:
         # Final test
         valkey-cli -p 6383 ping
 
-    - name: Run unit tests only (no JSON/module tests)
-      run: |
-        echo "🧪 Running unit tests only on macOS (no JSON/module support)"
-        # Health check Valkey before tests
-        echo "🔍 Checking Valkey health..."
-        for i in {1..5}; do
-          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
-            echo "✅ Valkey is healthy"
-            break
-          else
-            echo "⚠️ Valkey not ready, waiting... ($i/5)"
-            sleep 2
-          fi
-        done
-        
-        # Exclude JSON and module-dependent tests
-        find tests/unit -name "*.test.mjs" ! -name "*json*" ! -name "*module*" ! -name "*search*" | xargs npm run test:standalone --
+    - name: Run all tests (same as local testing)
+      run: npm test
       env:
         CI: true
         VALKEY_HOST: localhost
         VALKEY_PORT: 6383
-        SKIP_MODULE_TESTS: true
-
-    - name: Run basic integration tests (no modules)
-      run: |
-        echo "🧪 Running basic integration tests on macOS (no JSON/module support)"
-        # Wait a bit to reduce server load
-        echo "⏳ Waiting 5s to reduce server load..."
-        sleep 5
-        
-        # Health check Valkey before tests
-        echo "🔍 Checking Valkey health..."
-        for i in {1..5}; do
-          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
-            echo "✅ Valkey is healthy"
-            break
-          else
-            echo "⚠️ Valkey not ready, waiting... ($i/5)"
-            sleep 2
-          fi
-        done
-        
-        npm run test:standalone -- tests/integration/simple-adapter.test.mjs tests/integration/fastify-redis.test.mjs
-      env:
-        CI: true
-        VALKEY_HOST: localhost
-        VALKEY_PORT: 6383
-        SKIP_MODULE_TESTS: true
 
     - name: Cleanup Valkey server
       if: always()
