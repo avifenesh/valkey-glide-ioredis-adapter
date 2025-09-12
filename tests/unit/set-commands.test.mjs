@@ -615,8 +615,9 @@ describeForEachMode(
     describe('E-commerce & Content Filtering', () => {
       test('should implement product recommendation engine', async () => {
         const userId = 'customer_' + Math.random();
-        const userInterestsKey = `interests:${userId}`;
-        const userPurchasesKey = `purchases:${userId}`;
+        const tagEC = '{set:ecomm:' + Math.random().toString(36).slice(2) + '}';
+        const userInterestsKey = `${tagEC}:interests:${userId}`;
+        const userPurchasesKey = `${tagEC}:purchases:${userId}`;
 
         // User's interests and purchase history
         await client.sadd(
@@ -629,8 +630,8 @@ describeForEachMode(
         await client.sadd(userPurchasesKey, 'laptop', 'headphones', 'novel');
 
         // Product categories
-        const electronicsKey = `category:electronics:${Math.random()}`;
-        const gamingKey = `category:gaming:${Math.random()}`;
+        const electronicsKey = `${tagEC}:category:electronics:${Math.random()}`;
+        const gamingKey = `${tagEC}:category:gaming:${Math.random()}`;
 
         await client.sadd(
           electronicsKey,
@@ -665,9 +666,10 @@ describeForEachMode(
 
       test('should implement content moderation system', async () => {
         const postId = 'post_' + Math.random();
-        const reportedByKey = `reported:${postId}`;
-        const moderatorsKey = `moderators:${Math.random()}`;
-        const reviewedByKey = `reviewed:${postId}`;
+        const tagMod = '{set:mod:' + Math.random().toString(36).slice(2) + '}';
+        const reportedByKey = `${tagMod}:reported:${postId}`;
+        const moderatorsKey = `${tagMod}:moderators:${Math.random()}`;
+        const reviewedByKey = `${tagMod}:reviewed:${postId}`;
 
         // Users who reported the content
         await client.sadd(reportedByKey, 'user1', 'user2', 'user3');

@@ -474,6 +474,7 @@ describeForEachMode('Scripting Commands', mode => {
     });
 
     it('should implement bulk operations', async () => {
+      const tag = '{lua:bulk:' + Math.random().toString(36).slice(2) + '}';
       const script = `
         local results = {}
         for i = 1, #KEYS do
@@ -482,13 +483,13 @@ describeForEachMode('Scripting Commands', mode => {
         return results
       `;
 
-      // Set up test data
-      await client.set('bulk1', 'value1');
-      await client.set('bulk2', 'value2');
-      await client.set('bulk3', 'value3');
+      const keys = [`${tag}:bulk:key1`, `${tag}:bulk:key2`, `${tag}:bulk:key3`];
 
-      const results = await client.eval(script, 3, 'bulk1', 'bulk2', 'bulk3');
-      assert.deepStrictEqual(results, ['value1', 'value2', 'value3']);
+      // Set initial values
+      await client.mset(keys[0], 'v1', keys[1], 'v2', keys[2], 'v3');
+
+      const result = await client.eval(script, keys.length, ...keys);
+      assert.deepStrictEqual(result, ['v1', 'v2', 'v3']);
     });
 
     it('should implement distributed lock acquisition', async () => {
