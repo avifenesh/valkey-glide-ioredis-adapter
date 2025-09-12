@@ -3,9 +3,14 @@
  * Tests for probabilistic cardinality estimation
  */
 
-import { it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+  keyTag,
+} from '../setup/dual-mode.mjs';
 
 describeForEachMode('HyperLogLog Commands', mode => {
   let client;
@@ -137,8 +142,8 @@ describeForEachMode('HyperLogLog Commands', mode => {
     });
 
     it('should count from multiple HLLs', async () => {
-      const key1 = `${testKey}:1`;
-      const key2 = `${testKey}:2`;
+      const key1 = `${tag}:count:1`;
+      const key2 = `${tag}:count:2`;
 
       await client.pfadd(key1, 'a', 'b', 'c');
       await client.pfadd(key2, 'd', 'e', 'f');
@@ -148,8 +153,8 @@ describeForEachMode('HyperLogLog Commands', mode => {
     });
 
     it('should handle overlapping elements in multiple HLLs', async () => {
-      const key1 = `${testKey}:1`;
-      const key2 = `${testKey}:2`;
+      const key1 = `${tag}:overlap:1`;
+      const key2 = `${tag}:overlap:2`;
 
       await client.pfadd(key1, 'a', 'b', 'c');
       await client.pfadd(key2, 'b', 'c', 'd');
@@ -183,13 +188,13 @@ describeForEachMode('HyperLogLog Commands', mode => {
     });
 
     it('should handle non-existent key', async () => {
-      const count = await client.pfcount('non:existent:key');
+      const count = await client.pfcount(`${tag}:nonexistent`);
       assert.strictEqual(count, 0);
     });
 
     it('should handle mix of existing and non-existent keys', async () => {
       await client.pfadd(testKey, 'element1', 'element2');
-      const count = await client.pfcount(testKey, 'non:existent:key');
+      const count = await client.pfcount(testKey, `${tag}:nonexistent`);
       assert.strictEqual(count, 2);
     });
   });
@@ -272,7 +277,7 @@ describeForEachMode('HyperLogLog Commands', mode => {
 
       await client.pfadd(key1, 'a', 'b', 'c');
 
-      const result = await client.pfmerge(destKey, key1, 'non:existent:key');
+      const result = await client.pfmerge(destKey, key1, `${tag}:nonexistent`);
       assert.strictEqual(result, 'OK');
 
       const count = await client.pfcount(destKey);
@@ -355,10 +360,10 @@ describeForEachMode('HyperLogLog Commands', mode => {
     });
 
     it('should merge daily visitor counts into monthly', async () => {
-      const day1 = 'visitors:2024-01-01';
-      const day2 = 'visitors:2024-01-02';
-      const day3 = 'visitors:2024-01-03';
-      const monthly = 'visitors:2024-01';
+      const day1 = `${tag}:visitors:2024-01-01`;
+      const day2 = `${tag}:visitors:2024-01-02`;
+      const day3 = `${tag}:visitors:2024-01-03`;
+      const monthly = `${tag}:visitors:2024-01`;
 
       // Day 1 visitors
       await client.pfadd(day1, 'user1', 'user2', 'user3');

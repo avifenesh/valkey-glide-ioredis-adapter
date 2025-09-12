@@ -14,22 +14,22 @@ export function describeForEachMode(name, suite) {
   for (const mode of MODES) {
     if (mode === 'standalone' && disableStandalone) continue;
     if (mode === 'cluster' && disableCluster) continue;
-
     describe(`${name} (${mode})`, () => suite(mode));
   }
 }
 
-export async function createClient(mode) {
-  const pkg = await import('../../dist/index.js');
-  const { Redis, Cluster } = pkg;
+export async function createClient(mode, options = {}) {
+  const mod = await import('../../dist/index.js');
+  const api = mod.default ?? mod;
+  const { Redis, Cluster } = api;
   const cfg = await import('../utils/test-config.mjs');
 
   if (mode === 'cluster') {
     const nodes = cfg.getClusterConfig();
-    return new Cluster(nodes, { lazyConnect: true });
+    return new Cluster(nodes, { lazyConnect: true, ...options });
   }
   const opts = cfg.getStandaloneConfig();
-  return new Redis(opts);
+  return new Redis({ ...opts, ...options });
 }
 
 // Consistent hash-tag for multi-key operations in cluster mode
@@ -45,4 +45,3 @@ export async function flushAll(client) {
     // ignore
   }
 }
-

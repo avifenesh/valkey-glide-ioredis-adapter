@@ -3,77 +3,27 @@
  * Tests that our ioredis adapter works with express-rate-limit and rate-limit-redis
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 // Using dynamic imports for CommonJS modules
 const express = (await import('express')).default;
 const { default: rateLimit } = await import('express-rate-limit');
 import { RedisStore } from 'rate-limit-redis';
 const supertest = (await import('supertest')).default;
-import pkg from '../../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll, keyTag } from '../../setup/dual-mode.mjs';
 
-async function checkTestServers() {
-  try {
-    const config = getStandaloneConfig();
-    const testClient = new Redis(config);
-    await testClient.connect();
-    await testClient.ping();
-    await testClient.quit();
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms).unref());
 }
-describe('Rate Limiting Integration', () => {
+describeForEachMode('Rate Limiting Integration', mode => {
   let app;
   let redisAdapter;
   let request;
 
-  before(async () => {
-    // Check if test servers are available
-    const serversAvailable = await checkTestServers();
-    if (!serversAvailable) {
-      throw new Error(
-        'Test servers not available - Redis connection required for rate limiting integration tests'
-      );
-      return;
-    }
-  });
-
   beforeEach(async () => {
-    // Fail tests if servers are not available
-    const serversAvailable = await checkTestServers();
-    if (!serversAvailable) {
-      throw new Error(
-        'Test servers not available - Redis connection required for rate limiting integration tests'
-      );
-    }
-
-    // Use test server configuration
-    const config = await getStandaloneConfig();
-    redisAdapter = new Redis(config);
+    redisAdapter = await createClient(mode);
     await redisAdapter.connect();
-
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await redisAdapter.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+    await flushAll(redisAdapter);
 
     // Create Express app with rate limiting
     app = express();
@@ -112,8 +62,7 @@ describe('Rate Limiting Integration', () => {
   afterEach(async () => {
     if (redisAdapter) {
       try {
-        // Clean slate via cluster-safe FLUSHALL
-        await redisAdapter.flushall();
+        await flushAll(redisAdapter);
       } catch {
         // Ignore cleanup errors
       }
@@ -212,13 +161,24 @@ describe('Rate Limiting Integration', () => {
       // Make a request to create rate limit entry
       await request.get('/api/test');
 
-      // Check that keys were created in Redis
-      const keys = await redisAdapter.keys('rl:*');
-      assert.ok(keys.length > 0);
+      // Check that keys were created in Redis (cluster-safe SCAN)
+      let cursor = '0';
+      let found = 0;
+      let firstKey = null;
+      do {
+        const res = await redisAdapter.scan(cursor, 'MATCH', 'rl:*', 'COUNT', 100);
+        cursor = Array.isArray(res) ? res[0] : '0';
+        const batch = Array.isArray(res) ? res[1] : [];
+        if (Array.isArray(batch) && batch.length) {
+          found += batch.length;
+          if (!firstKey) firstKey = batch[0];
+        }
+      } while (cursor !== '0');
+      assert.ok(found > 0);
 
       // Verify the key contains rate limit data
-      if (keys[0]) {
-        const keyValue = await redisAdapter.get(keys[0]);
+      if (firstKey) {
+        const keyValue = await redisAdapter.get(firstKey);
         assert.ok(keyValue !== undefined);
       }
     });

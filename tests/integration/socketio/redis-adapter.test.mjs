@@ -18,23 +18,17 @@ import assert from 'node:assert';
 import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { io } from 'socket.io-client';
+const ioOpts = { transports: ['websocket'], reconnection: false, forceNew: true, timeout: 2000 };
+const mk = (url) => io(url, ioOpts);
 import { createServer } from 'http';
-import pkg from '../../../dist/index.js';
-const { Redis } = pkg;
+import {
+  describeForEachMode,
+  createClient,
+  keyTag,
+  flushAll,
+} from '../../setup/dual-mode.mjs';
 import { getStandaloneConfig } from '../../utils/test-config.mjs';
 
-async function checkTestServers() {
-  try {
-    const config = getStandaloneConfig();
-    const testClient = new Redis(config);
-    await testClient.connect();
-    await testClient.ping();
-    await testClient.quit();
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms).unref());
 }
@@ -63,15 +57,11 @@ describe('Socket.IO Valkey Adapter Integration', () => {
         error.message === 'Cleanup initiated'
       ) {
         // Silently ignore GLIDE ClosingError during Socket.IO cleanup
-        console.log('Test GLIDE ClosingError during Socket.IO cleanup');
         return;
       }
 
       // Silently ignore GLIDE UTF-8 errors from Socket.IO binary pub/sub data
       if (error.message && error.message.includes('invalid utf-8 sequence')) {
-        console.log(
-          'Test GLIDE UTF-8 error from Socket.IO binary pub/sub data'
-        );
         return;
       }
 
@@ -87,27 +77,16 @@ describe('Socket.IO Valkey Adapter Integration', () => {
       }
     });
 
-    // Check if test servers are available
-    const serversAvailable = await checkTestServers();
-    if (!serversAvailable) {
-      throw new Error(
-        'Test servers not available for Socket.IO integration tests. Please start test servers first.'
-      );
-    }
-
     // Create shared Valkey connections once for all tests (reduces load by half)
-    const config = await getStandaloneConfig();
-
-    valkeyClient1 = new Redis({
-      ...config,
-      keyPrefix: keyPrefix, // Same prefix for all clients to enable cross-instance communication
-      enableEventBasedPubSub: true, // Enable binary-safe pub/sub for Socket.IO
+    const tag = keyTag('sio');
+    const prefix = `${tag}:TEST:socketio:`;
+    valkeyClient1 = await createClient('standalone', {
+      keyPrefix: prefix,
+      enableEventBasedPubSub: true,
     });
-
-    valkeyClient2 = new Redis({
-      ...config,
-      keyPrefix: keyPrefix, // Same prefix for all clients to enable cross-instance communication
-      enableEventBasedPubSub: true, // Enable binary-safe pub/sub for Socket.IO
+    valkeyClient2 = await createClient('standalone', {
+      keyPrefix: prefix,
+      enableEventBasedPubSub: true,
     });
 
     await valkeyClient1.connect();
@@ -125,7 +104,7 @@ describe('Socket.IO Valkey Adapter Integration', () => {
     // Clean up shared Valkey connections
     if (valkeyClient1) {
       try {
-        await valkeyClient1.flushall();
+        await flushAll(valkeyClient1);
       } catch {
         // Ignore cleanup errors
       }
@@ -152,13 +131,6 @@ describe('Socket.IO Valkey Adapter Integration', () => {
   });
 
   beforeEach(async () => {
-    // Skip tests if servers are not available
-    const serversAvailable = await checkTestServers();
-    if (!serversAvailable) {
-      this.skip('Test servers not available');
-      return;
-    }
-
     // Get available ports for Socket.IO servers using system allocation
     // This approach uses port 0 to let the OS choose available ports
     const net = await import('net');
@@ -266,10 +238,10 @@ describe('Socket.IO Valkey Adapter Integration', () => {
 
     // Close Socket.IO servers (global error handler will catch GLIDE ClosingError)
     if (io1) {
-      io1.close();
+      await new Promise(resolve => io1.close(() => resolve()));
     }
     if (io2) {
-      io2.close();
+      await new Promise(resolve => io2.close(() => resolve()));
     }
 
     // Longer delay after close to let cleanup settle on macOS
@@ -277,10 +249,10 @@ describe('Socket.IO Valkey Adapter Integration', () => {
 
     // Close HTTP servers
     if (server1) {
-      server1.close();
+      await new Promise(resolve => server1.close(() => resolve()));
     }
     if (server2) {
-      server2.close();
+      await new Promise(resolve => server2.close(() => resolve()));
     }
 
     // Valkey clients are now shared - no cleanup needed per test
@@ -291,7 +263,7 @@ describe('Socket.IO Valkey Adapter Integration', () => {
 
   describe('Basic Socket.IO Functionality', () => {
     test('should connect and communicate with single instance', async () => {
-      const client = io(`http://localhost:${port1}`);
+      const client = mk(`http://localhost:${port1}`);
 
       await new Promise(resolve => {
         client.on('connect', () => {
@@ -304,8 +276,8 @@ describe('Socket.IO Valkey Adapter Integration', () => {
     });
 
     test('should handle room joining and broadcasting', async () => {
-      const client1 = io(`http://localhost:${port1}`);
-      const client2 = io(`http://localhost:${port1}`);
+      const client1 = mk(`http://localhost:${port1}`);
+      const client2 = mk(`http://localhost:${port1}`);
 
       const room = 'test-room-' + Math.random().toString(36).substring(7);
       let messagesReceived = 0;
@@ -352,8 +324,8 @@ describe('Socket.IO Valkey Adapter Integration', () => {
 
   describe('Cross-Instance Communication (requires Redis adapter)', () => {
     test('should broadcast messages across different Socket.IO instances', async () => {
-      const client1 = io(`http://localhost:${port1}`);
-      const client2 = io(`http://localhost:${port2}`);
+      const client1 = mk(`http://localhost:${port1}`);
+      const client2 = mk(`http://localhost:${port2}`);
 
       const room =
         'cross-instance-room-' + Math.random().toString(36).substring(7);
@@ -408,7 +380,7 @@ describe('Socket.IO Valkey Adapter Integration', () => {
 
   describe('Room Management', () => {
     test('should handle multiple rooms correctly', async () => {
-      const client = io(`http://localhost:${port1}`);
+      const client = mk(`http://localhost:${port1}`);
 
       await new Promise(resolve => client.on('connect', resolve));
 
@@ -444,7 +416,7 @@ describe('Socket.IO Valkey Adapter Integration', () => {
   describe('Error Handling', () => {
     test('should handle Redis connection errors gracefully', async () => {
       // This test verifies the adapter handles Redis issues gracefully
-      const client = io(`http://localhost:${port1}`);
+      const client = mk(`http://localhost:${port1}`);
 
       await new Promise(resolve => client.on('connect', resolve));
 
@@ -460,7 +432,7 @@ describe('Socket.IO Valkey Adapter Integration', () => {
     });
 
     test('should handle disconnections properly', async () => {
-      const client = io(`http://localhost:${port1}`);
+      const client = mk(`http://localhost:${port1}`);
 
       await new Promise(resolve => client.on('connect', resolve));
 
@@ -480,7 +452,7 @@ describe('Socket.IO Valkey Adapter Integration', () => {
 
       // Create multiple clients
       for (let i = 0; i < 5; i++) {
-        const client = io(`http://localhost:${port1}`);
+        const client = mk(`http://localhost:${port1}`);
         clients.push(client);
 
         connectionPromises.push(

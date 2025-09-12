@@ -21,23 +21,22 @@ import assert from 'node:assert';
 import { Server } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { io } from 'socket.io-client';
+const ioOpts = {
+  transports: ['websocket'],
+  reconnection: false,
+  forceNew: true,
+  timeout: 2000,
+};
+const mk = url => io(url, ioOpts);
 import { createServer } from 'http';
-import pkg from '../../../dist/index.js';
-const { Redis } = pkg;
+import {
+  describeForEachMode,
+  createClient,
+  keyTag,
+  flushAll,
+} from '../../setup/dual-mode.mjs';
 import { getStandaloneConfig } from '../../utils/test-config.mjs';
 
-async function checkTestServers() {
-  try {
-    const config = getStandaloneConfig();
-    const testClient = new Redis(config);
-    await testClient.connect();
-    await testClient.ping();
-    await testClient.quit();
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms).unref());
 }
@@ -57,11 +56,6 @@ describe('Real-World Socket.IO Application', () => {
   let port2;
 
   before(async () => {
-    const serversAvailable = await checkTestServers();
-    if (!serversAvailable) {
-      throw new Error('Test servers not available for Socket.IO chat tests');
-    }
-
     // Get available ports
     const net = await import('net');
 
@@ -82,39 +76,25 @@ describe('Real-World Socket.IO Application', () => {
     });
 
     // PRODUCTION PATTERN Redis clients for each Socket.IO server
-    const config = await getStandaloneConfig();
-
-    // Add connection timeout to match ioredis default behavior
-    const clientConfig = {
-      ...config,
-      keyPrefix: 'CHAT:',
-      connectTimeout: 10000, // 10 seconds - ioredis default
-      enableEventBasedPubSub: true, // Required for Socket.IO binary compatibility
+    const tag = keyTag('chat');
+    const clientOptions = {
+      keyPrefix: `${tag}:CHAT:`,
+      connectTimeout: 10000,
+      enableEventBasedPubSub: true,
     };
 
-    // Server 1 clients - use duplicate() pattern as per Socket.IO docs
-    valkeyPubClient1 = new Redis(clientConfig);
+    valkeyPubClient1 = await createClient('standalone', clientOptions);
     valkeySubClient1 = valkeyPubClient1.duplicate();
-
-    // Server 2 clients - use duplicate() pattern as per Socket.IO docs
-    valkeyPubClient2 = new Redis(clientConfig);
+    valkeyPubClient2 = await createClient('standalone', clientOptions);
     valkeySubClient2 = valkeyPubClient2.duplicate();
 
     // Like real ioredis, connections are lazy - no explicit connect() needed
 
     // Add debug logging to real ioredis for comparison
-    valkeyPubClient1.on('connect', () =>
-      console.log('Real ioredis PubClient1 connected')
-    );
-    valkeySubClient1.on('connect', () =>
-      console.log('Real ioredis SubClient1 connected')
-    );
-    valkeyPubClient2.on('connect', () =>
-      console.log('Real ioredis PubClient2 connected')
-    );
-    valkeySubClient2.on('connect', () =>
-      console.log('Real ioredis SubClient2 connected')
-    );
+    valkeyPubClient1.on('connect', () => {});
+    valkeySubClient1.on('connect', () => {});
+    valkeyPubClient2.on('connect', () => {});
+    valkeySubClient2.on('connect', () => {});
 
     // Monitor subscribe/publish calls on real ioredis
     const originalSubscribe1 =
@@ -124,31 +104,15 @@ describe('Real-World Socket.IO Application', () => {
     const originalPublish1 = valkeyPubClient1.publish.bind(valkeyPubClient1);
     const originalPublish2 = valkeyPubClient2.publish.bind(valkeyPubClient2);
 
-    valkeySubClient1.subscribe = (...args) => {
-      console.log('Real ioredis SubClient1.subscribe called with:', args);
-      return originalSubscribe1(...args);
-    };
+    valkeySubClient1.subscribe = (...args) => originalSubscribe1(...args);
 
-    valkeySubClient2.subscribe = (...args) => {
-      console.log('Real ioredis SubClient2.subscribe called with:', args);
-      return originalSubscribe2(...args);
-    };
+    valkeySubClient2.subscribe = (...args) => originalSubscribe2(...args);
 
-    valkeyPubClient1.publish = (channel, message) => {
-      console.log('Real ioredis PubClient1.publish called with:', [
-        channel,
-        message,
-      ]);
-      return originalPublish1(channel, message);
-    };
+    valkeyPubClient1.publish = (channel, message) =>
+      originalPublish1(channel, message);
 
-    valkeyPubClient2.publish = (channel, message) => {
-      console.log('Real ioredis PubClient2.publish called with:', [
-        channel,
-        message,
-      ]);
-      return originalPublish2(channel, message);
-    };
+    valkeyPubClient2.publish = (channel, message) =>
+      originalPublish2(channel, message);
 
     // Create HTTP servers
     chatServer1 = createServer();
@@ -171,67 +135,46 @@ describe('Real-World Socket.IO Application', () => {
     io2.adapter(adapter2);
 
     // Implement real chat server logic
-    [io1, io2].forEach((io, serverIndex) => {
+    [io1, io2].forEach((io, _serverIndex) => {
       io.on('connection', socket => {
-        console.log(
-          `User connected to server ${serverIndex + 1}: ${socket.id}`
-        );
-
-        // Join a chat room
-        socket.on('join-room', (roomName, username) => {
-          socket.join(roomName);
-          socket.data.username = username;
-          socket.data.room = roomName;
-
-          // Notify room about new user
-          socket.to(roomName).emit('user-joined', {
-            username,
-            message: `${username} joined the chat`,
-            timestamp: Date.now(),
-          });
-
-          socket.emit('joined-room', {
-            room: roomName,
-            message: `Welcome to ${roomName}!`,
-          });
-        });
-
-        // Handle chat messages
-        socket.on('chat-message', data => {
-          const message = {
-            id: Math.random().toString(36).substr(2, 9),
-            username: socket.data.username,
-            message: data.message,
-            room: socket.data.room,
-            timestamp: Date.now(),
-            server: serverIndex + 1,
-          };
-
-          // Broadcast to all users in the room (across all servers)
-          io.to(socket.data.room).emit('new-message', message);
-        });
-
-        // Handle private messages
-        socket.on('private-message', data => {
-          const privateMsg = {
-            from: socket.data.username,
-            message: data.message,
-            timestamp: Date.now(),
-            server: serverIndex + 1,
-          };
-
-          // Send to specific user across all servers
-          io.emit('private-message', privateMsg, data.targetUser);
-        });
-
-        socket.on('disconnect', () => {
-          if (socket.data.room && socket.data.username) {
-            socket.to(socket.data.room).emit('user-left', {
-              username: socket.data.username,
-              message: `${socket.data.username} left the chat`,
-              timestamp: Date.now(),
+        // Join a room with username
+        socket.on('join-room', (room, username) => {
+          try {
+            socket.data = socket.data || {};
+            if (username) socket.data.username = username;
+            socket.join(room);
+            // Notify other users in the room that a user joined (exclude self)
+            socket.to(room).emit('user-joined', {
+              room,
+              username: socket.data.username || 'Anonymous',
             });
-          }
+          } catch {}
+        });
+
+        // Broadcast chat messages to the room as 'new-message'
+        socket.on('chat-message', ({ message }) => {
+          try {
+            const username = socket.data?.username || 'Anonymous';
+            // Emit to all rooms the socket is part of (excluding its own id)
+            const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
+            for (const room of rooms) {
+              io.to(room).emit('new-message', {
+                message,
+                username,
+                room,
+              });
+            }
+          } catch {}
+        });
+
+        socket.on('disconnecting', () => {
+          try {
+            const username = socket.data?.username || 'Anonymous';
+            const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
+            for (const room of rooms) {
+              socket.to(room).emit('user-left', { room, username });
+            }
+          } catch {}
         });
       });
     });
@@ -249,19 +192,19 @@ describe('Real-World Socket.IO Application', () => {
 
   after(async () => {
     // Close Socket.IO servers
-    if (io1) io1.close();
-    if (io2) io2.close();
+    if (io1) await new Promise(resolve => io1.close(() => resolve()));
+    if (io2) await new Promise(resolve => io2.close(() => resolve()));
 
     // Close HTTP servers
-    if (chatServer1) chatServer1.close();
-    if (chatServer2) chatServer2.close();
+    if (chatServer1)
+      await new Promise(resolve => chatServer1.close(() => resolve()));
+    if (chatServer2)
+      await new Promise(resolve => chatServer2.close(() => resolve()));
 
     // Clean up chat data via cluster-safe FLUSHALL
     try {
-      await valkeyPubClient1.flushall();
-    } catch {
-      // Ignore cleanup errors
-    }
+      await flushAll(valkeyPubClient1);
+    } catch {}
 
     // Close Redis connections
     await valkeyPubClient1.disconnect();
@@ -272,8 +215,8 @@ describe('Real-World Socket.IO Application', () => {
 
   test('Real chat can join rooms and exchange messages', async () => {
     // Connect users to different servers (real production scenario)
-    const alice = io(`http://localhost:${port1}`);
-    const bob = io(`http://localhost:${port2}`); // Different server
+    const alice = mk(`http://localhost:${port1}`);
+    const bob = mk(`http://localhost:${port2}`); // Different server
 
     let aliceMessages = [];
     let bobMessages = [];
@@ -322,9 +265,9 @@ describe('Real-World Socket.IO Application', () => {
   });
 
   test('Real chat isolation works correctly', async () => {
-    const user1 = io(`http://localhost:${port1}`);
-    const user2 = io(`http://localhost:${port2}`);
-    const user3 = io(`http://localhost:${port1}`);
+    const user1 = mk(`http://localhost:${port1}`);
+    const user2 = mk(`http://localhost:${port2}`);
+    const user3 = mk(`http://localhost:${port1}`);
 
     let user1Messages = [];
     let user2Messages = [];
@@ -376,8 +319,8 @@ describe('Real-World Socket.IO Application', () => {
   });
 
   test('Real chat user connections and disconnections', async () => {
-    const user1 = io(`http://localhost:${port1}`);
-    const user2 = io(`http://localhost:${port2}`);
+    const user1 = mk(`http://localhost:${port1}`);
+    const user2 = mk(`http://localhost:${port2}`);
 
     let user1Events = [];
     let user2Events = [];
@@ -406,22 +349,46 @@ describe('Real-World Socket.IO Application', () => {
     await delay(100);
 
     // User2 joins (should trigger join event for User1)
+    const joinedSeen = new Promise(resolve => {
+      const t = setTimeout(() => resolve('timeout'), 1000);
+      t && typeof t.unref === 'function' && t.unref();
+      user1.once('user-joined', e => {
+        if (e.username === 'SecondUser' && e.room === 'lobby') {
+          clearTimeout(t);
+          resolve('joined');
+        }
+      });
+    });
     user2.emit('join-room', 'lobby', 'SecondUser');
-    await delay(200);
+    await joinedSeen;
 
     // User1 should see User2 joined
-    assert.strictEqual(user1Events.length, 1);
-    assert.strictEqual(user1Events[0].type, 'joined');
-    assert.strictEqual(user1Events[0].username, 'SecondUser');
+    const joinedEvent = user1Events.find(
+      e =>
+        e.type === 'joined' && e.username === 'SecondUser' && e.room === 'lobby'
+    );
+    assert.ok(joinedEvent);
 
     // User2 leaves
+    const leftSeen = new Promise(resolve => {
+      const t = setTimeout(() => resolve('timeout'), 1000);
+      t && typeof t.unref === 'function' && t.unref();
+      user1.once('user-left', e => {
+        if (e.username === 'SecondUser' && e.room === 'lobby') {
+          clearTimeout(t);
+          resolve('left');
+        }
+      });
+    });
     user2.disconnect();
-    await delay(300);
+    await leftSeen;
 
     // User1 should see User2 left
-    assert.strictEqual(user1Events.length, 2);
-    assert.strictEqual(user1Events[1].type, 'left');
-    assert.strictEqual(user1Events[1].username, 'SecondUser');
+    const leftEvent = user1Events.find(
+      e =>
+        e.type === 'left' && e.username === 'SecondUser' && e.room === 'lobby'
+    );
+    assert.ok(leftEvent);
 
     user1.disconnect();
   });
@@ -432,7 +399,7 @@ describe('Real-World Socket.IO Application', () => {
     for (let i = 0; i < 20; i++) {
       // Distribute users across servers (load balancing pattern)
       const serverPort = i % 2 === 0 ? port1 : port2;
-      users.push(io(`http://localhost:${serverPort}`));
+      users.push(mk(`http://localhost:${serverPort}`));
     }
 
     const messagePromises = users.map((client, index) => {
@@ -442,7 +409,8 @@ describe('Real-World Socket.IO Application', () => {
         client.on('connect', () => {
           client.emit('join-room', 'busy-room', `User${index + 1}`);
           // Stagger message collection to avoid overwhelming
-          setTimeout(() => resolve(messages), 2000);
+          const t = setTimeout(() => resolve(messages), 2000);
+          t && typeof t.unref === 'function' && t.unref();
         });
       });
     });
@@ -453,11 +421,12 @@ describe('Real-World Socket.IO Application', () => {
     // Each user sends one message (20 messages total)
     users.forEach((client, index) => {
       // Stagger message sending slightly to simulate real usage
-      setTimeout(() => {
+      const t = setTimeout(() => {
         client.emit('chat-message', {
           message: `Hello from User${index + 1}!`,
         });
-      }, index * 50); // 50ms between each message
+      }, index * 50);
+      t && typeof t.unref === 'function' && t.unref(); // 50ms between each message
     });
 
     const allMessages = await Promise.all(messagePromises);

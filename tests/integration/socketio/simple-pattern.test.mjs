@@ -5,27 +5,22 @@
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig, delay } from '../../utils/test-config.mjs';
+import { describeForEachMode, createClient } from '../../setup/dual-mode.mjs';
+import { delay } from '../../utils/test-config.mjs';
 
 // Global declarations for Node.js built-in globals
 /* global console, Buffer */
 
-describe('Simple Socket.IO Pattern Test', () => {
+describeForEachMode('Simple Socket.IO Pattern Test', mode => {
   let pubClient;
   let subClient;
 
   before(async () => {
     // Get dynamic configuration from test runner
-    const baseConfig = getStandaloneConfig();
-    const config = {
-      ...baseConfig,
-      enableEventBasedPubSub: true, // Socket.IO compatibility mode
-    };
-
-    pubClient = new Redis(config);
-    subClient = new Redis(config);
+    const eventOpts =
+      mode === 'standalone' ? { enableEventBasedPubSub: true } : {};
+    pubClient = await createClient(mode, eventOpts);
+    subClient = await createClient(mode, eventOpts);
 
     // Connect both clients
     await pubClient.connect();
@@ -101,7 +96,6 @@ describe('Simple Socket.IO Pattern Test', () => {
       await cleanup();
     } catch (error) {
       // Ignore cleanup errors
-      console.log('Cleanup error:', error.message);
     }
   });
 
@@ -113,9 +107,6 @@ describe('Simple Socket.IO Pattern Test', () => {
       const messageStr = Buffer.isBuffer(message)
         ? message.toString()
         : message;
-      console.log(
-        `Received pattern message: ${pattern} -> ${channel}: ${messageStr.substring(0, 50)}`
-      );
       receivedMessages.push({ pattern, channel, message: messageStr });
     });
 
@@ -132,11 +123,7 @@ describe('Simple Socket.IO Pattern Test', () => {
       data: { framework: 'node:test' },
     });
 
-    const publishResult = await pubClient.publish(
-      'socket.io#/#general#',
-      testMessage
-    );
-    console.log(`Publish result: ${publishResult}`);
+    await pubClient.publish('socket.io#/#general#', testMessage);
 
     // Wait for message propagation with timeout
     const startTime = Date.now();
@@ -163,10 +150,6 @@ describe('Simple Socket.IO Pattern Test', () => {
     assert.ok(
       receivedMessages[0].message.includes('Hello from Node.js test'),
       'Message should contain test content'
-    );
-
-    console.log(
-      '✅ Socket.IO pattern subscription working with Node.js test runner'
     );
   });
 });

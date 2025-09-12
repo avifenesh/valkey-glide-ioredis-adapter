@@ -38,8 +38,7 @@ export function isInternalClient(client: any): client is IInternalClient {
   return (
     client &&
     typeof client.ensureConnection === 'function' &&
-    typeof client.normalizeKey === 'function' &&
-    'glideClient' in client
+    typeof client.normalizeKey === 'function'
   );
 }
 
@@ -50,5 +49,5 @@ export function asInternal(client: any): IInternalClient {
   if (!isInternalClient(client)) {
     throw new Error('Invalid client: does not implement internal interface');
   }
-  return client;
+  return client as IInternalClient;
 }

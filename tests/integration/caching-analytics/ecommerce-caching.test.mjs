@@ -5,79 +5,28 @@
  * analytics data aggregation, and e-commerce scenarios like shopping carts.
  */
 
-import {
-  describe,
-  it,
-  test,
-  beforeEach,
-  afterEach,
-  before,
-  after,
-} from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../../utils/test-config.mjs';
+import { describeForEachMode, createClient, flushAll, keyTag } from '../../setup/dual-mode.mjs';
 
-async function checkTestServers() {
-  try {
-    const config = getStandaloneConfig();
-    const testClient = new Redis(config);
-    await testClient.connect();
-    await testClient.ping();
-    await testClient.quit();
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
 function delay(ms) {
   return new Promise(resolve => setTimeout(resolve, ms).unref());
 }
-describe('Caching, Analytics & E-commerce Integration', () => {
+describeForEachMode('Caching, Analytics & E-commerce Integration', mode => {
   let redisClient;
-
-  before(async () => {
-    // Check if test servers are available
-    const serversAvailable = await checkTestServers();
-    if (!serversAvailable) {
-      throw new Error(
-        'Test servers not available - Redis connection required for caching integration tests'
-      );
-      return;
-    }
-  });
+  let tag;
 
   beforeEach(async () => {
-    // Skip tests if servers are not available
-    const serversAvailable = await checkTestServers();
-    if (!serversAvailable) {
-      this.skip('Test servers not available');
-      return;
-    }
-
     // Setup Redis client
-    const config = await getStandaloneConfig();
-    redisClient = new Redis(config);
-
+    redisClient = await createClient(mode);
     await redisClient.connect();
-
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await redisClient.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
+    await flushAll(redisClient);
+    tag = keyTag('ca');
   });
 
   afterEach(async () => {
     if (redisClient) {
-      try {
-        await redisClient.flushall();
-      } catch {
-        // Ignore cleanup errors
-      }
+      await flushAll(redisClient).catch(() => {});
       await redisClient.disconnect();
     }
   });
@@ -115,9 +64,9 @@ describe('Caching, Analytics & E-commerce Integration', () => {
     test('should handle cache invalidation patterns', async () => {
       const productId = 'product456';
       const cacheKeys = [
-        `product:${productId}`,
-        `product:${productId}:reviews`,
-        `product:${productId}:related`,
+        `${tag}:product:${productId}`,
+        `${tag}:product:${productId}:reviews`,
+        `${tag}:product:${productId}:related`,
       ];
 
       // Set multiple related cache entries
@@ -143,7 +92,10 @@ describe('Caching, Analytics & E-commerce Integration', () => {
       );
 
       // Invalidate all related caches
-      await redisClient.del(...cacheKeys);
+      // Delete in a pipeline to avoid cross-slot multi-key del in cluster
+      const pipe = redisClient.pipeline();
+      cacheKeys.forEach(k => pipe.del(k));
+      await pipe.exec();
 
       // Verify all are removed
       const afterDeletion = await Promise.all(

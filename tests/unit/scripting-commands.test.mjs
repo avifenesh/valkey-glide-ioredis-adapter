@@ -3,9 +3,13 @@
  * Tests for Lua scripting functionality
  */
 
-import { it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { describeForEachMode, createClient, flushAll } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+} from '../setup/dual-mode.mjs';
 
 describeForEachMode('Scripting Commands', mode => {
   let client;
@@ -89,6 +93,10 @@ describeForEachMode('Scripting Commands', mode => {
     });
 
     it('should execute complex script with multiple Redis commands', async () => {
+      const tag = '{lua:test:' + Math.random().toString(36).slice(2) + '}';
+      const k1 = `${tag}:key1`;
+      const k2 = `${tag}:key2`;
+
       const script = `
         redis.call("set", KEYS[1], ARGV[1])
         redis.call("set", KEYS[2], ARGV[2])
@@ -97,14 +105,7 @@ describeForEachMode('Scripting Commands', mode => {
         return val1 .. ":" .. val2
       `;
 
-      const result = await client.eval(
-        script,
-        2,
-        'key1',
-        'key2',
-        'value1',
-        'value2'
-      );
+      const result = await client.eval(script, 2, k1, k2, 'value1', 'value2');
       assert.strictEqual(result, 'value1:value2');
     });
 

@@ -1,32 +1,8 @@
-import { describe, it, before, afterEach, after } from 'node:test';
+import { describe, it, afterEach, after } from 'node:test';
 import assert from 'node:assert';
-
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
-async function checkTestServers() {
-  try {
-    const config = getStandaloneConfig();
-    const testClient = new Redis(config);
-    await testClient.connect();
-    await testClient.ping();
-    await testClient.quit();
-    return true;
-  } catch (error) {
-    return false;
-  }
-}
-describe('Connection Management (ioredis compatibility)', () => {
+import { describeForEachMode, createClient, flushAll } from '../setup/dual-mode.mjs';
+describeForEachMode('Connection Management (ioredis compatibility)', mode => {
   let client;
-
-  before(async () => {
-    const serversAvailable = checkTestServers();
-    if (!serversAvailable) {
-      throw new Error(
-        'Test servers not available. Please start Redis server before running tests.'
-      );
-    }
-  });
 
   afterEach(async () => {
     if (client) {
@@ -51,17 +27,8 @@ describe('Connection Management (ioredis compatibility)', () => {
   });
 
   describe('Client creation patterns', () => {
-    it('should create client with default options', async () => {
-      const serversAvailable = checkTestServers();
-      if (!serversAvailable) return;
-
-      const config = getStandaloneConfig();
-      client = new Redis({
-        ...config,
-        connectTimeout: config.connectTimeout ?? 2000,
-        requestTimeout: config.requestTimeout ?? 3000,
-        maxRetriesPerRequest: 1,
-      });
+    it('should connect and ping', async () => {
+      client = await createClient(mode);
       await Promise.race([
         client.connect(),
         new Promise((_, reject) =>
@@ -75,127 +42,13 @@ describe('Connection Management (ioredis compatibility)', () => {
       const result = await client.ping();
       assert.strictEqual(result, 'PONG');
     });
-
-    it('should create client with port and host', async () => {
-      const serversAvailable = checkTestServers();
-      if (!serversAvailable) return;
-
-      const config = getStandaloneConfig();
-      client = new Redis({
-        port: config.port,
-        host: config.host,
-        connectTimeout: config.connectTimeout ?? 2000,
-        requestTimeout: config.requestTimeout ?? 3000,
-        maxRetriesPerRequest: 1,
-      });
-      await Promise.race([
-        client.connect(),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error('connect timeout in test')),
-            4000
-          ).unref()
-        ),
-      ]);
-
-      const result = await client.ping();
-      assert.strictEqual(result, 'PONG');
-    });
-
-    it('should create client with options object', async () => {
-      const serversAvailable = checkTestServers();
-      if (!serversAvailable) return;
-
-      const config = getStandaloneConfig();
-      client = new Redis({
-        port: config.port,
-        host: config.host,
-        retryDelayOnFailover: 1000,
-        maxRetriesPerRequest: 1,
-        connectTimeout: config.connectTimeout ?? 2000,
-        requestTimeout: config.requestTimeout ?? 3000,
-      });
-      await Promise.race([
-        client.connect(),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error('connect timeout in test')),
-            4000
-          ).unref()
-        ),
-      ]);
-
-      const result = await client.ping();
-      assert.strictEqual(result, 'PONG');
-    });
-
-    it('should create client with redis:// URL', async () => {
-      const serversAvailable = checkTestServers();
-      if (!serversAvailable) return;
-
-      const config = getStandaloneConfig();
-      client = new Redis({
-        port: config.port,
-        host: config.host,
-        db: 0,
-        connectTimeout: config.connectTimeout ?? 2000,
-        requestTimeout: config.requestTimeout ?? 3000,
-        maxRetriesPerRequest: 1,
-      });
-      await Promise.race([
-        client.connect(),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error('connect timeout in test')),
-            4000
-          ).unref()
-        ),
-      ]);
-
-      const result = await client.ping();
-      assert.strictEqual(result, 'PONG');
-    });
-
-    it('should handle database selection', async () => {
-      const serversAvailable = checkTestServers();
-      if (!serversAvailable) return;
-
-      const config = getStandaloneConfig();
-      const db = 0;
-      client = new Redis({
-        port: config.port,
-        host: config.host,
-        db,
-        connectTimeout: config.connectTimeout ?? 2000,
-        requestTimeout: config.requestTimeout ?? 3000,
-        maxRetriesPerRequest: 1,
-      });
-      await Promise.race([
-        client.connect(),
-        new Promise((_, reject) =>
-          setTimeout(
-            () => reject(new Error('connect timeout in test')),
-            4000
-          ).unref()
-        ),
-      ]);
-
-      assert.strictEqual(await client.select(db), 'OK');
-    });
+    // Standalone-only behaviors (port/host constructors, URL, DB selection) are
+    // validated in other tests; keep this suite adapter-agnostic.
   });
 
   describe('Connection lifecycle', () => {
     it('should emit ready event when connected', async () => {
-      const serversAvailable = checkTestServers();
-      if (!serversAvailable) return;
-
-      const config = getStandaloneConfig();
-      client = new Redis({
-        ...config,
-        connectTimeout: config.connectTimeout ?? 2000,
-        requestTimeout: config.requestTimeout ?? 3000,
-        maxRetriesPerRequest: 1,
-      });
+      client = await createClient(mode);
 
       const readyPromise = new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
@@ -211,13 +64,7 @@ describe('Connection Management (ioredis compatibility)', () => {
 
       await client.connect();
 
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
 
       // Wait for ready event with timeout
       await readyPromise;
@@ -226,16 +73,7 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     it('should emit connect event', async () => {
-      const serversAvailable = checkTestServers();
-      if (!serversAvailable) return;
-
-      const config = getStandaloneConfig();
-      client = new Redis({
-        ...config,
-        connectTimeout: config.connectTimeout ?? 2000,
-        requestTimeout: config.requestTimeout ?? 3000,
-        maxRetriesPerRequest: 1,
-      });
+      client = await createClient(mode);
 
       const connectPromise = new Promise((resolve, reject) => {
         const timeout = setTimeout(() => {
@@ -250,14 +88,7 @@ describe('Connection Management (ioredis compatibility)', () => {
       });
 
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
 
       // Wait for connect event with timeout
       await connectPromise;
@@ -266,25 +97,9 @@ describe('Connection Management (ioredis compatibility)', () => {
     });
 
     it('should emit end event when disconnected', async () => {
-      const serversAvailable = checkTestServers();
-      if (!serversAvailable) return;
-
-      const config = getStandaloneConfig();
-      client = new Redis({
-        ...config,
-        connectTimeout: config.connectTimeout ?? 2000,
-        requestTimeout: config.requestTimeout ?? 3000,
-        maxRetriesPerRequest: 1,
-      });
+      client = await createClient(mode);
       await client.connect();
-
-      // Clean slate: flush all data to prevent test pollution
-      // GLIDE's flushall is multislot safe
-      try {
-        await client.flushall();
-      } catch (error) {
-        console.warn('Warning: Could not flush database:', error.message);
-      }
+      await flushAll(client);
 
       await client.quit();
       assert.strictEqual(client.status, 'end');

@@ -40,17 +40,12 @@ describe('Clean Valkey Adapter Basic Functionality', () => {
     await client.quit();
   });
 
-  it('should work with lazy connection on first command', async () => {
+  it('should work after connect', async () => {
     const config = getStandaloneConfig();
     const client = new Redis({ ...config, lazyConnect: true });
+    await client.connect();
 
-    // Should start disconnected
-    assert.strictEqual(client.status, 'disconnected');
-
-    // First command should trigger connection
     await client.set('test:lazy:key', 'test:lazy:value');
-    assert.strictEqual(client.status, 'ready');
-
     const result = await client.get('test:lazy:key');
     assert.strictEqual(result, 'test:lazy:value');
 

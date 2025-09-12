@@ -10,7 +10,7 @@
  * - Discord's temporary data cleanup
  */
 
-import { test, beforeEach, afterEach } from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import { describeForEachMode, createClient, keyTag, flushAll } from '../setup/dual-mode.mjs';
 

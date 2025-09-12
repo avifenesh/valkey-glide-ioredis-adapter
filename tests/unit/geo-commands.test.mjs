@@ -3,7 +3,7 @@
  * Tests for geographical data operations
  */
 
-import { it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { describeForEachMode, createClient, flushAll, keyTag } from '../setup/dual-mode.mjs';
 
@@ -369,7 +369,7 @@ describeForEachMode('GEO Commands', mode => {
     });
 
     it('should store results', async () => {
-      const storeKey = 'test:geo:results';
+      const storeKey = `${tag}:test:geo:results`;
       await client.georadius(testKey, 15, 37, 200, 'km', 'STORE', storeKey);
 
       const stored = await client.zrange(storeKey, 0, -1);
@@ -378,7 +378,7 @@ describeForEachMode('GEO Commands', mode => {
     });
 
     it('should store distances', async () => {
-      const storeKey = 'test:geo:distances';
+      const storeKey = `${tag}:test:geo:distances`;
       await client.georadius(testKey, 15, 37, 200, 'km', 'STOREDIST', storeKey);
 
       const stored = await client.zrange(storeKey, 0, -1, 'WITHSCORES');
@@ -705,7 +705,7 @@ describeForEachMode('GEO Commands', mode => {
     it('should store search results', async () => {
       const destKey = 'test:geo:search:results';
       const count = await client.geosearchstore(
-        destKey,
+        `${tag}:${destKey}`,
         testKey,
         'FROMMEMBER',
         'Agrigento',
@@ -716,7 +716,7 @@ describeForEachMode('GEO Commands', mode => {
 
       assert.ok(count > 0);
 
-      const stored = await client.zrange(destKey, 0, -1);
+      const stored = await client.zrange(`${tag}:${destKey}`, 0, -1);
       assert.ok(Array.isArray(stored));
       assert.ok(stored.includes('Palermo'));
       assert.ok(stored.includes('Agrigento'));
@@ -725,7 +725,7 @@ describeForEachMode('GEO Commands', mode => {
     it('should store with distances', async () => {
       const destKey = 'test:geo:search:distances';
       const count = await client.geosearchstore(
-        destKey,
+        `${tag}:${destKey}`,
         testKey,
         'FROMMEMBER',
         'Agrigento',
@@ -737,7 +737,7 @@ describeForEachMode('GEO Commands', mode => {
 
       assert.ok(count > 0);
 
-      const stored = await client.zrange(destKey, 0, -1, 'WITHSCORES');
+      const stored = await client.zrange(`${tag}:${destKey}`, 0, -1, 'WITHSCORES');
       assert.ok(Array.isArray(stored));
       assert.ok(stored.length > 0);
 

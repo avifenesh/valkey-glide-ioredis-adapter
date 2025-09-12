@@ -3,7 +3,7 @@
  * Tests current pub/sub implementation and validates incremental improvements
  */
 
-import { test, beforeEach, afterEach } from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import { delay } from '../utils/test-config.mjs';
 import { describeForEachMode, createClient, flushAll } from '../setup/dual-mode.mjs';
