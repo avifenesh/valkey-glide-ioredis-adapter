@@ -23,7 +23,7 @@ jobs:
       matrix:
         include:
           - arch: x64
-            node: '20'
+            node: '22'
 
     services:
       valkey-bundle:
@@ -173,7 +173,7 @@ jobs:
     runs-on: macos-latest
     strategy:
       matrix:
-        node: ['20']
+        node: ['22']
 
     steps:
     - name: Checkout code
