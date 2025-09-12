@@ -7,10 +7,20 @@
  */
 
 import { EventEmitter } from 'events';
-import { GlideClient, GlideClusterClient } from '@valkey/valkey-glide';
+import { 
+  GlideClient, 
+  GlideClusterClient,
+  Script,
+  Transaction,
+  ClusterTransaction,
+  Batch,
+  ClusterBatch,
+  TimeUnit,
+  InfBoundary
+} from '@valkey/valkey-glide';
 import { RedisOptions, RedisKey, RedisValue, Multi, Pipeline } from './types';
+import { IInternalClient } from './types/internal';
 import { ParameterTranslator } from './utils/ParameterTranslator';
-import { TimeUnit, InfBoundary } from '@valkey/valkey-glide';
 import * as stringCommands from './commands/strings';
 import { IoredisPubSubClient } from './utils/IoredisPubSubClient';
 import { ErrorClassifier } from './utils/ErrorClassifier';
@@ -78,14 +88,14 @@ export function getGlobalClientRegistry(): Set<BaseClient> {
   return globalClientRegistry;
 }
 
-export abstract class BaseClient extends EventEmitter {
-  protected glideClient!: GlideClientType; // Always initialized in constructor
+export abstract class BaseClient extends EventEmitter implements IInternalClient {
+  public glideClient!: GlideClientType; // Always initialized in constructor
   protected subscriberClient?: GlideClientType; // Only created when needed for subscriptions
   protected ioredisCompatiblePubSub?: IoredisPubSubClient; // Only created when needed
-  protected connectionStatus: string = 'disconnected';
-  protected options: RedisOptions;
+  public connectionStatus: string = 'disconnected';
+  public options: RedisOptions;
   // Track shutdown/teardown state to avoid racing auto-connect
-  protected isClosing: boolean = false;
+  public isClosing: boolean = false;
   // Track active disconnect operation to prevent duplicates
   private disconnectPromise?: Promise<void>;
   // Track an in-flight connect so we can coordinate teardown
@@ -155,7 +165,7 @@ export abstract class BaseClient extends EventEmitter {
   }
 
   // Instance-aware key normalization with ioredis keyPrefix support
-  protected normalizeKey(key: RedisKey): string {
+  public normalizeKey(key: RedisKey): string {
     const base = ParameterTranslator.normalizeKey(key);
     return this.options.keyPrefix ? `${this.options.keyPrefix}${base}` : base;
   }
@@ -163,7 +173,7 @@ export abstract class BaseClient extends EventEmitter {
   // Intentionally no dynamic command attachment; only implemented API is exposed
 
   // Lazy connection helper: initialize client when first command is executed
-  protected async ensureConnection(): Promise<void> {
+  public async ensureConnection(): Promise<void> {
     // If already connected, return immediately
     if (this.glideClient && this.connectionStatus === 'connected') {
       return;
@@ -576,7 +586,6 @@ export abstract class BaseClient extends EventEmitter {
       try {
         // Use GLIDE's invokeScript - it does support separate keys and args
         if ('invokeScript' in this.glideClient) {
-          const Script = require('@valkey/valkey-glide').Script;
           const script = new Script(lua);
           const result = await (this.glideClient as any).invokeScript(script, {
             keys: normalizedKeys,
@@ -1766,22 +1775,22 @@ export abstract class BaseClient extends EventEmitter {
 
   // Create adapter that implements Pipeline/Multi interface on top of GLIDE Batch
   private createBatchAdapter(isTransaction: boolean): any {
-    // Choose the right batch class based on cluster vs standalone and transaction vs pipeline
-    let BatchClass;
+    // Create the appropriate batch or transaction object
+    let batch: Batch | ClusterBatch | Transaction | ClusterTransaction;
+    
     if (this.isCluster) {
-      BatchClass = isTransaction
-        ? require('@valkey/valkey-glide').ClusterTransaction
-        : require('@valkey/valkey-glide').ClusterBatch;
+      if (isTransaction) {
+        batch = new ClusterTransaction();
+      } else {
+        batch = new ClusterBatch(false); // false = non-atomic (pipeline)
+      }
     } else {
-      BatchClass = isTransaction
-        ? require('@valkey/valkey-glide').Transaction
-        : require('@valkey/valkey-glide').Batch;
+      if (isTransaction) {
+        batch = new Transaction();
+      } else {
+        batch = new Batch(false); // false = non-atomic (pipeline)
+      }
     }
-
-    // For GLIDE Batch: constructor(isAtomic: boolean)
-    // For GLIDE Transaction: constructor()
-    // isTransaction determines if it's atomic (true) or pipeline (false)
-    const batch = isTransaction ? new BatchClass() : new BatchClass(false);
     let commandCount = 0;
     let discarded = false;
 
@@ -2067,10 +2076,7 @@ export abstract class BaseClient extends EventEmitter {
         return adapter;
       },
       zcount: (key: RedisKey, min: string | number, max: string | number) => {
-        batch.zcount(this.normalizeKey(key), {
-          min: String(min),
-          max: String(max),
-        });
+        batch.customCommand(['ZCOUNT', this.normalizeKey(key), String(min), String(max)]);
         commandCount++;
         return adapter;
       },
@@ -2139,7 +2145,7 @@ export abstract class BaseClient extends EventEmitter {
         return adapter;
       },
       incrby: (key: RedisKey, increment: number) => {
-        batch.incrby(this.normalizeKey(key), increment);
+        batch.incrBy(this.normalizeKey(key), increment);
         commandCount++;
         return adapter;
       },
@@ -2213,7 +2219,10 @@ export abstract class BaseClient extends EventEmitter {
           }
 
           // Execute the batch commands first
-          const batchResults = await this.glideClient.exec(batch, false); // Don't raise on error
+          // Use type narrowing to call exec with the correct batch type
+          const batchResults = this.isCluster 
+            ? await (this.glideClient as GlideClusterClient).exec(batch as ClusterBatch | ClusterTransaction, false)
+            : await (this.glideClient as GlideClient).exec(batch as Batch | Transaction, false);
 
           // Execute custom commands that were registered via defineCommand
           const customResults: Array<[Error | null, any]> = [];

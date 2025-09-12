@@ -9,6 +9,7 @@ import {
   GlideClusterClientConfiguration,
   ClusterScanCursor,
 } from '@valkey/valkey-glide';
+import { Readable } from 'stream';
 import { BaseClient, GlideClientType } from './BaseClient';
 import { ParameterTranslator } from './utils/ParameterTranslator';
 import { RedisOptions, ReadFrom } from './types';
@@ -56,7 +57,6 @@ export class ClusterClient extends BaseClient {
 
   // Override scanStream for cluster-specific GLIDE implementation
   scanStream(options: { match?: string; type?: string; count?: number } = {}) {
-    const { Readable } = require('stream');
 
     class ClusterScanStream extends Readable {
       public cursor: string = '0';
@@ -145,7 +145,6 @@ export class ClusterClient extends BaseClient {
 
   // Cluster scan implementation using native GLIDE ClusterScanCursor
   async scan(cursor: string, ...args: string[]): Promise<[string, string[]]> {
-    const { ClusterScanCursor } = require('@valkey/valkey-glide');
 
     // Construct or resume cluster cursor from the token provided by caller
     const clusterCursor =
@@ -193,7 +192,6 @@ export class ClusterClient extends BaseClient {
   // KEYS method using SCAN for cluster client
   async keys(pattern: string = '*'): Promise<string[]> {
     await this.ensureConnection();
-    const { ClusterScanCursor } = require('@valkey/valkey-glide');
 
     const allKeys: string[] = [];
     let cursor = new ClusterScanCursor();

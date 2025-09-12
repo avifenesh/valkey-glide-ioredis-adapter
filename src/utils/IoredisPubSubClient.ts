@@ -9,19 +9,7 @@
 import { EventEmitter } from 'events';
 import { Socket } from 'net';
 import { RedisOptions } from '../types';
-
-const RESP_TYPES = {
-  ARRAY: '*',
-  BULK_STRING: '$',
-  INTEGER: ':',
-  CRLF: '\r\n',
-} as const;
-
-const CONNECTION_DEFAULTS = {
-  TIMEOUT: 10000,
-  DEFAULT_PORT: 6379,
-  DEFAULT_HOST: 'localhost',
-} as const;
+import { CONNECTION, BUFFER_LIMITS, PUBSUB } from '../constants';
 
 interface RespMessage {
   type:
@@ -43,8 +31,9 @@ export class IoredisPubSubClient extends EventEmitter {
     'disconnected';
   private readonly subscriptions = new Set<string>();
   private readonly patternSubscriptions = new Set<string>();
-  private buffer = Buffer.alloc(0);
+  private buffer = Buffer.alloc(BUFFER_LIMITS.INITIAL_BUFFER_SIZE);
   private readonly keyPrefix: string;
+  private readonly maxBufferSize = BUFFER_LIMITS.MAX_BUFFER_SIZE;
   // Awaitable unsubscribe acks
   private pendingUnsub = new Map<string, () => void>();
   private pendingPUnsub = new Map<string, () => void>();
@@ -67,7 +56,7 @@ export class IoredisPubSubClient extends EventEmitter {
 
     return new Promise<void>((resolve, reject) => {
       const timeoutMs =
-        this.options.connectTimeout || CONNECTION_DEFAULTS.TIMEOUT;
+        this.options.connectTimeout || CONNECTION.DEFAULT_CONNECT_TIMEOUT_MS;
       const timeout = setTimeout(() => {
         this.cleanup();
         reject(new Error(`Connection timeout after ${timeoutMs}ms`));
@@ -147,8 +136,8 @@ export class IoredisPubSubClient extends EventEmitter {
 
       // Initiate connection
       this.socket.connect(
-        this.options.port ?? CONNECTION_DEFAULTS.DEFAULT_PORT,
-        this.options.host ?? CONNECTION_DEFAULTS.DEFAULT_HOST
+        this.options.port ?? CONNECTION.DEFAULT_PORT,
+        this.options.host ?? CONNECTION.DEFAULT_HOST
       );
     });
   }
@@ -195,6 +184,17 @@ export class IoredisPubSubClient extends EventEmitter {
    * @private
    */
   private handleRespData(data: Buffer): void {
+    // Check if buffer would exceed maximum size
+    if (this.buffer.length + data.length > this.maxBufferSize) {
+      const error = new Error(
+        `Buffer overflow: exceeds maximum size of ${this.maxBufferSize} bytes`
+      );
+      this.emit('error', error);
+      // Clear buffer to recover
+      this.buffer = Buffer.alloc(BUFFER_LIMITS.INITIAL_BUFFER_SIZE);
+      return;
+    }
+
     this.buffer = Buffer.concat([this.buffer, data]);
 
     while (this.buffer.length > 0) {
@@ -225,14 +225,14 @@ export class IoredisPubSubClient extends EventEmitter {
 
     const respType = String.fromCharCode(firstByte);
 
-    if (respType === RESP_TYPES.ARRAY) {
+    if (respType === PUBSUB.RESP_ARRAY) {
       return this.parseRespArray(buffer);
     }
 
-    const crlfIndex = buffer.indexOf(RESP_TYPES.CRLF);
+    const crlfIndex = buffer.indexOf(PUBSUB.RESP_CRLF);
     if (crlfIndex === -1) return null;
 
-    return { message: null, consumed: crlfIndex + RESP_TYPES.CRLF.length };
+    return { message: null, consumed: crlfIndex + PUBSUB.RESP_CRLF.length };
   }
 
   /**
@@ -246,13 +246,13 @@ export class IoredisPubSubClient extends EventEmitter {
   ): { message: RespMessage | null; consumed: number } | null {
     let pos = 1;
 
-    const lengthEnd = buffer.indexOf(RESP_TYPES.CRLF, pos);
+    const lengthEnd = buffer.indexOf(PUBSUB.RESP_CRLF, pos);
     if (lengthEnd === -1) return null;
 
     const arrayLength = parseInt(buffer.subarray(pos, lengthEnd).toString());
     if (isNaN(arrayLength) || arrayLength < 0) return null;
 
-    pos = lengthEnd + RESP_TYPES.CRLF.length;
+    pos = lengthEnd + PUBSUB.RESP_CRLF.length;
 
     const elements: (string | Buffer)[] = [];
 
@@ -264,19 +264,19 @@ export class IoredisPubSubClient extends EventEmitter {
 
       const elementType = String.fromCharCode(elementTypeByte);
 
-      if (elementType === RESP_TYPES.BULK_STRING) {
+      if (elementType === PUBSUB.RESP_BULK_STRING) {
         const bulkStringResult = this.parseBulkString(buffer, pos);
         if (!bulkStringResult) return null;
 
         elements.push(bulkStringResult.value);
         pos = bulkStringResult.consumed;
-      } else if (elementType === RESP_TYPES.INTEGER) {
-        const crlfIndex = buffer.indexOf(RESP_TYPES.CRLF, pos);
+      } else if (elementType === PUBSUB.RESP_INTEGER) {
+        const crlfIndex = buffer.indexOf(PUBSUB.RESP_CRLF, pos);
         if (crlfIndex === -1) return null;
 
         const intValue = buffer.subarray(pos + 1, crlfIndex).toString();
         elements.push(intValue);
-        pos = crlfIndex + RESP_TYPES.CRLF.length;
+        pos = crlfIndex + PUBSUB.RESP_CRLF.length;
       } else {
         return null;
       }
@@ -365,26 +365,26 @@ export class IoredisPubSubClient extends EventEmitter {
     const startByte = buffer[startPos];
     if (
       startByte === undefined ||
-      String.fromCharCode(startByte) !== RESP_TYPES.BULK_STRING
+      String.fromCharCode(startByte) !== PUBSUB.RESP_BULK_STRING
     ) {
       return null;
     }
 
     let pos = startPos + 1;
 
-    const lengthEnd = buffer.indexOf(RESP_TYPES.CRLF, pos);
+    const lengthEnd = buffer.indexOf(PUBSUB.RESP_CRLF, pos);
     if (lengthEnd === -1) return null;
 
     const stringLength = parseInt(buffer.subarray(pos, lengthEnd).toString());
     if (isNaN(stringLength) || stringLength < 0) return null;
 
-    pos = lengthEnd + RESP_TYPES.CRLF.length;
+    pos = lengthEnd + PUBSUB.RESP_CRLF.length;
 
-    if (pos + stringLength + RESP_TYPES.CRLF.length > buffer.length)
+    if (pos + stringLength + PUBSUB.RESP_CRLF.length > buffer.length)
       return null;
 
     const value = buffer.subarray(pos, pos + stringLength);
-    pos += stringLength + RESP_TYPES.CRLF.length;
+    pos += stringLength + PUBSUB.RESP_CRLF.length;
 
     return { value, consumed: pos };
   }
@@ -534,17 +534,17 @@ export class IoredisPubSubClient extends EventEmitter {
       : Buffer.from(binaryData, 'utf8');
 
     const totalArgs = command.length + 1;
-    let header = `${RESP_TYPES.ARRAY}${totalArgs}${RESP_TYPES.CRLF}`;
+    let header = `${PUBSUB.RESP_ARRAY}${totalArgs}${PUBSUB.RESP_CRLF}`;
 
     for (const arg of command) {
-      header += `${RESP_TYPES.BULK_STRING}${Buffer.byteLength(arg)}${RESP_TYPES.CRLF}${arg}${RESP_TYPES.CRLF}`;
+      header += `${PUBSUB.RESP_BULK_STRING}${Buffer.byteLength(arg)}${PUBSUB.RESP_CRLF}${arg}${PUBSUB.RESP_CRLF}`;
     }
 
-    header += `${RESP_TYPES.BULK_STRING}${dataBuffer.length}${RESP_TYPES.CRLF}`;
+    header += `${PUBSUB.RESP_BULK_STRING}${dataBuffer.length}${PUBSUB.RESP_CRLF}`;
 
     this.socket!.write(header);
     this.socket!.write(dataBuffer);
-    this.socket!.write(RESP_TYPES.CRLF);
+    this.socket!.write(PUBSUB.RESP_CRLF);
   }
 
   /**
@@ -554,11 +554,11 @@ export class IoredisPubSubClient extends EventEmitter {
    * @private
    */
   private buildRespCommand(command: string[]): string {
-    let resp = `${RESP_TYPES.ARRAY}${command.length}${RESP_TYPES.CRLF}`;
+    let resp = `${PUBSUB.RESP_ARRAY}${command.length}${PUBSUB.RESP_CRLF}`;
 
     for (const arg of command) {
       const argBytes = Buffer.byteLength(arg);
-      resp += `${RESP_TYPES.BULK_STRING}${argBytes}${RESP_TYPES.CRLF}${arg}${RESP_TYPES.CRLF}`;
+      resp += `${PUBSUB.RESP_BULK_STRING}${argBytes}${PUBSUB.RESP_CRLF}${arg}${PUBSUB.RESP_CRLF}`;
     }
 
     return resp;
