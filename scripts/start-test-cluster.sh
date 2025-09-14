@@ -14,11 +14,11 @@ mkdir -p /tmp/valkey-cluster/{17000,17001,17002}
 echo -e "${YELLOW}Starting Valkey cluster nodes...${NC}"
 
 # Start 3 Valkey instances on different ports
-valkey-server --port 17000 --cluster-enabled yes --cluster-config-file /tmp/valkey-cluster/17000/nodes.conf --cluster-node-timeout 5000 --appendonly yes --appendfilename appendonly-17000.aof --dbfilename dump-17000.rdb --dir /tmp/valkey-cluster/17000 --daemonize yes --pidfile /tmp/valkey-cluster/17000.pid --logfile /tmp/valkey-cluster/17000.log
+valkey-server --port 17000 --cluster-enabled yes --cluster-config-file /tmp/valkey-cluster/17000/nodes.conf --cluster-node-timeout 5000 --appendonly no --save "" --dir /tmp/valkey-cluster/17000 --daemonize yes --pidfile /tmp/valkey-cluster/17000.pid --logfile /tmp/valkey-cluster/17000.log
 
-valkey-server --port 17001 --cluster-enabled yes --cluster-config-file /tmp/valkey-cluster/17001/nodes.conf --cluster-node-timeout 5000 --appendonly yes --appendfilename appendonly-17001.aof --dbfilename dump-17001.rdb --dir /tmp/valkey-cluster/17001 --daemonize yes --pidfile /tmp/valkey-cluster/17001.pid --logfile /tmp/valkey-cluster/17001.log
+valkey-server --port 17001 --cluster-enabled yes --cluster-config-file /tmp/valkey-cluster/17001/nodes.conf --cluster-node-timeout 5000 --appendonly no --save "" --dir /tmp/valkey-cluster/17001 --daemonize yes --pidfile /tmp/valkey-cluster/17001.pid --logfile /tmp/valkey-cluster/17001.log
 
-valkey-server --port 17002 --cluster-enabled yes --cluster-config-file /tmp/valkey-cluster/17002/nodes.conf --cluster-node-timeout 5000 --appendonly yes --appendfilename appendonly-17002.aof --dbfilename dump-17002.rdb --dir /tmp/valkey-cluster/17002 --daemonize yes --pidfile /tmp/valkey-cluster/17002.pid --logfile /tmp/valkey-cluster/17002.log
+valkey-server --port 17002 --cluster-enabled yes --cluster-config-file /tmp/valkey-cluster/17002/nodes.conf --cluster-node-timeout 5000 --appendonly no --save "" --dir /tmp/valkey-cluster/17002 --daemonize yes --pidfile /tmp/valkey-cluster/17002.pid --logfile /tmp/valkey-cluster/17002.log
 
 # Wait for nodes to start
 sleep 2
