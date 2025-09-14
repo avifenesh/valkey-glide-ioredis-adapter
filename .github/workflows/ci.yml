@@ -147,7 +147,6 @@ jobs:
         VALKEY_HOST: 127.0.0.1
         VALKEY_PORT: 6383
         ADAPTER_DIAG_HANDLES: 0
-        ADAPTER_CONNECT_TIMEOUT_MS: 4000
 
   test-linux-cluster:
     name: Linux Cluster Tests (Node ${{ matrix.node }})
@@ -194,9 +193,6 @@ jobs:
         ./scripts/test-sequential.sh || {
           echo "⚠️ Cluster tests failed, forcing cleanup...";
           node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})"; exit 1; }
-      env:
-        CI: true
-        ADAPTER_CONNECT_TIMEOUT_MS: 4000
 
     - name: Cleanup cluster
       if: always()

@@ -43,14 +43,8 @@ export function toGlideStandaloneConfig(
 
   // Advanced configuration - only pass if user explicitly sets values
   const advancedConfiguration: Record<string, unknown> = {};
-  // Prefer explicit option; otherwise allow CI/runtime override via env
-  const envConnectTimeout = process.env.ADAPTER_CONNECT_TIMEOUT_MS
-    ? parseInt(process.env.ADAPTER_CONNECT_TIMEOUT_MS)
-    : undefined;
   if (options.connectTimeout !== undefined) {
     advancedConfiguration.connectionTimeout = options.connectTimeout;
-  } else if (!isNaN(envConnectTimeout as any) && envConnectTimeout !== undefined) {
-    advancedConfiguration.connectionTimeout = envConnectTimeout;
   }
   // Only add advancedConfiguration if user provided values
   if (Object.keys(advancedConfiguration).length > 0) {
@@ -117,13 +111,8 @@ export function toGlideClusterConfig(
 
   // Advanced configuration - only pass if user explicitly sets values
   const advancedConfiguration: Record<string, unknown> = {};
-  const envConnectTimeout = process.env.ADAPTER_CONNECT_TIMEOUT_MS
-    ? parseInt(process.env.ADAPTER_CONNECT_TIMEOUT_MS)
-    : undefined;
   if (options.connectTimeout !== undefined) {
     advancedConfiguration.connectionTimeout = options.connectTimeout;
-  } else if (!isNaN(envConnectTimeout as any) && envConnectTimeout !== undefined) {
-    advancedConfiguration.connectionTimeout = envConnectTimeout;
   }
   // Only add advancedConfiguration if user provided values
   if (Object.keys(advancedConfiguration).length > 0) {
