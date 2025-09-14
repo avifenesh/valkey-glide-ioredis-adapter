@@ -11,10 +11,6 @@ export function toGlideStandaloneConfig(
   const host = options.host || 'localhost';
   const port = options.port || 6379;
 
-  const envRequestTimeout = process.env.ADAPTER_REQUEST_TIMEOUT_MS
-    ? parseInt(process.env.ADAPTER_REQUEST_TIMEOUT_MS)
-    : undefined;
-
   const config: GlideClientConfiguration = {
     addresses: [
       {
@@ -40,9 +36,7 @@ export function toGlideStandaloneConfig(
       ? { requestTimeout: options.requestTimeout }
       : options.commandTimeout
         ? { requestTimeout: options.commandTimeout }
-        : !isNaN(envRequestTimeout as any) && envRequestTimeout !== undefined
-          ? { requestTimeout: envRequestTimeout }
-          : {}),
+        : {}),
     ...(options.readFrom && { readFrom: options.readFrom }),
     ...(options.clientAz && { clientAz: options.clientAz }),
   } as GlideClientConfiguration;
@@ -95,10 +89,6 @@ export function toGlideClusterConfig(
   nodes: ClusterNode[],
   options: ClusterOptions
 ): GlideClusterClientConfiguration {
-  const envRequestTimeout = process.env.ADAPTER_REQUEST_TIMEOUT_MS
-    ? parseInt(process.env.ADAPTER_REQUEST_TIMEOUT_MS)
-    : undefined;
-
   const config: GlideClusterClientConfiguration = {
     addresses: nodes.map(n => ({ host: n.host, port: n.port })),
     ...(options.clientName && { clientName: options.clientName }),
@@ -118,9 +108,7 @@ export function toGlideClusterConfig(
       ? { requestTimeout: options.requestTimeout }
       : options.commandTimeout
         ? { requestTimeout: options.commandTimeout }
-        : !isNaN(envRequestTimeout as any) && envRequestTimeout !== undefined
-          ? { requestTimeout: envRequestTimeout }
-          : {}),
+        : {}),
     readFrom:
       options.readFrom ||
       (options.enableReadFromReplicas ? 'preferReplica' : 'primary'),
