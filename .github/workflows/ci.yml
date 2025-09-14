@@ -16,14 +16,12 @@ permissions:
   contents: read
 
 jobs:
-  test-linux:
-    name: Test on Linux with Valkey Bundle (${{ matrix.arch }}, Node ${{ matrix.node }})
+  test-linux-standalone:
+    name: Linux Standalone Tests (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - arch: x64
-            node: '22'
+        node: ['22']
 
     services:
       valkey-bundle:
@@ -84,7 +82,7 @@ jobs:
           sleep 2
         done
 
-    - name: Run all tests deterministically with throttling
+    - name: Run standalone tests deterministically (sequential)
       run: |
         echo "🔍 Checking Valkey health before tests..."
         for i in {1..10}; do
@@ -139,39 +137,66 @@ jobs:
           fi
         done
         
-        echo "🧪 Starting lightweight 3-node Valkey cluster..."
-        sudo apt-get update && sudo apt-get install -y valkey-server >/dev/null
-        ./scripts/start-test-cluster.sh
-        echo "⏳ Waiting for cluster nodes to accept connections..."
-        for i in {1..15}; do
-          if nc -z 127.0.0.1 17000 && nc -z 127.0.0.1 17001 && nc -z 127.0.0.1 17002; then
-            echo "✅ Cluster ports are open"
-            break
-          fi
-          echo "⏳ Still waiting for cluster... ($i/15)" && sleep 2
-        done
-        
-        echo "🧪 Running cluster tests (concurrency=1)..."
-        SKIP_INFRA_MANAGEMENT=true \
-        VALKEY_CLUSTER_NODES=127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002 \
+        echo "🧪 Running tests sequentially to reduce pressure..."
+        DISABLE_CLUSTER_TESTS=true \
         TEST_TIMEOUT_SECONDS=480 \
-        npm run test:cluster -- tests/cluster/ || {
-          echo "⚠️ Cluster tests timed out or failed, forcing cleanup..."
-          node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})"
-          ./scripts/stop-test-cluster.sh || true
-          exit 1
-        }
-        
-        echo "🛑 Stopping cluster to free resources..."
-        ./scripts/stop-test-cluster.sh || true
+        NODE_OPTIONS="--max-old-space-size=2048" \
+        ./scripts/test-sequential.sh
       env:
         CI: true
         VALKEY_HOST: 127.0.0.1
         VALKEY_PORT: 6383
-        # Tighten global test timeouts and memory to reduce hangs/pressure
-        TEST_TIMEOUT_SECONDS: 480
-        NODE_OPTIONS: --max-old-space-size=2048
         ADAPTER_DIAG_HANDLES: 0
+
+  test-linux-cluster:
+    name: Linux Cluster Tests (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    needs: test-linux-standalone
+    strategy:
+      matrix:
+        node: ['22']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Setup Node.js ${{ matrix.node }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build project
+      run: npm run build
+
+    - name: Install Valkey server and start cluster
+      run: |
+        sudo apt-get update && sudo apt-get install -y valkey-server valkey-tools
+        ./scripts/start-test-cluster.sh
+        echo "⏳ Waiting for cluster nodes to accept connections..."
+        for i in {1..20}; do
+          if nc -z 127.0.0.1 17000 && nc -z 127.0.0.1 17001 && nc -z 127.0.0.1 17002; then
+            echo "✅ Cluster ports are open"; break; fi
+          echo "⏳ Still waiting for cluster... ($i/20)"; sleep 2
+        done
+
+    - name: Run cluster tests sequentially
+      run: |
+        echo "🧪 Running cluster tests sequentially (low pressure)"
+        ENABLE_CLUSTER_TESTS=true DISABLE_STANDALONE_TESTS=true \
+        VALKEY_CLUSTER_NODES=127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002 \
+        TEST_TIMEOUT_SECONDS=600 \
+        NODE_OPTIONS="--max-old-space-size=2048" \
+        ./scripts/test-sequential.sh || {
+          echo "⚠️ Cluster tests failed, forcing cleanup...";
+          node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})"; exit 1; }
+
+    - name: Cleanup cluster
+      if: always()
+      run: ./scripts/stop-test-cluster.sh || true
 
     - name: Cleanup after tests
       if: always()
