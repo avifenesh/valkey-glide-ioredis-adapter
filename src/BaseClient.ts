@@ -130,6 +130,12 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
       ...options,
     };
 
+    // Allow CI/runtime to force lazy connect to avoid thundering-herd connects
+    const envLazy = process.env.ADAPTER_LAZY_CONNECT === '1';
+    if (this.options.lazyConnect === undefined && envLazy) {
+      this.options.lazyConnect = true;
+    }
+
     // ioredis compatibility - expose options as _options
     (this as any)._options = this.options;
 
@@ -506,19 +512,46 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
 
     // If currently connecting, wait for the connection to complete
     if (this.connectionStatus === 'connecting') {
+      const defaultTimeout = 5000;
+      const envTimeout = process.env.ADAPTER_CONNECT_TIMEOUT_MS
+        ? parseInt(process.env.ADAPTER_CONNECT_TIMEOUT_MS)
+        : undefined;
+      const connectTimeoutMs =
+        !isNaN(envTimeout as any) && envTimeout !== undefined
+          ? envTimeout
+          : defaultTimeout;
+
       return new Promise((resolve, reject) => {
         const onReady = () => {
           this.removeListener('error', onError);
+          clearTimeout(timer);
           resolve(this.glideClient!);
         };
 
         const onError = (error: Error) => {
           this.removeListener('ready', onReady);
+          clearTimeout(timer);
           reject(error);
         };
 
         this.once('ready', onReady);
         this.once('error', onError);
+
+        // Hard cap the wait to avoid dangling promises
+        const timer = setTimeout(() => {
+          this.removeListener('ready', onReady);
+          this.removeListener('error', onError);
+          // Mark as disconnected so callers can retry
+          if (this.connectionStatus === 'connecting') {
+            this.connectionStatus = 'disconnected';
+          }
+          reject(
+            new Error(
+              `waitUntilReady timeout after ${connectTimeoutMs}ms (ADAPTER_CONNECT_TIMEOUT_MS)`
+            )
+          );
+        }, connectTimeoutMs);
+        (timer as any).unref?.();
       });
     }
 
