@@ -122,7 +122,6 @@ jobs:
         VALKEY_CLUSTER_NODES: 127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002
         ENABLE_CLUSTER_TESTS: true
         ADAPTER_CONNECT_TIMEOUT_MS: 4000
-        # Keep default eager connect for standalone to satisfy connection tests
         ADAPTER_REQUEST_TIMEOUT_MS: 2000
 
     - name: Upload coverage to Codecov
