@@ -148,6 +148,7 @@ jobs:
         VALKEY_PORT: 6383
         ADAPTER_DIAG_HANDLES: 0
         ADAPTER_CONNECT_TIMEOUT_MS: 4000
+        ADAPTER_LAZY_CONNECT: 1
 
   test-linux-cluster:
     name: Linux Cluster Tests (Node ${{ matrix.node }})
@@ -197,6 +198,7 @@ jobs:
       env:
         CI: true
         ADAPTER_CONNECT_TIMEOUT_MS: 4000
+        ADAPTER_LAZY_CONNECT: 1
 
     - name: Cleanup cluster
       if: always()
