@@ -241,8 +241,37 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
     this.emit('connecting');
 
     this.pendingConnect = (async () => {
+      let clientPromise: Promise<GlideClientType> | undefined;
       try {
-        const client = await this.createClient(this.options);
+        // Apply a connection timeout to avoid hanging on slow/broken CI machines
+        const defaultTimeout = 5000;
+        const envTimeout = process.env.ADAPTER_CONNECT_TIMEOUT_MS
+          ? parseInt(process.env.ADAPTER_CONNECT_TIMEOUT_MS)
+          : undefined;
+        const connectTimeoutMs =
+          this.options.connectTimeout ??
+          (!isNaN(envTimeout as any) && envTimeout !== undefined
+            ? envTimeout
+            : defaultTimeout);
+
+        clientPromise = this.createClient(this.options);
+        // Timeout promise that rejects after connectTimeoutMs
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          const t = setTimeout(() => {
+            reject(
+              new Error(
+                `Connect timeout after ${connectTimeoutMs}ms (ADAPTER_CONNECT_TIMEOUT_MS)`
+              )
+            );
+          }, connectTimeoutMs);
+          (t as any).unref?.();
+        });
+
+        const client = (await Promise.race([
+          clientPromise,
+          timeoutPromise,
+        ])) as GlideClientType;
+
         // If a shutdown began while connecting, close immediately and skip exposing client
         if (this.isClosing) {
           try {
@@ -256,6 +285,19 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
         this.emit('connect');
         this.emit('ready');
       } catch (error) {
+        // If the createClient resolves after timeout, close it silently
+        // to avoid leaking a background connection
+        try {
+          if (clientPromise) {
+            clientPromise
+              .then(c => {
+                try {
+                  (c as any)?.close?.();
+                } catch {}
+              })
+              .catch(() => {});
+          }
+        } catch {}
         this.connectionStatus = 'disconnected';
         this.emit('error', error as Error);
         throw error;
