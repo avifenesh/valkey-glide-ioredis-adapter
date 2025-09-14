@@ -19,6 +19,7 @@ import {
 import { RedisOptions, RedisKey, RedisValue, Multi, Pipeline } from './types';
 import { IInternalClient } from './types/internal';
 import { ParameterTranslator } from './utils/ParameterTranslator';
+import Diag from './utils/Diag';
 import * as stringCommands from './commands/strings';
 import { IoredisPubSubClient } from './utils/IoredisPubSubClient';
 import { ErrorClassifier } from './utils/ErrorClassifier';
@@ -148,6 +149,11 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
       // Lazy connection: stay disconnected until first command
       this.connectionStatus = 'disconnected';
       // Don't create client or emit any events yet
+      Diag.log('lifecycle', 'init.lazy', {
+        host: this.options.host,
+        port: this.options.port,
+        lazy: true,
+      });
     } else {
       // Immediate connection (default behavior)
       // Initialize in next tick to allow event listeners to be attached
@@ -155,6 +161,10 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
       process.nextTick(() => {
         // Skip auto-connect if we're already closing
         if (this.isClosing) return;
+        Diag.log('connect', 'auto-connect.begin', {
+          host: this.options.host,
+          port: this.options.port,
+        });
         this.connect().catch((error: Error) => {
           this.emit('error', error);
         });
@@ -174,17 +184,20 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
   public async ensureConnection(): Promise<void> {
     // If already connected, return immediately
     if (this.glideClient && this.connectionStatus === 'connected') {
+      Diag.log('connect', 'ensureConnection.already-connected');
       return;
     }
 
     // For any disconnected client, start connecting
     if (this.connectionStatus === 'disconnected') {
+      Diag.log('connect', 'ensureConnection.disconnected.connecting');
       await this.connect();
       return;
     }
 
     // For connections in progress, wait for completion
     if (this.connectionStatus === 'connecting') {
+      Diag.log('connect', 'ensureConnection.waiting');
       await this.waitUntilReady();
       return;
     }
@@ -237,30 +250,42 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
 
     // Start new connection
     this.connectionStatus = 'connecting';
+    Diag.log('connect', 'connect.begin', {
+      host: this.options.host,
+      port: this.options.port,
+    });
     this.isClosing = false; // Reset closing flag when explicitly connecting
     this.emit('connecting');
 
     this.pendingConnect = (async () => {
       try {
         const client = await this.createClient(this.options);
+        Diag.log('connect', 'connect.client-created');
         // If a shutdown began while connecting, close immediately and skip exposing client
         if (this.isClosing) {
           try {
             (client as any)?.close?.();
           } catch {}
           this.connectionStatus = 'disconnected';
+          Diag.log('connect', 'connect.aborted-during-close');
           return;
         }
         this.glideClient = client;
         this.connectionStatus = 'connected';
+        Diag.log('connect', 'connect.ready');
         this.emit('connect');
         this.emit('ready');
       } catch (error) {
         this.connectionStatus = 'disconnected';
+        Diag.log('connect', 'connect.error', {
+          message: (error as Error)?.message,
+          name: (error as Error)?.name,
+        });
         this.emit('error', error as Error);
         throw error;
       } finally {
         this.pendingConnect = Promise.resolve(undefined);
+        Diag.log('connect', 'connect.done');
       }
     })();
 
@@ -271,6 +296,7 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
    * Internal cleanup helper - closes all connections and clears resources
    */
   private async cleanupConnections(): Promise<void> {
+    Diag.log('lifecycle', 'cleanup.begin');
     // Remove from global registry when cleaning up
     globalClientRegistry.delete(this);
 
@@ -354,6 +380,7 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
 
     // Clear main client reference after closing
     this.glideClient = undefined as unknown as GlideClientType;
+    Diag.log('lifecycle', 'cleanup.end');
   }
 
   async disconnect(): Promise<void> {
@@ -394,6 +421,7 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
     // Signal that we are shutting down to avoid racing with auto-connect
     this.isClosing = true;
     this.connectionStatus = 'disconnecting';
+    Diag.log('lifecycle', 'disconnect.begin');
     this.emit('close');
 
     // Clean up all connections
@@ -419,6 +447,7 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
     // Set final status and emit end event
     this.connectionStatus = 'end';
     this.emit('end');
+    Diag.log('lifecycle', 'disconnect.end');
     // Keep isClosing = true to prevent any reconnection attempts
     // Only reset isClosing when explicitly calling connect()
   }

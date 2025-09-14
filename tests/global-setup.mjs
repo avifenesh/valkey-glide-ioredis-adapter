@@ -34,6 +34,20 @@ afterEach(async () => {
       }
     } catch {}
   } catch {}
+
+  // Optional diagnostics: report active clients after each test
+  try {
+    if (process.env.ADAPTER_DIAG === '1') {
+      const pkg = await import('../dist/index.js');
+      const { Redis } = pkg;
+      const active =
+        typeof Redis.getActiveClientCount === 'function'
+          ? Redis.getActiveClientCount()
+          : 0;
+      // eslint-disable-next-line no-console
+      console.log(`[diag] active-clients-after-each=${active}`);
+    }
+  } catch {}
 });
 
 after(async () => {
