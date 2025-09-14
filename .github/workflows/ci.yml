@@ -149,6 +149,7 @@ jobs:
         ADAPTER_DIAG_HANDLES: 0
         ADAPTER_CONNECT_TIMEOUT_MS: 4000
         ADAPTER_LAZY_CONNECT: 1
+        ADAPTER_REQUEST_TIMEOUT_MS: 2000
 
   test-linux-cluster:
     name: Linux Cluster Tests (Node ${{ matrix.node }})
@@ -199,6 +200,7 @@ jobs:
         CI: true
         ADAPTER_CONNECT_TIMEOUT_MS: 4000
         ADAPTER_LAZY_CONNECT: 1
+        ADAPTER_REQUEST_TIMEOUT_MS: 2000
 
     - name: Cleanup cluster
       if: always()
