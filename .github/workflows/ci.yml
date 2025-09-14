@@ -121,6 +121,7 @@ jobs:
         VALKEY_BUNDLE_PORT: 6383
         VALKEY_CLUSTER_NODES: 127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002
         ENABLE_CLUSTER_TESTS: true
+        ADAPTER_CONNECT_TIMEOUT_MS: 4000
 
     - name: Upload coverage to Codecov
       if: matrix.node == '20'
