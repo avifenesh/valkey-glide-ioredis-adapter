@@ -146,6 +146,10 @@ jobs:
           exit 1
         }
       env:
+        ADAPTER_DIAG: 1
+        ADAPTER_DIAG_CONNECT: 1
+        ADAPTER_DIAG_LIFECYCLE: 1
+      env:
         CI: true
         VALKEY_HOST: 127.0.0.1
         VALKEY_PORT: 6383
@@ -292,6 +296,9 @@ jobs:
         VALKEY_HOST: 127.0.0.1
         VALKEY_PORT: 6383
         SKIP_MODULE_TESTS: true
+        ADAPTER_DIAG: 1
+        ADAPTER_DIAG_CONNECT: 1
+        ADAPTER_DIAG_LIFECYCLE: 1
 
     - name: Cleanup Valkey server
       if: always()
@@ -336,4 +343,3 @@ jobs:
 
     - name: Run TypeScript check
       run: npm run build
-
