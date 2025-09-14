@@ -121,6 +121,9 @@ jobs:
         VALKEY_BUNDLE_PORT: 6383
         VALKEY_CLUSTER_NODES: 127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002
         ENABLE_CLUSTER_TESTS: true
+        ADAPTER_DIAG: 1
+        ADAPTER_DIAG_CONNECT: 1
+        ADAPTER_DIAG_LIFECYCLE: 1
 
     - name: Upload coverage to Codecov
       if: matrix.node == '20'
@@ -197,6 +200,10 @@ jobs:
         CI: true
         VALKEY_HOST: 127.0.0.1
         VALKEY_PORT: 6383
+        SKIP_MODULE_TESTS: true
+        ADAPTER_DIAG: 1
+        ADAPTER_DIAG_CONNECT: 1
+        ADAPTER_DIAG_LIFECYCLE: 1
 
     - name: Cleanup Valkey server
       if: always()
@@ -233,4 +240,3 @@ jobs:
 
     - name: Run TypeScript check
       run: npm run build
-
