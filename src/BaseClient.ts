@@ -170,25 +170,6 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
 
   // Intentionally no dynamic command attachment; only implemented API is exposed
 
-  // Utility: guard any async GLIDE call with a timeout to avoid dangling promises
-  public async callWithTimeout<T>(promise: Promise<T>, label?: string): Promise<T> {
-    const envMs = process.env.ADAPTER_CLIENT_CALL_TIMEOUT_MS
-      ? parseInt(process.env.ADAPTER_CLIENT_CALL_TIMEOUT_MS)
-      : undefined;
-    // Prefer explicit requestTimeout; otherwise env; fallback to 5000ms
-    const base = (this.options as any).requestTimeout || (this.options as any).commandTimeout;
-    const ms = !isNaN(envMs as any) && envMs !== undefined ? envMs : base || 5000;
-    return await Promise.race([
-      promise,
-      new Promise<never>((_, reject) => {
-        const t = setTimeout(() => {
-          reject(new Error(`Operation timed out after ${ms}ms${label ? ` (${label})` : ''}`));
-        }, ms);
-        (t as any).unref?.();
-      }),
-    ]) as T;
-  }
-
   // Lazy connection helper: initialize client when first command is executed
   public async ensureConnection(): Promise<void> {
     // If already connected, return immediately

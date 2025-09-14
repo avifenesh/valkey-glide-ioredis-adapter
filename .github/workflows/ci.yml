@@ -16,14 +16,12 @@ permissions:
   contents: read
 
 jobs:
-  test-linux:
-    name: Test on Linux with Valkey Bundle (${{ matrix.arch }}, Node ${{ matrix.node }})
+  test-linux-standalone:
+    name: Linux Standalone Tests (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - arch: x64
-            node: '22'
+        node: ['22']
 
     services:
       valkey-bundle:
@@ -121,6 +119,8 @@ jobs:
         VALKEY_BUNDLE_PORT: 6383
         VALKEY_CLUSTER_NODES: 127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002
         ENABLE_CLUSTER_TESTS: true
+        ADAPTER_CONNECT_TIMEOUT_MS: 4000
+        ADAPTER_LAZY_CONNECT: 1
         ADAPTER_REQUEST_TIMEOUT_MS: 2000
 
     - name: Upload coverage to Codecov
@@ -234,4 +234,3 @@ jobs:
 
     - name: Run TypeScript check
       run: npm run build
-

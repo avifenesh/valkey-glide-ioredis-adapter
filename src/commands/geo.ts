@@ -38,9 +38,10 @@ export async function geoadd(
   const options: any = {};
   if (updateMode) options.updateMode = updateMode;
   if (changed) options.changed = true;
-  const result = await (client as any).callWithTimeout(
-    (client as any).glideClient.geoadd(normalizedKey, map, options),
-    'GEOADD'
+  const result = await (client as any).glideClient.geoadd(
+    normalizedKey,
+    map,
+    options
   );
   return Number(result) || 0;
 }
@@ -52,10 +53,7 @@ export async function geopos(
 ): Promise<([number, number] | null)[]> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
-  return await (client as any).callWithTimeout(
-    (client as any).glideClient.geopos(normalizedKey, members),
-    'GEOPOS'
-  );
+  return await (client as any).glideClient.geopos(normalizedKey, members);
 }
 
 export async function geodist(
@@ -69,9 +67,11 @@ export async function geodist(
   const normalizedKey = (client as any).normalizeKey(key);
   const options: any = {};
   if (unit) options.unit = unit;
-  const res = await (client as any).callWithTimeout(
-    (client as any).glideClient.geodist(normalizedKey, member1, member2, options),
-    'GEODIST'
+  const res = await (client as any).glideClient.geodist(
+    normalizedKey,
+    member1,
+    member2,
+    options
   );
   return res === null || res === undefined ? null : String(res);
 }
@@ -83,10 +83,7 @@ export async function geohash(
 ): Promise<(string | null)[]> {
   await (client as any).ensureConnection();
   const normalizedKey = (client as any).normalizeKey(key);
-  return await (client as any).callWithTimeout(
-    (client as any).glideClient.geohash(normalizedKey, members),
-    'GEOHASH'
-  );
+  return await (client as any).glideClient.geohash(normalizedKey, members);
 }
 
 export async function geosearch(
@@ -132,9 +129,11 @@ export async function geosearch(
     resultOptions.isAny = !!options.any;
   }
   if (options?.order) resultOptions.sortOrder = options.order;
-  const res = await (client as any).callWithTimeout(
-    (client as any).glideClient.geosearch(normalizedKey, origin, shape, resultOptions),
-    'GEOSEARCH'
+  const res = await (client as any).glideClient.geosearch(
+    normalizedKey,
+    origin,
+    shape,
+    resultOptions
   );
 
   // Format results to match ioredis expectations
@@ -229,9 +228,12 @@ export async function geosearchstore(
     storeOptions.isAny = !!options.any;
   }
   if (options?.storeDist) storeOptions.storeDist = true;
-  const res = await (client as any).callWithTimeout(
-    (client as any).glideClient.geosearchstore(dest, src, origin, shape, storeOptions),
-    'GEOSEARCHSTORE'
+  const res = await (client as any).glideClient.geosearchstore(
+    dest,
+    src,
+    origin,
+    shape,
+    storeOptions
   );
   return Number(res) || 0;
 }
