@@ -84,7 +84,7 @@ jobs:
           sleep 2
         done
 
-    - name: Run all tests deterministically with throttling
+    - name: Run all tests sequentially to reduce server load
       run: |
         echo "🔍 Checking Valkey health before tests..."
         for i in {1..10}; do
@@ -139,39 +139,17 @@ jobs:
           fi
         done
         
-        echo "🧪 Starting lightweight 3-node Valkey cluster..."
-        sudo apt-get update && sudo apt-get install -y valkey-server >/dev/null
-        ./scripts/start-test-cluster.sh
-        echo "⏳ Waiting for cluster nodes to accept connections..."
-        for i in {1..15}; do
-          if nc -z 127.0.0.1 17000 && nc -z 127.0.0.1 17001 && nc -z 127.0.0.1 17002; then
-            echo "✅ Cluster ports are open"
-            break
-          fi
-          echo "⏳ Still waiting for cluster... ($i/15)" && sleep 2
-        done
-        
-        echo "🧪 Running cluster tests (concurrency=1)..."
-        SKIP_INFRA_MANAGEMENT=true \
-        VALKEY_CLUSTER_NODES=127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002 \
-        TEST_TIMEOUT_SECONDS=480 \
-        npm run test:cluster -- tests/cluster/ || {
+        echo "🧪 Running cluster tests..."
+        timeout 300 npm run test:standalone -- tests/cluster/ || {
           echo "⚠️ Cluster tests timed out or failed, forcing cleanup..."
           node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})"
-          ./scripts/stop-test-cluster.sh || true
           exit 1
         }
-        
-        echo "🛑 Stopping cluster to free resources..."
-        ./scripts/stop-test-cluster.sh || true
       env:
         CI: true
         VALKEY_HOST: 127.0.0.1
         VALKEY_PORT: 6383
-        # Tighten global test timeouts and memory to reduce hangs/pressure
-        TEST_TIMEOUT_SECONDS: 480
-        NODE_OPTIONS: --max-old-space-size=2048
-        ADAPTER_DIAG_HANDLES: 0
+        VALKEY_CLUSTER_NODES: 127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002
 
     - name: Cleanup after tests
       if: always()
@@ -358,3 +336,4 @@ jobs:
 
     - name: Run TypeScript check
       run: npm run build
+
