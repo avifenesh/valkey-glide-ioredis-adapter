@@ -140,7 +140,7 @@
     "@typescript-eslint/parser": "8.42.0",
     "bee-queue": "^1.7.1",
     "bull": "^4.16.5",
-    "bullmq": "5.58.4",
+    "bullmq": "5.58.5",
     "chai": "^6.0.1",
     "concurrently": "9.2.1",
     "connect-redis": "^9.0.0",
