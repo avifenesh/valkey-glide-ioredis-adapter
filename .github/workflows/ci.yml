@@ -112,6 +112,9 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
+    - name: Install GNU coreutils (for gtimeout command)
+      run: brew install coreutils
+
     - name: Build project
       run: npm run build
 
@@ -156,7 +159,7 @@ jobs:
         echo "ℹ️  Skipping JSON/Search module tests (modules not available in basic Valkey)"
         
         # Run tests with timeout to prevent hanging in CI
-        timeout 300 npm test 2>/dev/null || {
+        gtimeout 300 npm test 2>/dev/null || {
           echo "⚠️  Tests timed out or failed - this is expected on macOS without Valkey modules"
           echo "✅ Core Valkey functionality testing completed"
           exit 0
@@ -170,7 +173,7 @@ jobs:
     - name: Test basic adapter functionality with Valkey
       run: |
         echo "🔧 Testing basic adapter functionality with Valkey server..."
-        timeout 60 node -e "
+        gtimeout 60 node -e "
           const { Redis } = require('./dist/index.js');
           const redis = new Redis({ host: 'localhost', port: 6379 });
           
@@ -207,7 +210,7 @@ jobs:
       run: |
         echo "🧹 Cleaning up Valkey server..."
         # Stop Valkey gracefully with timeout
-        timeout 10 valkey-cli -p 6379 SHUTDOWN NOSAVE || true
+        gtimeout 10 valkey-cli -p 6379 SHUTDOWN NOSAVE || true
         # Kill any remaining processes
         pkill valkey-server || true
         # Wait a moment for cleanup
