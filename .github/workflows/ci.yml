@@ -56,6 +56,41 @@ jobs:
     - name: Build project
       run: npm run build
 
+    - name: Download Valkey
+      run: |
+        wget https://github.com/valkey-io/valkey/releases/download/8.1.0/valkey-8.1.0-linux-x86_64.tar.gz
+        tar -xzvf valkey-8.1.0-linux-x86_64.tar.gz
+        sudo cp valkey-8.1.0-linux-x86_64/bin/valkey-server /usr/local/bin/valkey-server
+        sudo cp valkey-8.1.0-linux-x86_64/bin/valkey-cli /usr/local/bin/valkey-cli
+
+    - name: Start Valkey cluster nodes on ports 17000-17005
+      run: |
+        echo "Starting Valkey cluster nodes..."
+        # Start Valkey instances for cluster testing
+        for port in 17000 17001 17002 17003 17004 17005; do
+          echo "Starting Valkey on port $port..."
+          valkey-server --port $port --bind 127.0.0.1 --daemonize yes --save "" --appendonly no &
+          echo "Valkey started on port $port"
+        done
+
+    - name: Wait for Valkey cluster nodes
+      run: |
+        echo "Waiting for Valkey cluster nodes to be ready..."
+        for port in 17000 17001 17002 17003 17004 17005; do
+          for i in {1..30}; do
+            if valkey-cli -p $port ping > /dev/null 2>&1; then
+              echo "✅ Valkey on port $port is ready!"
+              break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "❌ Valkey on port $port failed to start"
+              exit 1
+            fi
+            sleep 1
+          done
+        done
+        sleep 5
+
     - name: Wait for Valkey Bundle and verify modules
       run: |
         echo "Waiting for Valkey Bundle with modules..."
@@ -83,6 +118,14 @@ jobs:
         CI: true
         VALKEY_BUNDLE_HOST: localhost
         VALKEY_BUNDLE_PORT: 6379
+        VALKEY_HOST: localhost
+        VALKEY_PORT: 6379
+        VALKEY_CLUSTER_PORT_1: 17000
+        VALKEY_CLUSTER_PORT_2: 17001
+        VALKEY_CLUSTER_PORT_3: 17002
+        VALKEY_CLUSTER_PORT_4: 17003
+        VALKEY_CLUSTER_PORT_5: 17004
+        VALKEY_CLUSTER_PORT_6: 17005
 
     - name: Upload coverage to Codecov
       if: matrix.node == '20'
