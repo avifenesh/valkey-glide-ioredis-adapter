@@ -58,19 +58,20 @@ jobs:
 
     - name: Download Valkey
       run: |
-        wget https://github.com/valkey-io/valkey/releases/download/8.1.0/valkey-8.1.0-linux-x86_64.tar.gz
-        tar -xzvf valkey-8.1.0-linux-x86_64.tar.gz
-        sudo cp valkey-8.1.0-linux-x86_64/bin/valkey-server /usr/local/bin/valkey-server
-        sudo cp valkey-8.1.0-linux-x86_64/bin/valkey-cli /usr/local/bin/valkey-cli
+        # Use apt to install redis-server which is API compatible with Valkey for basic operations
+        sudo apt-get update
+        sudo apt-get install -y redis-server redis-tools
+        # Stop any running redis instances first
+        sudo systemctl stop redis-server || true
 
     - name: Start Valkey cluster nodes on ports 17000-17005
       run: |
         echo "Starting Valkey cluster nodes..."
-        # Start Valkey instances for cluster testing
+        # Start redis-server instances on cluster ports (API compatible with Valkey)
         for port in 17000 17001 17002 17003 17004 17005; do
-          echo "Starting Valkey on port $port..."
-          valkey-server --port $port --bind 127.0.0.1 --daemonize yes --save "" --appendonly no &
-          echo "Valkey started on port $port"
+          echo "Starting redis-server on port $port..."
+          redis-server --port $port --bind 127.0.0.1 --daemonize yes --save "" --appendonly no --maxmemory 256mb &
+          echo "Redis server started on port $port"
         done
 
     - name: Wait for Valkey cluster nodes
@@ -78,12 +79,12 @@ jobs:
         echo "Waiting for Valkey cluster nodes to be ready..."
         for port in 17000 17001 17002 17003 17004 17005; do
           for i in {1..30}; do
-            if valkey-cli -p $port ping > /dev/null 2>&1; then
-              echo "✅ Valkey on port $port is ready!"
+            if redis-cli -p $port ping > /dev/null 2>&1; then
+              echo "✅ Redis/Valkey on port $port is ready!"
               break
             fi
             if [ $i -eq 30 ]; then
-              echo "❌ Valkey on port $port failed to start"
+              echo "❌ Redis/Valkey on port $port failed to start"
               exit 1
             fi
             sleep 1
