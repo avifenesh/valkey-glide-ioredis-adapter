@@ -270,7 +270,7 @@ jobs:
       uses: actions/checkout@v5
 
     - name: Setup Node.js ${{ matrix.node }}
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: ${{ matrix.node }}
         cache: 'npm'
@@ -384,7 +384,7 @@ jobs:
       uses: actions/checkout@v5
 
     - name: Setup Node.js ${{ matrix.node }}
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@v5
       with:
         node-version: ${{ matrix.node }}
         cache: 'npm'
@@ -455,3 +455,26 @@ jobs:
         sleep 2
         timeout 10 valkey-cli -p 6379 SHUTDOWN NOSAVE || pkill valkey-server || true
         echo "✅ Valkey cleanup completed"
+  # Note: Full module testing happens on Linux, coverage upload is handled there
+
+  lint:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v5
+      with:
+        node-version: '22'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run ESLint
+      run: npm run lint
+
+    - name: Run TypeScript check
+      run: npm run build
