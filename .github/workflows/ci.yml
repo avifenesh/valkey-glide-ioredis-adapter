@@ -42,16 +42,18 @@ jobs:
 
     - name: Install Valkey server directly on runner
       run: |
-        echo "🔑 Installing Valkey server..."
+        echo "🔑 Installing Valkey/Redis server..."
         
-        # Install Valkey from official package
-        curl -fsSL https://packages.valkey.io/GPG-KEY-valkey | sudo gpg --dearmor -o /usr/share/keyrings/valkey-archive-keyring.gpg
-        echo "deb [signed-by=/usr/share/keyrings/valkey-archive-keyring.gpg] https://packages.valkey.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/valkey.list
+        # Install Redis server (Valkey-compatible)
         sudo apt-get update
-        sudo apt-get install -y valkey
+        sudo apt-get install -y redis-server
         
-        # Start Valkey server for standalone tests
-        valkey-server --daemonize yes \
+        # Stop default Redis service 
+        sudo systemctl stop redis-server || true
+        sudo systemctl disable redis-server || true
+        
+        # Start Redis server for standalone tests (using Valkey-compatible setup)
+        redis-server --daemonize yes \
           --port 6379 \
           --bind 127.0.0.1 \
           --save "" \
@@ -64,27 +66,27 @@ jobs:
 
     - name: Wait for Valkey server
       run: |
-        echo "⏳ Waiting for Valkey server to be ready..."
+        echo "⏳ Waiting for Redis/Valkey server to be ready..."
         for i in {1..30}; do
-          if valkey-cli -p 6379 ping > /dev/null 2>&1; then
-            echo "✅ Valkey server is ready!"
+          if redis-cli -p 6379 ping > /dev/null 2>&1; then
+            echo "✅ Redis/Valkey server is ready!"
             echo "📋 Server info:"
-            valkey-cli -p 6379 INFO server | grep -E "(valkey_version|redis_mode)" || true
+            redis-cli -p 6379 INFO server | grep -E "(redis_version|server_name)" || true
             break
           fi
-          echo "⏳ Still waiting for Valkey server... ($i/30)"
+          echo "⏳ Still waiting for server... ($i/30)"
           sleep 2
         done
         
         # Final test
-        valkey-cli -p 6379 ping
+        redis-cli -p 6379 ping
 
     - name: Run standalone tests (excluding JSON module tests)
       run: |
         echo "🧪 Running standalone tests (no JSON/module tests)..."
         
         # Verify server health
-        valkey-cli -p 6379 ping
+        redis-cli -p 6379 ping
         
         echo "🧪 Running unit tests (excluding JSON tests)..."
         # Get all test files except JSON-related ones
@@ -118,7 +120,7 @@ jobs:
         echo "🧹 Cleaning up..."
         node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
         sleep 2
-        sudo systemctl stop valkey || valkey-cli -p 6379 SHUTDOWN NOSAVE || pkill valkey-server || true
+        redis-cli -p 6379 SHUTDOWN NOSAVE || pkill redis-server || true
         echo "✅ Cleanup completed"
 
   # Cluster test suite with non-docker Valkey
@@ -147,21 +149,20 @@ jobs:
 
     - name: Install Valkey and setup cluster
       run: |
-        echo "🔑 Installing Valkey server for cluster..."
+        echo "🔑 Installing Redis server for cluster (Valkey-compatible)..."
         
-        # Install Valkey from official package
-        curl -fsSL https://packages.valkey.io/GPG-KEY-valkey | sudo gpg --dearmor -o /usr/share/keyrings/valkey-archive-keyring.gpg
-        echo "deb [signed-by=/usr/share/keyrings/valkey-archive-keyring.gpg] https://packages.valkey.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/valkey.list
+        # Install Redis server (Valkey-compatible)
         sudo apt-get update
-        sudo apt-get install -y valkey
+        sudo apt-get install -y redis-server
         
-        # Create cluster configuration directories
-        sudo mkdir -p /etc/valkey/cluster
+        # Stop default Redis service 
+        sudo systemctl stop redis-server || true
+        sudo systemctl disable redis-server || true
         
         # Start cluster nodes
         for port in 17000 17001 17002 17003 17004 17005; do
           echo "Starting cluster node on port $port..."
-          valkey-server --daemonize yes \
+          redis-server --daemonize yes \
             --port $port \
             --bind 127.0.0.1 \
             --cluster-enabled yes \
@@ -178,7 +179,7 @@ jobs:
         sleep 10
         
         # Initialize cluster
-        echo "yes" | valkey-cli --cluster create \
+        echo "yes" | redis-cli --cluster create \
           127.0.0.1:17000 127.0.0.1:17001 127.0.0.1:17002 \
           127.0.0.1:17003 127.0.0.1:17004 127.0.0.1:17005 \
           --cluster-replicas 1
@@ -189,14 +190,14 @@ jobs:
         
         for port in 17000 17001 17002; do
           echo "Testing node on port $port..."
-          if ! valkey-cli -p $port ping > /dev/null 2>&1; then
+          if ! redis-cli -p $port ping > /dev/null 2>&1; then
             echo "❌ Node on port $port is not responding"
             exit 1
           fi
         done
         
         echo "📋 Cluster info:"
-        valkey-cli -p 17000 cluster info | head -5
+        redis-cli -p 17000 cluster info | head -5
         echo "✅ Cluster is ready!"
 
     - name: Run cluster tests (excluding JSON module tests)
@@ -223,9 +224,9 @@ jobs:
         sleep 2
         
         for port in 17000 17001 17002 17003 17004 17005; do
-          valkey-cli -p $port SHUTDOWN NOSAVE || true
+          redis-cli -p $port SHUTDOWN NOSAVE || true
         done
-        pkill valkey-server || true
+        pkill redis-server || true
         sudo rm -f /tmp/nodes-*.conf
         echo "✅ Cleanup completed"
 
