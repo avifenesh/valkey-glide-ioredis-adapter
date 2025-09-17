@@ -95,14 +95,13 @@ jobs:
     - name: Wait for Valkey Bundle and verify modules
       run: |
         echo "Waiting for Valkey Bundle with modules..."
-        # Install redis-cli for testing compatibility (valkey-cli has same protocol)
-        sudo apt-get update && sudo apt-get install -y redis-tools
+        # redis-tools already installed in previous step
         
         for i in {1..30}; do
           if redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
             echo "✅ Valkey Bundle is ready!"
             echo "📦 Checking loaded modules..."
-            redis-cli -h localhost -p 6379 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"
+            redis-cli -h localhost -p 6379 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"  
             echo "🔍 Testing JSON command..."
             redis-cli -h localhost -p 6379 JSON.SET test_ci_key '$' '"test"' || echo "⚠️  JSON module not available"
             echo "🔍 Testing Search command..."
