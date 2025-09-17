@@ -204,9 +204,22 @@ jobs:
       run: |
         echo "🧪 Running cluster tests (no JSON/module tests)..."
         
+        echo "🧪 Running unit tests in cluster mode (excluding JSON tests)..."
+        UNIT_TESTS=$(find tests/unit -name "*.test.mjs" ! -name "*json*" | tr '\n' ' ')
+        if [ -n "$UNIT_TESTS" ]; then
+          timeout 600 ./scripts/test-runner.sh $UNIT_TESTS || {
+            echo "⚠️ Unit tests in cluster mode failed, forcing cleanup..."
+            node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
+            exit 1
+          }
+        fi
+        
+        echo "⏳ Brief pause between test suites..."
+        sleep 5
+        
         echo "🧪 Running cluster-specific tests..."
         timeout 600 ./scripts/test-runner.sh tests/cluster/ || {
-          echo "⚠️ Cluster tests failed, forcing cleanup..."
+          echo "⚠️ Cluster-specific tests failed, forcing cleanup..."
           node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
           exit 1
         }
