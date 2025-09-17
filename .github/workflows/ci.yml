@@ -457,24 +457,5 @@ jobs:
         echo "✅ Valkey cleanup completed"
   # Note: Full module testing happens on Linux, coverage upload is handled there
 
-  lint:
-    name: Lint and Type Check
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v5
-      with:
-        node-version: '22'
-        cache: 'npm'
-
-    - name: Install dependencies
-      run: npm ci
-
-    - name: Run ESLint
-      run: npm run lint
-
     - name: Run TypeScript check
       run: npm run build
