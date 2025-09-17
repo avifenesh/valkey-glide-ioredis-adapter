@@ -22,6 +22,27 @@ NC='\033[0m' # No Color
 
 echo -e "${GREEN}=== Isolated Test Runner (Valkey) ===${NC}"
 
+# Cross-platform timeout function
+run_with_timeout() {
+    local timeout_duration=$1
+    shift  # Remove first argument, remaining args are the command
+    
+    # Detect OS and use appropriate timeout command
+    if [[ "$OSTYPE" == "darwin"* ]]; then
+        # macOS - check if gtimeout is available (from GNU coreutils)
+        if command -v gtimeout &> /dev/null; then
+            gtimeout "$timeout_duration" "$@"
+        else
+            echo -e "${YELLOW}⚠️  gtimeout not found on macOS. Install with: brew install coreutils${NC}" >&2
+            echo -e "${YELLOW}   Running command without timeout as fallback...${NC}" >&2
+            "$@"
+        fi
+    else
+        # Linux and other Unix systems - use standard timeout command
+        timeout "$timeout_duration" "$@"
+    fi
+}
+
 # Find available ports
 find_free_port() {
     local port=$1
@@ -112,7 +133,7 @@ for test_file in "${TEST_FILES[@]}"; do
     TEST_TIMEOUT=${CI:+30}  # 30s in CI, 60s locally
     TEST_TIMEOUT=${TEST_TIMEOUT:-60}
     
-    if timeout $TEST_TIMEOUT node --test "$test_file" 2>/dev/null; then
+    if run_with_timeout $TEST_TIMEOUT node --test "$test_file" 2>/dev/null; then
         echo -e "${GREEN}✅ $test_file - PASSED${NC}"
         ((PASSED++))
     else
