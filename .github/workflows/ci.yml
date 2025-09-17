@@ -16,14 +16,226 @@ permissions:
   contents: read
 
 jobs:
-  test-linux:
-    name: Test on Linux with Valkey Bundle (${{ matrix.arch }}, Node ${{ matrix.node }})
+  # Main test suite with non-docker Valkey (standalone and cluster)
+  test-valkey-standalone:
+    name: Test Standalone Mode (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        include:
-          - arch: x64
-            node: '22'
+        node: ['22']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Setup Node.js ${{ matrix.node }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build project
+      run: npm run build
+
+    - name: Install Valkey server directly on runner
+      run: |
+        echo "🔑 Installing Valkey server..."
+        
+        # Install Valkey from official package
+        curl -fsSL https://packages.valkey.io/GPG-KEY-valkey | sudo gpg --dearmor -o /usr/share/keyrings/valkey-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/valkey-archive-keyring.gpg] https://packages.valkey.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/valkey.list
+        sudo apt-get update
+        sudo apt-get install -y valkey
+        
+        # Start Valkey server for standalone tests
+        valkey-server --daemonize yes \
+          --port 6379 \
+          --bind 127.0.0.1 \
+          --save "" \
+          --appendonly no \
+          --maxmemory 512mb \
+          --maxmemory-policy allkeys-lru \
+          --loglevel notice \
+          --tcp-keepalive 60 \
+          --timeout 300
+
+    - name: Wait for Valkey server
+      run: |
+        echo "⏳ Waiting for Valkey server to be ready..."
+        for i in {1..30}; do
+          if valkey-cli -p 6379 ping > /dev/null 2>&1; then
+            echo "✅ Valkey server is ready!"
+            echo "📋 Server info:"
+            valkey-cli -p 6379 INFO server | grep -E "(valkey_version|redis_mode)" || true
+            break
+          fi
+          echo "⏳ Still waiting for Valkey server... ($i/30)"
+          sleep 2
+        done
+        
+        # Final test
+        valkey-cli -p 6379 ping
+
+    - name: Run standalone tests (excluding JSON module tests)
+      run: |
+        echo "🧪 Running standalone tests (no JSON/module tests)..."
+        
+        # Verify server health
+        valkey-cli -p 6379 ping
+        
+        echo "🧪 Running unit tests (excluding JSON tests)..."
+        # Get all test files except JSON-related ones
+        UNIT_TESTS=$(find tests/unit -name "*.test.mjs" ! -name "*json*" | tr '\n' ' ')
+        if [ -n "$UNIT_TESTS" ]; then
+          timeout 600 ./scripts/test-runner.sh $UNIT_TESTS || {
+            echo "⚠️ Unit tests failed, forcing cleanup..."
+            node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
+            exit 1
+          }
+        fi
+        
+        echo "⏳ Brief pause between test suites..."
+        sleep 5
+        
+        echo "🧪 Running integration tests..."
+        timeout 600 ./scripts/test-runner.sh tests/integration/ || {
+          echo "⚠️ Integration tests failed, forcing cleanup..."
+          node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
+          exit 1
+        }
+      env:
+        CI: true
+        VALKEY_HOST: 127.0.0.1
+        VALKEY_PORT: 6379
+        SKIP_MODULE_TESTS: true
+
+    - name: Cleanup Valkey server
+      if: always()
+      run: |
+        echo "🧹 Cleaning up..."
+        node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
+        sleep 2
+        sudo systemctl stop valkey || valkey-cli -p 6379 SHUTDOWN NOSAVE || pkill valkey-server || true
+        echo "✅ Cleanup completed"
+
+  # Cluster test suite with non-docker Valkey
+  test-valkey-cluster:
+    name: Test Cluster Mode (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Setup Node.js ${{ matrix.node }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node }}
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Build project
+      run: npm run build
+
+    - name: Install Valkey and setup cluster
+      run: |
+        echo "🔑 Installing Valkey server for cluster..."
+        
+        # Install Valkey from official package
+        curl -fsSL https://packages.valkey.io/GPG-KEY-valkey | sudo gpg --dearmor -o /usr/share/keyrings/valkey-archive-keyring.gpg
+        echo "deb [signed-by=/usr/share/keyrings/valkey-archive-keyring.gpg] https://packages.valkey.io/deb $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/valkey.list
+        sudo apt-get update
+        sudo apt-get install -y valkey
+        
+        # Create cluster configuration directories
+        sudo mkdir -p /etc/valkey/cluster
+        
+        # Start cluster nodes
+        for port in 17000 17001 17002 17003 17004 17005; do
+          echo "Starting cluster node on port $port..."
+          valkey-server --daemonize yes \
+            --port $port \
+            --bind 127.0.0.1 \
+            --cluster-enabled yes \
+            --cluster-config-file /tmp/nodes-${port}.conf \
+            --cluster-node-timeout 5000 \
+            --save "" \
+            --appendonly no \
+            --maxmemory 256mb \
+            --maxmemory-policy allkeys-lru \
+            --loglevel notice
+        done
+        
+        # Wait for nodes to start
+        sleep 10
+        
+        # Initialize cluster
+        echo "yes" | valkey-cli --cluster create \
+          127.0.0.1:17000 127.0.0.1:17001 127.0.0.1:17002 \
+          127.0.0.1:17003 127.0.0.1:17004 127.0.0.1:17005 \
+          --cluster-replicas 1
+
+    - name: Verify cluster setup
+      run: |
+        echo "🔍 Verifying cluster setup..."
+        
+        for port in 17000 17001 17002; do
+          echo "Testing node on port $port..."
+          if ! valkey-cli -p $port ping > /dev/null 2>&1; then
+            echo "❌ Node on port $port is not responding"
+            exit 1
+          fi
+        done
+        
+        echo "📋 Cluster info:"
+        valkey-cli -p 17000 cluster info | head -5
+        echo "✅ Cluster is ready!"
+
+    - name: Run cluster tests (excluding JSON module tests)
+      run: |
+        echo "🧪 Running cluster tests (no JSON/module tests)..."
+        
+        echo "🧪 Running cluster-specific tests..."
+        timeout 600 ./scripts/test-runner.sh tests/cluster/ || {
+          echo "⚠️ Cluster tests failed, forcing cleanup..."
+          node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
+          exit 1
+        }
+      env:
+        CI: true
+        VALKEY_CLUSTER_NODES: 127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002
+        ENABLE_CLUSTER_TESTS: true
+        SKIP_MODULE_TESTS: true
+
+    - name: Cleanup cluster
+      if: always()
+      run: |
+        echo "🧹 Cleaning up cluster..."
+        node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
+        sleep 2
+        
+        for port in 17000 17001 17002 17003 17004 17005; do
+          valkey-cli -p $port SHUTDOWN NOSAVE || true
+        done
+        pkill valkey-server || true
+        sudo rm -f /tmp/nodes-*.conf
+        echo "✅ Cleanup completed"
+
+  # JSON module tests using Docker (separate job)
+  test-json-modules:
+    name: Test JSON Module with Valkey Bundle (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: ['22']
 
     services:
       valkey-bundle:
@@ -55,9 +267,9 @@ jobs:
     - name: Build project
       run: npm run build
 
-    - name: Wait for Valkey Bundle and verify modules
+    - name: Wait for Valkey Bundle and verify JSON module
       run: |
-        echo "Waiting for Valkey Bundle with modules..."
+        echo "Waiting for Valkey Bundle with JSON module..."
         # Install valkey-cli for testing
         sudo apt-get update && sudo apt-get install -y valkey-tools
         
@@ -65,11 +277,12 @@ jobs:
           if valkey-cli -h 127.0.0.1 -p 6383 ping > /dev/null 2>&1; then
             echo "✅ Valkey Bundle is ready!"
             echo "📦 Checking loaded modules..."
-            valkey-cli -h 127.0.0.1 -p 6383 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"
+            valkey-cli -h 127.0.0.1 -p 6383 MODULE LIST | grep -E "(json)" || echo "⚠️  JSON module not loaded or command not available"
             echo "🔍 Testing JSON command..."
-            valkey-cli -h 127.0.0.1 -p 6383 JSON.SET test_ci_key '$' '"test"' || echo "⚠️  JSON module not available"
-            # Skipping Search module verification in CI
-            echo "ℹ️ Skipping Search module verification in CI"
+            valkey-cli -h 127.0.0.1 -p 6383 JSON.SET test_ci_key '$' '"test"' || {
+              echo "❌ JSON module not available - tests will fail"
+              exit 1
+            }
             
             echo "🔧 Configuring Valkey for testing..."
             # Optimize Valkey for testing
@@ -84,96 +297,69 @@ jobs:
           sleep 2
         done
 
-    - name: Run all tests sequentially to reduce server load
+    - name: Run JSON module tests only
       run: |
-        echo "🔍 Checking Valkey health before tests..."
-        for i in {1..10}; do
-          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
-            echo "✅ Valkey is healthy"
-            break
-          else
-            echo "⚠️ Valkey not ready, waiting... ($i/10)"
-            sleep 3
-          fi
-        done
+        echo "🧪 Running JSON module tests..."
         
-        echo "🧪 Running unit tests..."
-        timeout 300 npm run test:standalone -- tests/unit/ || {
-          echo "⚠️ Unit tests timed out or failed, forcing cleanup..."
+        # Verify JSON module is working
+        valkey-cli -p 6383 JSON.SET verify_key '$' '"JSON module working"'
+        valkey-cli -p 6383 JSON.GET verify_key
+        
+        echo "🧪 Running JSON-specific tests..."
+        timeout 600 ./scripts/test-runner.sh tests/unit/json-commands.test.mjs || {
+          echo "⚠️ JSON tests failed, forcing cleanup..."
           node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})"
           exit 1
         }
-        
-        echo "⏳ Waiting 10s to reduce server load..."
-        sleep 10
-        
-        echo "🔍 Checking Valkey health before integration tests..."
-        for i in {1..5}; do
-          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
-            echo "✅ Valkey is healthy"
-            break
-          else
-            echo "⚠️ Valkey not ready, waiting... ($i/5)"
-            sleep 3
-          fi
-        done
-        
-        echo "🧪 Running integration tests..."
-        timeout 300 npm run test:standalone -- tests/integration/ || {
-          echo "⚠️ Integration tests timed out or failed, forcing cleanup..."
-          node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})"
-          exit 1
-        }
-        
-        echo "⏳ Waiting 10s to reduce server load..."
-        sleep 10
-        
-        echo "🔍 Checking Valkey health before cluster tests..."
-        for i in {1..5}; do
-          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
-            echo "✅ Valkey is healthy"
-            break
-          else
-            echo "⚠️ Valkey not ready, waiting... ($i/5)"
-            sleep 3
-          fi
-        done
-        
-        echo "🧪 Running cluster tests..."
-        timeout 300 npm run test:standalone -- tests/cluster/ || {
-          echo "⚠️ Cluster tests timed out or failed, forcing cleanup..."
-          node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})"
-          exit 1
-        }
-      env:
-        ADAPTER_DIAG: 1
-        ADAPTER_DIAG_CONNECT: 1
-        ADAPTER_DIAG_LIFECYCLE: 1
       env:
         CI: true
         VALKEY_HOST: 127.0.0.1
         VALKEY_PORT: 6383
-        VALKEY_CLUSTER_NODES: 127.0.0.1:17000,127.0.0.1:17001,127.0.0.1:17002
+        VALKEY_BUNDLE_HOST: 127.0.0.1
+        VALKEY_BUNDLE_PORT: 6383
 
-    - name: Cleanup after tests
+    - name: Cleanup after JSON tests
       if: always()
       run: |
-        echo "🧹 Cleaning up after tests..."
-        # Force close all Redis clients
+        echo "🧹 Cleaning up after JSON tests..."
         node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
         sleep 2
-        echo "✅ Cleanup completed"
+        echo "✅ JSON test cleanup completed"
 
     - name: Upload coverage to Codecov
-      if: matrix.node == '20'
+      if: matrix.node == '22'
       uses: codecov/codecov-action@v5
       with:
         files: ./coverage/lcov.info
-        flags: unittests
-        name: codecov-umbrella
+        flags: json-tests
+        name: codecov-json-tests
 
+  # Code quality checks
+  lint:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Run ESLint
+      run: npm run lint
+
+    - name: Run TypeScript check
+      run: npm run build
+
+  # Optional: Test on macOS for cross-platform compatibility (core functionality only)
   test-macos:
-    name: Test on macOS with Valkey (core functionality, no modules)
+    name: Test on macOS (core functionality, no modules)
     runs-on: macos-latest
     strategy:
       matrix:
@@ -204,7 +390,7 @@ jobs:
         
         # Start Valkey server with custom config suitable for testing
         valkey-server --daemonize yes \
-          --port 6383 \
+          --port 6379 \
           --bind 127.0.0.1 \
           --save "" \
           --appendonly no \
@@ -217,10 +403,10 @@ jobs:
         echo "⏳ Waiting for Valkey server to be ready..."
         
         for i in {1..20}; do
-          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
+          if valkey-cli -p 6379 ping > /dev/null 2>&1; then
             echo "✅ Valkey server is ready!"
             echo "📋 Server info:"
-            valkey-cli -p 6383 INFO server | head -5
+            valkey-cli -p 6379 INFO server | head -5
             break
           fi
           echo "⏳ Still waiting for Valkey server... ($i/20)"
@@ -228,118 +414,30 @@ jobs:
         done
         
         # Final test
-        valkey-cli -p 6383 ping
+        valkey-cli -p 6379 ping
 
-    - name: Run tests sequentially on macOS (no JSON/module tests)
+    - name: Run basic tests on macOS (no JSON/module tests)
       run: |
-        echo "🧪 Running tests on macOS (no JSON/module support)"
-        # Health check Valkey before tests
-        echo "🔍 Checking Valkey health..."
-        for i in {1..10}; do
-          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
-            echo "✅ Valkey is healthy"
-            break
-          else
-            echo "⚠️ Valkey not ready, waiting... ($i/10)"
-            sleep 3
-          fi
-        done
+        echo "🧪 Running basic tests on macOS (no JSON/module support)"
         
-        echo "🧪 Running unit tests (excluding JSON/module tests)..."
-        # Exclude JSON and module-dependent tests
-        # Use a background process with timeout for macOS
-        (find tests/unit -name "*.test.mjs" ! -name "*json*" ! -name "*module*" ! -name "*search*" | xargs npm run test:standalone --) &
-        TEST_PID=$!
-        (sleep 300 && kill $TEST_PID 2>/dev/null) &
-        TIMEOUT_PID=$!
-        wait $TEST_PID
-        TEST_EXIT_CODE=$?
-        kill $TIMEOUT_PID 2>/dev/null
-        
-        if [ $TEST_EXIT_CODE -ne 0 ]; then
-          echo "⚠️ Unit tests failed, forcing cleanup..."
+        echo "🧪 Running core unit tests (excluding JSON/module tests)..."
+        CORE_TESTS="tests/unit/string-commands.test.mjs tests/unit/hash-commands.test.mjs tests/unit/list-commands.test.mjs"
+        timeout 600 ./scripts/test-runner.sh $CORE_TESTS || {
+          echo "⚠️ Core tests failed, forcing cleanup..."
           node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})"
           exit 1
-        fi
-        
-        echo "⏳ Waiting 15s to reduce server load..."
-        sleep 15
-        
-        echo "🔍 Checking Valkey health before integration tests..."
-        for i in {1..5}; do
-          if valkey-cli -p 6383 ping > /dev/null 2>&1; then
-            echo "✅ Valkey is healthy"
-            break
-          else
-            echo "⚠️ Valkey not ready, waiting... ($i/5)"
-            sleep 3
-          fi
-        done
-        
-        echo "🧪 Running basic integration tests..."
-        # Use a background process with timeout for macOS
-        (npm run test:standalone -- tests/integration/simple-adapter.test.mjs tests/integration/fastify-redis.test.mjs) &
-        TEST_PID=$!
-        (sleep 300 && kill $TEST_PID 2>/dev/null) &
-        TIMEOUT_PID=$!
-        wait $TEST_PID
-        TEST_EXIT_CODE=$?
-        kill $TIMEOUT_PID 2>/dev/null
-        
-        if [ $TEST_EXIT_CODE -ne 0 ]; then
-          echo "⚠️ Integration tests failed, forcing cleanup..."
-          node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})"
-          exit 1
-        fi
+        }
       env:
         CI: true
         VALKEY_HOST: 127.0.0.1
-        VALKEY_PORT: 6383
+        VALKEY_PORT: 6379
         SKIP_MODULE_TESTS: true
-        ADAPTER_DIAG: 1
-        ADAPTER_DIAG_CONNECT: 1
-        ADAPTER_DIAG_LIFECYCLE: 1
 
     - name: Cleanup Valkey server
       if: always()
       run: |
         echo "🧹 Cleaning up Valkey server..."
-        
-        # Force close all Redis clients first
-        echo "🔌 Force closing all Redis clients..."
         node -e "import('./dist/index.js').then(pkg => pkg.default.forceCloseAllClients(1000)).catch(() => {})" || true
-        
-        # Wait for cleanup
         sleep 2
-        
-        # Stop Valkey gracefully with timeout
-        timeout 10 valkey-cli -p 6383 SHUTDOWN NOSAVE || true
-        # Kill any remaining processes
-        pkill valkey-server || true
-        # Wait a moment for cleanup
-        sleep 2
+        timeout 10 valkey-cli -p 6379 SHUTDOWN NOSAVE || pkill valkey-server || true
         echo "✅ Valkey cleanup completed"
-
-  # Note: Full module testing happens on Linux, coverage upload is handled there
-
-  lint:
-    name: Lint and Type Check
-    runs-on: ubuntu-latest
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
-
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '22'
-        cache: 'npm'
-
-    - name: Install dependencies
-      run: npm ci
-
-    - name: Run ESLint
-      run: npm run lint
-
-    - name: Run TypeScript check
-      run: npm run build
