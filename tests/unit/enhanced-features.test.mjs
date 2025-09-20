@@ -6,30 +6,15 @@
 import { describe, test, beforeEach, afterEach, before } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import {
-  getStandaloneConfig,
-  checkTestServers,
-} from '../utils/test-config.mjs';
+const { Redis, Cluster } = pkg;
+import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
 
-describe('Enhanced Features for Queue Compatibility', () => {
+describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
   let client;
-  let config;
-
-  before(() => {
-    // Check if test servers are available
-    const serversAvailable = checkTestServers();
-    if (!serversAvailable) {
-      throw new Error(
-        'Test servers not available. Please start Redis server before running tests.'
-      );
-    }
-
-    config = getStandaloneConfig();
-  });
+  const tag = keyTag('enhanced');
 
   beforeEach(async () => {
-    client = new Redis(config);
+    client = await createClient(mode);
     await client.connect();
     // Clear all databases to ensure clean state for each test
     await client.flushall();

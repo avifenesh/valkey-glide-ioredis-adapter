@@ -70,7 +70,7 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         end
       `;
 
-      const key = `rate_limit:user:${Math.random()}`;
+      const key = `${tag}:rate_limit:user:${Math.random()}`;
       const windowMs = 60000; // 1 minute
       const limit = 5; // 5 requests per minute
 
@@ -437,30 +437,30 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         local counters_updated = {}
         
         -- Daily counter
-        local daily_key = 'analytics:daily:' .. event_type .. ':' .. day
+        local daily_key = `${tag}:analytics:daily:` .. event_type .. ':' .. day
         local daily_count = server.call('INCR', daily_key)
         server.call('EXPIRE', daily_key, 86400 * 7) -- Keep for 7 days
         table.insert(counters_updated, {'daily', daily_count})
         
         -- Hourly counter
-        local hourly_key = 'analytics:hourly:' .. event_type .. ':' .. hour
+        local hourly_key = `${tag}:analytics:hourly:` .. event_type .. ':' .. hour
         local hourly_count = server.call('INCR', hourly_key)
         server.call('EXPIRE', hourly_key, 3600 * 48) -- Keep for 48 hours
         table.insert(counters_updated, {'hourly', hourly_count})
         
         -- User-specific counter
-        local user_key = 'analytics:user:' .. user_id .. ':' .. event_type
+        local user_key = `${tag}:analytics:user:` .. user_id .. ':' .. event_type
         local user_count = server.call('INCR', user_key)
         server.call('EXPIRE', user_key, 86400 * 30) -- Keep for 30 days
         table.insert(counters_updated, {'user', user_count})
         
         -- Global counter
-        local global_key = 'analytics:global:' .. event_type
+        local global_key = `${tag}:analytics:global:` .. event_type
         local global_count = server.call('INCR', global_key)
         table.insert(counters_updated, {'global', global_count})
         
         -- Track unique users per event per day
-        local unique_users_key = 'analytics:unique_users:' .. event_type .. ':' .. day
+        local unique_users_key = `${tag}:analytics:unique_users:` .. event_type .. ':' .. day
         local was_unique = server.call('SADD', unique_users_key, user_id)
         server.call('EXPIRE', unique_users_key, 86400 * 7)
         local unique_count = server.call('SCARD', unique_users_key)
