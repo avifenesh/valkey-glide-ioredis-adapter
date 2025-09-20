@@ -65,6 +65,47 @@ class SocketFileManager {
   }
 
   /**
+   * CI-specific aggressive cleanup - removes all GLIDE socket files
+   * Use with caution, only in test environments
+   */
+  static async forceCleanupAllGlideSocketFiles(): Promise<void> {
+    try {
+      const { promises: fs } = await import('fs');
+      const { join } = await import('path');
+      const { tmpdir } = await import('os');
+
+      const tmpDir = tmpdir();
+      const files = await fs.readdir(tmpDir);
+
+      // Find ALL GLIDE socket files (not just our own)
+      const glideSocketFiles = files.filter(file =>
+        file.match(/^glide-socket-\d+-[a-f0-9-]+\.sock$/)
+      );
+
+      console.log(`[SocketFileManager] CI cleanup: Found ${glideSocketFiles.length} GLIDE socket files`);
+
+      // Remove all GLIDE socket files aggressively
+      const cleanupPromises = glideSocketFiles.map(async (file) => {
+        try {
+          const filePath = join(tmpDir, file);
+          await this.closeSocketFile(filePath);
+          console.log(`[SocketFileManager] CI cleanup: Removed ${file}`);
+        } catch (error) {
+          // Ignore individual file errors
+        }
+      });
+
+      await Promise.allSettled(cleanupPromises);
+
+      // Clear our tracking since we cleaned everything
+      this.ownSocketFiles.clear();
+
+    } catch (error) {
+      console.warn('[SocketFileManager] CI cleanup failed:', error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  /**
    * Gracefully close only our registered socket files
    * This signals only our Rust processes to shut down gracefully
    */
