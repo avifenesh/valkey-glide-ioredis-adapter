@@ -331,7 +331,7 @@ describeForEachMode('NestJS Cache Integration Patterns', (mode) => {
       }
 
       // Invalidate all caches tagged with '${tag}:user:1'
-      const tagKey = `${baseKey}:tag:user:1`;
+      const tagKey = `${baseKey}:tag:${tag}:user:1`;
       const keysToInvalidate = await client.smembers(tagKey);
 
       if (keysToInvalidate.length > 0) {
