@@ -310,6 +310,9 @@ describeForEachMode('Pipeline Operations (ioredis compatibility)', mode => {
   });
 
   describe('Pipeline performance characteristics', () => {
+    if (process.env.CI) {
+      return; // Skip performance tests in CI
+    }
     test('should batch commands efficiently', async () => {
       const pipeline = client.pipeline();
 

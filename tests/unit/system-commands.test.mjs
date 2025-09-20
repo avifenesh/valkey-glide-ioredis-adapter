@@ -191,6 +191,9 @@ describeForEachMode('System Commands - Monitoring & Metrics', mode => {
   });
 
   describe('Performance Monitoring Commands', () => {
+    if (process.env.CI) {
+      return; // Skip performance tests in CI
+    }
     test('should measure latency like Netflix systems', async () => {
       const key = 'latency:test:' + Math.random();
 

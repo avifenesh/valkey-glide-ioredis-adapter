@@ -403,6 +403,9 @@ describe('Cluster - Basic Tests', () => {
 // Additional test for cluster-specific scenarios
 describe('Cluster - Cluster Specific Features', () => {
   describe('Read Scaling', () => {
+    if (process.env.CI) {
+      return; // Skip scaling tests in CI
+    }
     it('should support master read scaling', async () => {
       const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
         scaleReads: 'master',

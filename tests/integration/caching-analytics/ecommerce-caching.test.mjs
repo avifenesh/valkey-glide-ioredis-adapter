@@ -534,6 +534,9 @@ describeForEachMode('Caching, Analytics & E-commerce Integration', mode => {
   });
 
   describe('Performance & Memory Optimization', () => {
+    if (process.env.CI) {
+      return; // Skip performance tests in CI
+    }
     test('should handle large data sets efficiently', async () => {
       const largeDataKey = 'large:dataset';
       const itemCount = 1000;

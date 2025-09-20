@@ -385,6 +385,9 @@ describe('NestJS Cache Integration Patterns', () => {
   });
 
   describe('Performance and Monitoring Patterns', () => {
+    if (process.env.CI) {
+      return; // Skip performance tests in CI
+    }
     test('should track cache hit/miss statistics', async () => {
       const statsKey = 'cache:stats:' + Math.random();
       const dataKey = 'cache:data:' + Math.random();

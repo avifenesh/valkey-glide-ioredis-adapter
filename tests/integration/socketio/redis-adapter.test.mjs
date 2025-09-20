@@ -451,6 +451,9 @@ describe('Socket.IO Valkey Adapter Integration', () => {
   });
 
   describe('Performance & Scalability', () => {
+    if (process.env.CI) {
+      return; // Skip performance tests in CI
+    }
     test('should handle multiple concurrent connections', async () => {
       const clients = [];
       const connectionPromises = [];

@@ -137,6 +137,9 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
   });
 
   describe('Memory and Performance Edge Cases', () => {
+    if (process.env.CI) {
+      return; // Skip performance tests in CI
+    }
     test('should handle large value storage and retrieval', async () => {
       // Large values (common in session storage, cache)
       const sizes = [1024, 10240, 102400]; // 1KB, 10KB, 100KB

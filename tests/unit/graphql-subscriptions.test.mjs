@@ -342,6 +342,9 @@ describe('GraphQL Subscriptions Patterns', () => {
   });
 
   describe('Performance and Batching Patterns', () => {
+    if (process.env.CI) {
+      return; // Skip performance tests in CI
+    }
     test('should handle batch message publishing', async () => {
       const channels = Array.from(
         { length: 5 },

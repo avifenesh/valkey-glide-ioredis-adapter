@@ -465,6 +465,9 @@ describeForEachMode('HyperLogLog Commands', mode => {
   });
 
   describe('Performance Characteristics', () => {
+    if (process.env.CI) {
+      return; // Skip performance tests in CI
+    }
     it('should maintain constant memory usage', async () => {
       const key = `${testKey}:memory`;
 

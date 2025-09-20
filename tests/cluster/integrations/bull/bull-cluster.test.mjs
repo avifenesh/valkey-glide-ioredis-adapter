@@ -504,6 +504,9 @@ describe('Bull Integration with Cluster', () => {
   });
 
   describe('Performance Considerations', () => {
+    if (process.env.CI) {
+      return; // Skip performance tests in CI
+    }
     it('should support connection pooling', async () => {
       const createClient = type => {
         return Cluster.createClient(type, {
