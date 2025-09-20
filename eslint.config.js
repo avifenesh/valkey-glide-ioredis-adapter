@@ -43,9 +43,9 @@ module.exports = [
     }
   },
 
-  // Node.js test files (.mjs)
+  // Node.js test files (.mjs - ES modules)
   {
-    files: ['tests/**/*.mjs', 'tests/**/*.js'],
+    files: ['tests/**/*.mjs'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
@@ -74,7 +74,7 @@ module.exports = [
         // Common test variables that might be declared but not used
         id: 'writable',
         balance: 'writable',
-        transactions: 'writable', 
+        transactions: 'writable',
         created: 'writable',
         data: 'writable',
         pageViews: 'writable',
@@ -95,6 +95,71 @@ module.exports = [
       'no-useless-catch': 'off',
       'no-empty': 'off',
       'no-redeclare': 'off' // Allow global comments in test files
+    }
+  },
+
+  // Node.js test files (.js - CommonJS)
+  {
+    files: ['tests/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'commonjs',
+      globals: {
+        // Node.js globals
+        process: 'readonly',
+        setImmediate: 'readonly',
+        clearImmediate: 'readonly',
+        global: 'readonly',
+        console: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+        Buffer: 'readonly',
+        __dirname: 'readonly',
+        __filename: 'readonly',
+        // CommonJS globals
+        require: 'readonly',
+        module: 'readonly',
+        exports: 'readonly',
+        // Node.js test runner globals
+        test: 'readonly',
+        describe: 'readonly',
+        it: 'readonly',
+        before: 'readonly',
+        after: 'readonly',
+        beforeEach: 'readonly',
+        afterEach: 'readonly',
+        beforeAll: 'readonly',
+        afterAll: 'readonly',
+        // Test assertion globals
+        expect: 'readonly',
+        jest: 'readonly',
+        pending: 'readonly',
+        // Common test variables that might be declared but not used
+        id: 'writable',
+        balance: 'writable',
+        transactions: 'writable',
+        created: 'writable',
+        data: 'writable',
+        pageViews: 'writable',
+        clicks: 'writable',
+        formSubmissions: 'writable',
+        successfulSubmissions: 'writable',
+        totalTimeOnPages: 'writable'
+      }
+    },
+    rules: {
+      // More lenient rules for CommonJS test files
+      'no-console': 'off',
+      'no-undef': 'off', // Turn off for CommonJS test files since globals are well-defined
+      'no-unused-vars': 'off',
+      'no-case-declarations': 'off',
+      'no-prototype-builtins': 'off',
+      'no-unreachable': 'off',
+      'no-useless-catch': 'off',
+      'no-empty': 'off',
+      'no-redeclare': 'off'
     }
   },
   

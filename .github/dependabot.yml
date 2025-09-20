@@ -80,7 +80,6 @@ updates:
       github-actions:
         patterns:
           - "actions/*"
-          - "codecov/*"
         update-types:
           - "patch"
           - "minor"

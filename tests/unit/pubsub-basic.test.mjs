@@ -3,42 +3,25 @@
  * Tests current pub/sub implementation and validates incremental improvements
  */
 
-import { describe, it, before, beforeEach, afterEach } from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
+import { delay } from '../utils/test-config.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+} from '../setup/dual-mode.mjs';
 
-// Global declarations for Node.js built-in APIs
-/* global setTimeout, console */
-import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { testUtils } from '../setup/index.mjs';
-
-describe('Basic Pub/Sub Functionality', () => {
+describeForEachMode('Basic Pub/Sub Functionality', mode => {
   let publisher;
   let subscriber;
-  let config;
-
-  before(async () => {
-    // Check if test servers are available
-    const serversAvailable = await testUtils.checkTestServers();
-    if (!serversAvailable) {
-      throw new Error(
-        'Test servers not available. Please start Redis server before running tests.'
-      );
-    }
-
-    config = await testUtils.getStandaloneConfig();
-  });
 
   beforeEach(async () => {
-    // Create separate clients for publishing and subscribing
-    publisher = new Redis(config);
-    subscriber = new Redis(config);
-
+    publisher = await createClient(mode);
+    subscriber = await createClient(mode);
     await publisher.connect();
     await subscriber.connect();
-
-    // Clear any existing state
-    await publisher.flushall();
+    await flushAll(publisher);
   });
 
   afterEach(async () => {
@@ -47,7 +30,7 @@ describe('Basic Pub/Sub Functionality', () => {
       try {
         await subscriber.unsubscribe();
         await subscriber.punsubscribe();
-      } catch {
+      } catch (error) {
         // Ignore cleanup errors
       }
       await subscriber.disconnect();
@@ -59,23 +42,23 @@ describe('Basic Pub/Sub Functionality', () => {
   });
 
   describe('Current Implementation Analysis', () => {
-    it('can subscribe to a channel', async () => {
+    test('can subscribe to a channel', async () => {
       const result = await subscriber.subscribe('test-channel');
       assert.strictEqual(result, 1); // Should return subscription count
     });
 
-    it('can unsubscribe from a channel', async () => {
+    test('can unsubscribe from a channel', async () => {
       await subscriber.subscribe('test-channel');
       const result = await subscriber.unsubscribe('test-channel');
       assert.strictEqual(result, 0); // Should return remaining subscription count
     });
 
-    it('can publish a message', async () => {
+    test('can publish a message', async () => {
       const result = await publisher.publish('test-channel', 'test-message');
       assert.strictEqual(typeof result, 'number'); // Should return number of subscribers
     });
 
-    it('subscription events are emitted', async () => {
+    test('subscription events are emitted', async () => {
       let subscribeEventReceived = false;
       let unsubscribeEventReceived = false;
 
@@ -98,7 +81,7 @@ describe('Basic Pub/Sub Functionality', () => {
       assert.strictEqual(unsubscribeEventReceived, true);
     });
 
-    it('pattern subscription works', async () => {
+    test('pattern subscription works', async () => {
       const result = await subscriber.psubscribe('test.*');
       assert.strictEqual(result, 1);
 
@@ -108,7 +91,7 @@ describe('Basic Pub/Sub Functionality', () => {
   });
 
   describe('Message Reception (Current Gap)', () => {
-    it('should receive messages (CURRENTLY FAILING - EXPECTED)', async () => {
+    test('should receive messages (CURRENTLY FAILING - EXPECTED)', async () => {
       let messageReceived = false;
       let receivedChannel = '';
       let receivedMessage = '';
@@ -123,12 +106,12 @@ describe('Basic Pub/Sub Functionality', () => {
       await subscriber.subscribe('test-channel');
 
       // Give subscription time to establish
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       await publisher.publish('test-channel', 'hello world');
 
       // Give message time to be received
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       // This will currently fail because we don't handle message reception
       // This test documents what we need to fix
@@ -142,7 +125,7 @@ describe('Basic Pub/Sub Functionality', () => {
       }
     });
 
-    it('should receive pattern messages (CURRENTLY FAILING - EXPECTED)', async () => {
+    test('should receive pattern messages (CURRENTLY FAILING - EXPECTED)', async () => {
       let patternMessageReceived = false;
       let receivedPattern = '';
       let receivedChannel = '';
@@ -157,37 +140,35 @@ describe('Basic Pub/Sub Functionality', () => {
 
       await subscriber.psubscribe('test.*');
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       await publisher.publish('test.news', 'breaking news');
 
-      await new Promise(resolve => setTimeout(resolve, 100));
+      await new Promise(resolve => setTimeout(resolve, 100).unref());
 
       if (patternMessageReceived) {
         assert.strictEqual(receivedPattern, 'test.*');
         assert.strictEqual(receivedChannel, 'test.news');
         assert.strictEqual(receivedMessage, 'breaking news');
       } else {
-        console.log(
-          '📝 Current limitation message reception not implemented'
-        );
+        console.log('📝 Current limitation message reception not implemented');
         assert.strictEqual(patternMessageReceived, false);
       }
     });
   });
 
   describe('Bull Integration Requirements', () => {
-    it('multiple subscriptions to same channel should work', async () => {
+    test('multiple subscriptions to same channel should work', async () => {
       // Bull often subscribes to the same channel multiple times
-      await subscriber.subscribe('bull');
-      await subscriber.subscribe('bull'); // Second subscription
+      await subscriber.subscribe('bull:queue:events');
+      await subscriber.subscribe('bull:queue:events'); // Second subscription
 
       // Should handle multiple subscriptions gracefully
-      const result = await subscriber.unsubscribe('bull');
+      const result = await subscriber.unsubscribe('bull:queue:events');
       assert.strictEqual(typeof result, 'number');
     });
 
-    it('should handle subscription cleanup on disconnect', async () => {
+    test('should handle subscription cleanup on disconnect', async () => {
       await subscriber.subscribe('test-channel');
 
       // Disconnect should clean up subscriptions

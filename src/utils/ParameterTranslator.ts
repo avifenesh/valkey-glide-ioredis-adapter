@@ -1,19 +1,44 @@
 /**
  * Parameter Translation Utilities
- * 
- * Provides translation between ioredis parameter formats and Valkey GLIDE
- * parameter formats, ensuring API compatibility while leveraging GLIDE's
- * native method signatures.
+ *
+ * Translates between ioredis parameter formats and Valkey GLIDE parameter formats,
+ * ensuring seamless API compatibility while leveraging GLIDE's native performance.
  */
 
 import { RedisKey, RedisValue } from '../types';
 import { TimeUnit } from '@valkey/valkey-glide';
+import { LRUCache } from './LRUCache';
 
 export class ParameterTranslator {
+  // Performance optimization: LRU cache for frequently used parameter translations
+  private static readonly setOptionsCache = new LRUCache<string, any>(1000);
+
   /**
-   * Convert SET command arguments from ioredis format to valkey-glide format
-   * ioredis: SET key value [EX seconds] [PX milliseconds] [NX|XX]
-   * valkey-glide: set(key, value, options?)
+   * Generates an efficient cache key for argument arrays.
+   * Uses a simple hash-based approach instead of JSON.stringify for better performance.
+   * @param args - Array of arguments to generate key for
+   * @returns Cache key string
+   * @private
+   */
+  private static generateCacheKey(args: any[]): string {
+    // Simple hash-based key generation for better performance than JSON.stringify
+    let hash = 0;
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i];
+      const str = typeof arg === 'string' ? arg : String(arg);
+      for (let j = 0; j < str.length; j++) {
+        const char = str.charCodeAt(j);
+        hash = (hash << 5) - hash + char;
+        hash = hash & hash; // Convert to 32-bit integer
+      }
+      hash = hash + i; // Include position in hash
+    }
+    return `set_${Math.abs(hash)}_${args.length}`;
+  }
+  /**
+   * Converts SET command arguments from ioredis format to GLIDE format.
+   * @param args - ioredis SET arguments: key, value, [EX seconds], [PX milliseconds], [NX|XX]
+   * @returns GLIDE-compatible object with key, value, and optional options
    */
   static translateSetArgs(args: any[]): {
     key: string;
@@ -26,8 +51,7 @@ export class ParameterTranslator {
 
     const [key, value, ...optionArgs] = args;
 
-    // Validate key is not empty (ioredis compatibility)
-    if (key === '' || key === null || key === undefined) {
+    if (!key && key !== 0) {
       throw new Error("ERR wrong number of arguments for 'set' command");
     }
 
@@ -41,10 +65,21 @@ export class ParameterTranslator {
   }
 
   /**
-   * Parse SET command options
+   * Parses SET command options from various formats.
+   * @param args - Option arguments in ioredis format
+   * @returns GLIDE-compatible options object or undefined
+   * @private
    */
   static parseSetOptions(args: any[]): any {
     if (args.length === 0) return undefined;
+
+    // Performance optimization: Check cache first
+    // Use a more efficient cache key generation
+    const cacheKey = this.generateCacheKey(args);
+    const cached = this.setOptionsCache.get(cacheKey);
+    if (cached !== undefined) {
+      return cached === null ? undefined : cached;
+    }
 
     const options: any = {};
 
@@ -72,16 +107,13 @@ export class ParameterTranslator {
             }
           }
         }
-        // Handle other object properties if needed
         if (arg.conditionalSet) {
           options.conditionalSet = arg.conditionalSet;
         }
         if (arg.returnOldValue) {
           options.returnOldValue = arg.returnOldValue;
         }
-      }
-      // Handle ioredis string format: 'EX', 1, 'NX', etc.
-      else if (typeof arg === 'string') {
+      } else if (typeof arg === 'string') {
         const upperArg = arg.toUpperCase();
 
         switch (upperArg) {
@@ -114,38 +146,38 @@ export class ParameterTranslator {
       }
     }
 
-    return Object.keys(options).length > 0 ? options : undefined;
+    const result = Object.keys(options).length > 0 ? options : undefined;
+
+    // Cache the result (LRU cache handles eviction automatically)
+    this.setOptionsCache.set(cacheKey, result === undefined ? null : result);
+
+    return result;
   }
 
   /**
-   * Convert MGET arguments from ioredis variadic/array format to valkey-glide array format
-   * ioredis: MGET key1 key2 key3 OR MGET [key1, key2, key3]
-   * valkey-glide: mget([key1, key2, key3])
+   * Converts MGET arguments to GLIDE format.
+   * @param args - Keys in variadic or array format
+   * @returns Array of key strings
    */
   static translateMGetArgs(args: any[]): string[] {
     if (args.length === 0) {
       throw new Error('MGET requires at least 1 key');
     }
 
-    // Handle both variadic and array forms
-    if (args.length === 1 && Array.isArray(args[0])) {
-      return args[0].map((key: RedisKey) => key.toString());
-    }
-
-    return args.map((key: RedisKey) => key.toString());
+    const keys = args.length === 1 && Array.isArray(args[0]) ? args[0] : args;
+    return keys.map((key: RedisKey) => key.toString());
   }
 
   /**
-   * Convert MSET arguments from ioredis variadic/object format to valkey-glide object format
-   * ioredis: MSET key1 val1 key2 val2 OR MSET {key1: val1, key2: val2}
-   * valkey-glide: mset({key1: val1, key2: val2})
+   * Converts MSET arguments to GLIDE format.
+   * @param args - Key-value pairs in variadic or object format
+   * @returns Object mapping keys to values
    */
   static translateMSetArgs(args: any[]): Record<string, string> {
     if (args.length === 0) {
       throw new Error('MSET requires at least 1 key-value pair');
     }
 
-    // Handle object format
     if (
       args.length === 1 &&
       typeof args[0] === 'object' &&
@@ -158,7 +190,6 @@ export class ParameterTranslator {
       return result;
     }
 
-    // Handle variadic format
     if (args.length % 2 !== 0) {
       throw new Error(
         'MSET requires an even number of arguments (key-value pairs)'
@@ -174,9 +205,9 @@ export class ParameterTranslator {
   }
 
   /**
-   * Convert HSET arguments from ioredis variadic/object format to valkey-glide format
-   * ioredis: HSET key field value [field value ...] OR HSET key {field: value, ...}
-   * valkey-glide: hset(key, {field: value, ...})
+   * Converts HSET arguments to GLIDE format.
+   * @param args - Key, field-value pairs in variadic or object format
+   * @returns Object with key and field-value mapping
    */
   static translateHSetArgs(args: any[]): {
     key: string;
@@ -191,7 +222,6 @@ export class ParameterTranslator {
 
     const [key, ...rest] = args;
 
-    // Handle object format: HSET key {field: value, ...}
     if (
       rest.length === 1 &&
       typeof rest[0] === 'object' &&
@@ -204,7 +234,6 @@ export class ParameterTranslator {
       return { key: key.toString(), fieldValues };
     }
 
-    // Handle variadic format: HSET key field1 value1 field2 value2 ...
     if (rest.length % 2 !== 0) {
       throw new Error('HSET requires an even number of field-value arguments');
     }
@@ -218,9 +247,9 @@ export class ParameterTranslator {
   }
 
   /**
-   * Convert HMGET arguments from ioredis variadic/array format to valkey-glide array format
-   * ioredis: HMGET key field1 field2 ... OR HMGET key [field1, field2, ...]
-   * valkey-glide: hmget(key, [field1, field2, ...])
+   * Converts HMGET arguments to GLIDE format.
+   * @param args - Key and fields in variadic or array format
+   * @returns Object with key and fields array
    */
   static translateHMGetArgs(args: any[]): {
     key: string;
@@ -232,25 +261,17 @@ export class ParameterTranslator {
 
     const [key, ...rest] = args;
 
-    // Handle array format: HMGET key [field1, field2, ...]
-    if (rest.length === 1 && Array.isArray(rest[0])) {
-      return {
-        key: key.toString(),
-        fields: rest[0].map((field: string) => field.toString()),
-      };
-    }
-
-    // Handle variadic format: HMGET key field1 field2 ...
+    const fields = rest.length === 1 && Array.isArray(rest[0]) ? rest[0] : rest;
     return {
       key: key.toString(),
-      fields: rest.map((field: string) => field.toString()),
+      fields: fields.map((field: string) => field.toString()),
     };
   }
 
   /**
-   * Convert list push arguments from ioredis variadic/array format to valkey-glide array format
-   * ioredis: LPUSH key element1 element2 ... OR LPUSH key [element1, element2, ...]
-   * valkey-glide: lpush(key, [element1, element2, ...])
+   * Converts list push arguments to GLIDE format.
+   * @param args - Key and elements in variadic or array format
+   * @returns Object with key and elements array
    */
   static translateListPushArgs(args: any[]): {
     key: string;
@@ -264,25 +285,18 @@ export class ParameterTranslator {
 
     const [key, ...rest] = args;
 
-    // Handle array format: LPUSH key [element1, element2, ...]
-    if (rest.length === 1 && Array.isArray(rest[0])) {
-      return {
-        key: key.toString(),
-        elements: rest[0].map((element: RedisValue) => element.toString()),
-      };
-    }
-
-    // Handle variadic format: LPUSH key element1 element2 ...
+    const elements =
+      rest.length === 1 && Array.isArray(rest[0]) ? rest[0] : rest;
     return {
       key: key.toString(),
-      elements: rest.map((element: RedisValue) => element.toString()),
+      elements: elements.map((element: RedisValue) => element.toString()),
     };
   }
 
   /**
-   * Convert DEL arguments from ioredis variadic format to valkey-glide array format
-   * ioredis: DEL key1 key2 key3 ...
-   * valkey-glide: del([key1, key2, key3, ...])
+   * Converts DEL arguments to GLIDE format.
+   * @param args - Keys in variadic format
+   * @returns Array of key strings
    */
   static translateDelArgs(args: any[]): string[] {
     if (args.length === 0) {
@@ -293,9 +307,9 @@ export class ParameterTranslator {
   }
 
   /**
-   * Convert EXISTS arguments from ioredis variadic format to valkey-glide array format
-   * ioredis: EXISTS key1 key2 key3 ...
-   * valkey-glide: exists([key1, key2, key3, ...])
+   * Converts EXISTS arguments to GLIDE format.
+   * @param args - Keys in variadic format
+   * @returns Array of key strings
    */
   static translateExistsArgs(args: any[]): string[] {
     if (args.length === 0) {
@@ -306,7 +320,9 @@ export class ParameterTranslator {
   }
 
   /**
-   * Convert TimeUnit strings to valkey-glide TimeUnit enum values
+   * Converts TimeUnit strings to GLIDE TimeUnit enum values.
+   * @param unit - Time unit string (EX, PX, SECONDS, MILLISECONDS)
+   * @returns GLIDE TimeUnit string
    */
   static convertTimeUnit(unit: string): string {
     switch (unit.toUpperCase()) {
@@ -322,7 +338,9 @@ export class ParameterTranslator {
   }
 
   /**
-   * Convert ioredis conditional set options to valkey-glide format
+   * Converts conditional set options to GLIDE format.
+   * @param condition - Conditional set string (NX, XX)
+   * @returns GLIDE conditional set string
    */
   static convertConditionalSet(condition: string): string {
     switch (condition.toUpperCase()) {
@@ -336,21 +354,27 @@ export class ParameterTranslator {
   }
 
   /**
-   * Normalize Redis key to string format
+   * Normalizes Redis key to string format.
+   * @param key - Redis key in various formats
+   * @returns String representation of the key
    */
   static normalizeKey(key: RedisKey): string {
     return key.toString();
   }
 
   /**
-   * Normalize Redis value to string format
+   * Normalizes Redis value to string format.
+   * @param value - Redis value in various formats
+   * @returns String representation of the value
    */
   static normalizeValue(value: RedisValue): string {
     return value.toString();
   }
 
   /**
-   * Convert GlideString to string (for return values)
+   * Converts GlideString to string.
+   * @param value - GLIDE string value
+   * @returns String or null
    */
   static convertGlideString(value: any): string | null {
     if (value === null || value === undefined) {
@@ -360,14 +384,18 @@ export class ParameterTranslator {
   }
 
   /**
-   * Convert GlideString array to string array
+   * Converts GlideString array to string array.
+   * @param values - Array of GLIDE string values
+   * @returns Array of strings or nulls
    */
   static convertGlideStringArray(values: any[]): (string | null)[] {
     return values.map(value => this.convertGlideString(value));
   }
 
   /**
-   * Convert GlideRecord to plain object
+   * Converts GlideRecord to plain object.
+   * @param record - GLIDE record object
+   * @returns Plain JavaScript object
    */
   static convertGlideRecord(record: any): Record<string, string> {
     const result: Record<string, string> = {};
@@ -378,7 +406,9 @@ export class ParameterTranslator {
   }
 
   /**
-   * Parse score boundary value for ZSET operations (eliminating duplication)
+   * Parses score boundary value for ZSET operations.
+   * @param score - Score value as string or number
+   * @returns Parsed numeric score
    */
   static parseScoreValue(score: string | number): number {
     if (typeof score === 'number') return score;
@@ -392,7 +422,9 @@ export class ParameterTranslator {
   }
 
   /**
-   * Create boundary for ZSET range operations (eliminating duplication)
+   * Creates boundary for ZSET range operations.
+   * @param bound - Boundary value (may include exclusive prefix)
+   * @returns Boundary object with value and inclusiveness flag
    */
   static createScoreBoundary(bound: string | number): {
     value: number;
@@ -411,25 +443,23 @@ export class ParameterTranslator {
   }
 
   /**
-   * Parse HSET command arguments to field-value pairs
+   * Parses HSET command arguments to field-value pairs.
+   * @param args - Field-value arguments in various formats
+   * @returns Object mapping fields to values
    */
   static parseHashSetArgs(args: any[]): Record<string, string> {
     const fieldValues: Record<string, string> = {};
 
-    // Handle different argument patterns: hset(key, field, value, field2, value2, ...)
-    // or hset(key, {field: value, field2: value2})
     if (
       args.length === 1 &&
       typeof args[0] === 'object' &&
       !Buffer.isBuffer(args[0])
     ) {
-      // Object format
       const obj = args[0];
       for (const [field, value] of Object.entries(obj)) {
         fieldValues[field] = String(value);
       }
     } else {
-      // Field-value pairs format
       for (let i = 0; i < args.length; i += 2) {
         if (i + 1 < args.length) {
           fieldValues[String(args[i])] = String(args[i + 1]);
@@ -441,7 +471,9 @@ export class ParameterTranslator {
   }
 
   /**
-   * Parse ZSET command arguments for LIMIT, WITHSCORES, etc. (eliminating duplication)
+   * Parses ZSET command arguments for options.
+   * @param args - Command arguments including WITHSCORES, LIMIT, etc.
+   * @returns Parsed options object
    */
   static parseZSetArgs(args: string[]): {
     withScores: boolean;

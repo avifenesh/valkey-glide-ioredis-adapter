@@ -14,8 +14,12 @@
 export function getStandaloneConfig() {
   return {
     host: process.env.VALKEY_HOST || 'localhost',
-    port: parseInt(process.env.VALKEY_PORT || '6379'),
+    port: parseInt(process.env.VALKEY_PORT || '6383'),
     lazyConnect: true, // Critical for valkey-bundle compatibility
+    // Keep test connects/sniffing fast to avoid hangs
+    connectTimeout: parseInt(process.env.VALKEY_CONNECT_TIMEOUT || '2000', 10),
+    requestTimeout: parseInt(process.env.VALKEY_REQUEST_TIMEOUT || '3000', 10),
+    maxRetriesPerRequest: 1,
   };
 }
 
@@ -25,12 +29,12 @@ export function getStandaloneConfig() {
  */
 export function getClusterConfig() {
   const clusterNodes = process.env.VALKEY_CLUSTER_NODES || 'localhost:17000';
-  
+
   return clusterNodes.split(',').map(node => {
     const [host, port] = node.trim().split(':');
     return {
       host: host || 'localhost',
-      port: parseInt(port || '17000')
+      port: parseInt(port || '17000'),
     };
   });
 }
@@ -49,7 +53,7 @@ export function checkTestServers() {
  * @returns {Promise} Promise that resolves after the delay
  */
 export function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms).unref());
 }
 
 /**
@@ -59,5 +63,5 @@ export default {
   getStandaloneConfig,
   getClusterConfig,
   checkTestServers,
-  delay
+  delay,
 };

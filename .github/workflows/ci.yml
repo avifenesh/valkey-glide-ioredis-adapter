@@ -3,284 +3,61 @@ name: CI
 on:
   push:
     branches: [ main, develop ]
-    tags: [ 'v*' ]
   pull_request:
     branches: [ main, develop ]
-
-# Cancel previous runs on the same PR/branch
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  test-linux:
-    name: Test on Linux with Valkey Bundle (${{ matrix.arch }}, Node ${{ matrix.node }})
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - arch: x64
-            node: '20'
-          - arch: x64
-            node: '22'
-          - arch: arm64
-            node: '20'
-
-    services:
-      valkey-bundle:
-        image: valkey/valkey-bundle:8.1-bookworm
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "valkey-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
-
-    - name: Setup Node.js ${{ matrix.node }}
-      uses: actions/setup-node@v5
-      with:
-        node-version: ${{ matrix.node }}
-        cache: 'npm'
-
-    - name: Install dependencies
-      run: npm ci
-
-    - name: Build project
-      run: npm run build
-
-    - name: Download Valkey
-      run: |
-        # Use apt to install redis-server which is API compatible with Valkey for basic operations
-        sudo apt-get update
-        sudo apt-get install -y redis-server redis-tools
-        # Stop any running redis instances first
-        sudo systemctl stop redis-server || true
-
-    - name: Start Valkey cluster nodes on ports 17000-17005
-      run: |
-        echo "Starting Valkey cluster nodes..."
-        # Start redis-server instances on cluster ports (API compatible with Valkey)
-        for port in 17000 17001 17002 17003 17004 17005; do
-          echo "Starting redis-server on port $port..."
-          redis-server --port $port --bind 127.0.0.1 --daemonize yes --save "" --appendonly no --maxmemory 256mb &
-          echo "Redis server started on port $port"
-        done
-
-    - name: Wait for Valkey cluster nodes
-      run: |
-        echo "Waiting for Valkey cluster nodes to be ready..."
-        for port in 17000 17001 17002 17003 17004 17005; do
-          for i in {1..30}; do
-            if redis-cli -p $port ping > /dev/null 2>&1; then
-              echo "✅ Redis/Valkey on port $port is ready!"
-              break
-            fi
-            if [ $i -eq 30 ]; then
-              echo "❌ Redis/Valkey on port $port failed to start"
-              exit 1
-            fi
-            sleep 1
-          done
-        done
-        sleep 5
-
-    - name: Wait for Valkey Bundle and verify modules
-      run: |
-        echo "Waiting for Valkey Bundle with modules..."
-        # redis-tools already installed in previous step
-        
-        for i in {1..30}; do
-          if redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
-            echo "✅ Valkey Bundle is ready!"
-            echo "📦 Checking loaded modules..."
-            redis-cli -h localhost -p 6379 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"  
-            echo "🔍 Testing JSON command..."
-            redis-cli -h localhost -p 6379 JSON.SET test_ci_key '$' '"test"' || echo "⚠️  JSON module not available"
-            echo "🔍 Testing Search command..."
-            redis-cli -h localhost -p 6379 FT.CREATE test_ci_idx ON JSON PREFIX 1 "test:" SCHEMA name TEXT || echo "⚠️  Search module not available"
-            break
-          fi
-          echo "⏳ Waiting for Valkey Bundle... ($i/30)"
-          sleep 2
-        done
-
-    - name: Run all tests (including JSON/Search modules)
-      run: npm test -- --testPathIgnorePatterns="/tests/cluster/"
-      env:
-        CI: true
-        VALKEY_BUNDLE_HOST: localhost
-        VALKEY_BUNDLE_PORT: 6379
-        VALKEY_HOST: localhost
-        VALKEY_PORT: 6379
-        VALKEY_CLUSTER_PORT_1: 17000
-        VALKEY_CLUSTER_PORT_2: 17001
-        VALKEY_CLUSTER_PORT_3: 17002
-        VALKEY_CLUSTER_PORT_4: 17003
-        VALKEY_CLUSTER_PORT_5: 17004
-        VALKEY_CLUSTER_PORT_6: 17005
-
-    - name: Upload coverage to Codecov
-      if: matrix.node == '20'
-      uses: codecov/codecov-action@v5
-      with:
-        file: ./coverage/lcov.info
-        flags: unittests
-        name: codecov-umbrella
-
-  test-macos:
-    name: Test on macOS with Valkey (core functionality, no modules)
-    runs-on: macos-latest
-    strategy:
-      matrix:
-        node: ['20', '22']
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
-
-    - name: Setup Node.js ${{ matrix.node }}
-      uses: actions/setup-node@v5
-      with:
-        node-version: ${{ matrix.node }}
-        cache: 'npm'
-
-    - name: Install dependencies
-      run: npm ci
-
-    - name: Install GNU coreutils (for gtimeout command)
-      run: brew install coreutils
-
-    - name: Build project
-      run: npm run build
-
-    - name: Install and start Valkey server
-      run: |
-        echo "🔑 Installing Valkey server via Homebrew..."
-        
-        # Install Valkey directly (available in main Homebrew formulae)
-        brew install valkey
-        
-        # Start Valkey server with custom config suitable for testing
-        valkey-server --daemonize yes \
-          --port 6379 \
-          --bind 127.0.0.1 \
-          --save "" \
-          --appendonly no \
-          --maxmemory 256mb \
-          --maxmemory-policy allkeys-lru \
-          --loglevel notice
-
-    - name: Wait for Valkey server
-      run: |
-        echo "⏳ Waiting for Valkey server to be ready..."
-        
-        for i in {1..20}; do
-          if valkey-cli -p 6379 ping > /dev/null 2>&1; then
-            echo "✅ Valkey server is ready!"
-            echo "📋 Server info:"
-            valkey-cli -p 6379 INFO server | head -5
-            break
-          fi
-          echo "⏳ Still waiting for Valkey server... ($i/20)"
-          sleep 2
-        done
-        
-        # Final test
-        valkey-cli -p 6379 ping
-
-    - name: Run core tests (skip module-specific tests)
-      run: |
-        echo "🧪 Running core functionality tests on macOS with Valkey..."
-        echo "ℹ️  Skipping JSON/Search module tests (modules not available in basic Valkey)"
-        
-        # Run tests with timeout to prevent hanging in CI
-        gtimeout 300 npm test 2>/dev/null || {
-          echo "⚠️  Tests timed out or failed - this is expected on macOS without Valkey modules"
-          echo "✅ Core Valkey functionality testing completed"
-          exit 0
-        }
-      env:
-        CI: true
-        SKIP_MODULE_TESTS: true
-        VALKEY_HOST: localhost
-        VALKEY_PORT: 6379
-
-    - name: Test basic adapter functionality with Valkey
-      run: |
-        echo "🔧 Testing basic adapter functionality with Valkey server..."
-        gtimeout 60 node -e "
-          const { Redis } = require('./dist/index.js');
-          const redis = new Redis({ host: 'localhost', port: 6379 });
-          
-          (async () => {
-            try {
-              await redis.set('test:macos:valkey', 'hello-valkey');
-              const result = await redis.get('test:macos:valkey');
-              console.log('✅ Basic Valkey SET/GET test passed:', result);
-              
-              await redis.hset('test:valkey:hash', 'field', 'valkey-value');
-              const hashResult = await redis.hget('test:valkey:hash', 'field');
-              console.log('✅ Basic Valkey HSET/HGET test passed:', hashResult);
-              
-              await redis.quit();
-              console.log('✅ macOS + Valkey compatibility test completed successfully');
-              
-              // Force exit to prevent hanging
-              process.exit(0);
-            } catch (error) {
-              console.error('❌ Valkey basic test failed:', error.message);
-              process.exit(1);
-            }
-          })().catch((error) => {
-            console.error('❌ Unhandled error:', error.message);
-            process.exit(1);
-          });
-        " || {
-          echo "⚠️  Basic test timed out - this may indicate connection issues but is not critical"
-          exit 0
-        }
-
-    - name: Cleanup Valkey server
-      if: always()
-      run: |
-        echo "🧹 Cleaning up Valkey server..."
-        # Stop Valkey gracefully with timeout
-        gtimeout 10 valkey-cli -p 6379 SHUTDOWN NOSAVE || true
-        # Kill any remaining processes
-        pkill valkey-server || true
-        # Wait a moment for cleanup
-        sleep 2
-        echo "✅ Valkey cleanup completed"
-
-  # Note: Full module testing happens on Linux, coverage upload is handled there
-
   lint:
-    name: Lint and Type Check
     runs-on: ubuntu-latest
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v5
-      with:
-        node-version: '22'
-        cache: 'npm'
+  test-standalone:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:standalone
 
-    - name: Install dependencies
-      run: npm ci
+  test-cluster:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:cluster
 
-    - name: Run ESLint
-      run: npm run lint
-
-    - name: Run TypeScript check
-      run: npm run build
-
+  test-json:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build
+      - run: npm run test:json

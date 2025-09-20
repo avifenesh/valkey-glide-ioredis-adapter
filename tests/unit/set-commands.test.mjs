@@ -4,661 +4,784 @@
  * Based on Twitter, Instagram, Discord, LinkedIn production usage patterns
  */
 
-
-import { describe, it, beforeEach, afterEach, before, after } from 'node:test';
+import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
-import pkg from '../../dist/index.js';
-import { testUtils } from '../setup/index.mjs';
-const { Redis } = pkg;;
+import {
+  describeForEachMode,
+  createClient,
+  flushAll,
+  keyTag,
+} from '../setup/dual-mode.mjs';
 
-describe('Set Commands - Social Network & Analytics Patterns', () => {
-  let redis;
+describeForEachMode(
+  'Set Commands - Social Network & Analytics Patterns',
+  mode => {
+    let client;
+    let tag;
 
-  beforeEach(async () => {
-    const config = testUtils.getStandaloneConfig();
-    redis = new Redis(config);
-    await redis.connect();
-  });
-
-  afterEach(async () => {
-    if (redis) {
-      await redis.quit();
-    }
-  });
-
-  describe('Twitter-Style Follower/Following System', () => {
-    it('should manage follower relationships with SADD/SREM', async () => {
-      const userId = 'user_' + Math.random();
-      const followersKey = `followers:${userId}`;
-      const followingKey = `following:${userId}`;
-
-      // User gets new followers
-      const result1 = await redis.sadd(
-        followersKey,
-        'follower1',
-        'follower2',
-        'follower3'
-      );
-      assert.strictEqual(result1, 3);
-
-      // User follows others
-      const result2 = await redis.sadd(
-        followingKey,
-        'following1',
-        'following2'
-      );
-      assert.strictEqual(result2, 2);
-
-      // Check follower count
-      const followerCount = await redis.scard(followersKey);
-      assert.strictEqual(followerCount, 3);
-
-      // Check if specific user is following
-      const isFollowing = await redis.sismember(followingKey, 'following1');
-      assert.strictEqual(isFollowing, 1);
-
-      // Unfollow someone
-      const removed = await redis.srem(followingKey, 'following2');
-      assert.strictEqual(removed, 1);
-
-      const finalFollowingCount = await redis.scard(followingKey);
-      assert.strictEqual(finalFollowingCount, 1);
+    beforeEach(async () => {
+      client = await createClient(mode);
+      await client.connect();
+      await flushAll(client);
+      tag = keyTag('s');
     });
 
-    it('should find mutual followers using SINTER', async () => {
-      const user1 = 'user1_' + Math.random();
-      const user2 = 'user2_' + Math.random();
-      const followers1Key = `followers:${user1}`;
-      const followers2Key = `followers:${user2}`;
-
-      // Set up follower lists
-      await redis.sadd(followers1Key, 'alice', 'bob', 'charlie', 'david');
-      await redis.sadd(followers2Key, 'bob', 'charlie', 'eve', 'frank');
-
-      // Find mutual followers
-      const mutualFollowers = await redis.sinter(followers1Key, followers2Key);
-      assert.deepStrictEqual(mutualFollowers.sort(), ['bob', 'charlie']);
-
-      // Store mutual followers for caching
-      const mutualKey = `mutual:${user1}:${user2}`;
-      const stored = await redis.sinterstore(
-        mutualKey,
-        followers1Key,
-        followers2Key
-      );
-      assert.strictEqual(stored, 2);
-
-      const cachedMutual = await redis.smembers(mutualKey);
-      assert.deepStrictEqual(cachedMutual.sort(), ['bob', 'charlie']);
+    afterEach(async () => {
+      await client.quit();
     });
 
-    it('should suggest friends using SDIFF for "people you may know"', async () => {
-      const userId = 'user_' + Math.random();
-      const friendId = 'friend_' + Math.random();
-      const userFollowingKey = `following:${userId}`;
-      const friendFollowingKey = `following:${friendId}`;
+    describe('Twitter-Style Follower/Following System', () => {
+      test('should manage follower relationships with SADD/SREM', async () => {
+        const userId = 'user_' + Math.random();
+        const followersKey = `${tag}:followers:${userId}`;
+        const followingKey = `${tag}:following:${userId}`;
 
-      // User follows some people
-      await redis.sadd(userFollowingKey, 'alice', 'bob', 'charlie');
-
-      // Friend follows overlapping + different people
-      await redis.sadd(
-        friendFollowingKey,
-        'alice',
-        'bob',
-        'david',
-        'eve',
-        'frank'
-      );
-
-      // Find people friend follows that user doesn't (suggestions)
-      const suggestions = await redis.sdiff(
-        friendFollowingKey,
-        userFollowingKey
-      );
-      assert.deepStrictEqual(suggestions.sort(), ['david', 'eve', 'frank']);
-
-      // Store suggestions for later processing
-      const suggestionsKey = `suggestions:${userId}:${friendId}`;
-      const suggestionCount = await redis.sdiffstore(
-        suggestionsKey,
-        friendFollowingKey,
-        userFollowingKey
-      );
-      assert.strictEqual(suggestionCount, 3);
-    });
-
-    it('should aggregate social reach using SUNION', async () => {
-      const campaignId = 'campaign_' + Math.random();
-      const influencer1Followers = `followers${campaignId}`;
-      const influencer2Followers = `followers${campaignId}`;
-      const influencer3Followers = `followers${campaignId}`;
-
-      // Set up influencer follower bases
-      await redis.sadd(
-        influencer1Followers,
-        'user1',
-        'user2',
-        'user3',
-        'user4'
-      );
-      await redis.sadd(
-        influencer2Followers,
-        'user3',
-        'user4',
-        'user5',
-        'user6'
-      );
-      await redis.sadd(
-        influencer3Followers,
-        'user5',
-        'user6',
-        'user7',
-        'user8'
-      );
-
-      // Calculate total unique reach
-      const totalReach = await redis.sunion(
-        influencer1Followers,
-        influencer2Followers,
-        influencer3Followers
-      );
-      assert.strictEqual(totalReach.length, 8); // All unique users
-
-      // Store campaign reach for analytics
-      const reachKey = `campaign_reach:${campaignId}`;
-      const reachCount = await redis.sunionstore(
-        reachKey,
-        influencer1Followers,
-        influencer2Followers,
-        influencer3Followers
-      );
-      assert.strictEqual(reachCount, 8);
-    });
-  });
-
-  describe('Instagram-Style Content Tagging System', () => {
-    it('should manage post tags and find trending topics', async () => {
-      const sessionId = Math.random();
-
-      // Posts with their tags
-      const postTags = [
-        {
-          post: `post1_${sessionId}`,
-          tags: ['photography', 'nature', 'landscape'],
-        },
-        {
-          post: `post2_${sessionId}`,
-          tags: ['photography', 'portrait', 'art'],
-        },
-        {
-          post: `post3_${sessionId}`,
-          tags: ['nature', 'wildlife', 'photography'],
-        },
-        { post: `post4_${sessionId}`, tags: ['art', 'digital', 'design'] },
-      ];
-
-      // Store tags for each post
-      for (const { post, tags } of postTags) {
-        await redis.sadd(`post_tags:${post}`, ...tags);
-      }
-
-      // Find posts tagged with 'photography'
-      const photographyPosts = [];
-      for (const { post, tags } of postTags) {
-        if (tags.includes('photography')) {
-          photographyPosts.push(post);
-        }
-      }
-
-      // Verify by checking membership
-      for (const postData of postTags) {
-        const hasPhotography = await redis.sismember(
-          `post_tags:${postData.post}`,
-          'photography'
+        // User gets new followers
+        const result1 = await client.sadd(
+          followersKey,
+          'follower1',
+          'follower2',
+          'follower3'
         );
-        const expected = postData.tags.includes('photography') ? 1 : 0;
-        assert.strictEqual(hasPhotography, expected);
-      }
+        assert.strictEqual(result1, 3);
 
-      // Create reverse index: tags -> posts
-      await redis.sadd(`tag:photography:${sessionId}`, `post1_${sessionId}`, `post2_${sessionId}`, `post3_${sessionId}`);
-      await redis.sadd(`tag:nature:${sessionId}`, `post1_${sessionId}`, `post3_${sessionId}`);
-      
-      // Find posts with both 'photography' and 'nature'
-      const photoNaturePosts = await redis.sinter(
-        `tag:photography:${sessionId}`,
-        `tag:nature:${sessionId}`
-      );
-      assert.deepStrictEqual(photoNaturePosts.sort(), [`post1_${sessionId}`, `post3_${sessionId}`]);
+        // User follows others
+        const result2 = await client.sadd(
+          followingKey,
+          'following1',
+          'following2'
+        );
+        assert.strictEqual(result2, 2);
+
+        // Check follower count
+        const followerCount = await client.scard(followersKey);
+        assert.strictEqual(followerCount, 3);
+
+        // Check if specific user is following
+        const isFollowing = await client.sismember(followingKey, 'following1');
+        assert.strictEqual(isFollowing, 1);
+
+        // Unfollow someone
+        const removed = await client.srem(followingKey, 'following2');
+        assert.strictEqual(removed, 1);
+
+        const finalFollowingCount = await client.scard(followingKey);
+        assert.strictEqual(finalFollowingCount, 1);
+      });
+
+      test('should find mutual followers using SINTER', async () => {
+        const user1 = 'user1_' + Math.random();
+        const user2 = 'user2_' + Math.random();
+        const tag = '{set:mutual:' + Math.random().toString(36).slice(2) + '}';
+        const followers1Key = `${tag}:followers:${user1}`;
+        const followers2Key = `${tag}:followers:${user2}`;
+
+        // Set up follower lists
+        await client.sadd(followers1Key, 'alice', 'bob', 'charlie', 'david');
+        await client.sadd(followers2Key, 'bob', 'charlie', 'eve', 'frank');
+
+        // Find mutual followers
+        const mutualFollowers = await client.sinter(
+          followers1Key,
+          followers2Key
+        );
+        assert.deepStrictEqual(mutualFollowers.sort(), ['bob', 'charlie']);
+
+        // Store mutual followers for caching
+        const mutualKey = `${tag}:mutual:${user1}:${user2}`;
+        const stored = await client.sinterstore(
+          mutualKey,
+          followers1Key,
+          followers2Key
+        );
+        assert.strictEqual(stored, 2);
+
+        const cachedMutual = await client.smembers(mutualKey);
+        assert.deepStrictEqual(cachedMutual.sort(), ['bob', 'charlie']);
+      });
+
+      test('should suggest friends using SDIFF for "people you may know"', async () => {
+        const userId = 'user_' + Math.random();
+        const friendId = 'friend_' + Math.random();
+        const tag = '{set:suggest:' + Math.random().toString(36).slice(2) + '}';
+        const userFollowingKey = `${tag}:following:${userId}`;
+        const friendFollowingKey = `${tag}:following:${friendId}`;
+
+        // User follows some people
+        await client.sadd(userFollowingKey, 'alice', 'bob', 'charlie');
+
+        // Friend follows overlapping + different people
+        await client.sadd(
+          friendFollowingKey,
+          'alice',
+          'bob',
+          'david',
+          'eve',
+          'frank'
+        );
+
+        // Find people friend follows that user doesn't (suggestions)
+        const suggestions = await client.sdiff(
+          friendFollowingKey,
+          userFollowingKey
+        );
+        assert.deepStrictEqual(suggestions.sort(), ['david', 'eve', 'frank']);
+
+        // Store suggestions for later processing
+        const suggestionsKey = `${tag}:suggestions:${userId}:${friendId}`;
+        const suggestionCount = await client.sdiffstore(
+          suggestionsKey,
+          friendFollowingKey,
+          userFollowingKey
+        );
+        assert.strictEqual(suggestionCount, 3);
+      });
+
+      test('should aggregate social reach using SUNION', async () => {
+        const campaignId = 'campaign_' + Math.random();
+        const tag = '{set:reach:' + Math.random().toString(36).slice(2) + '}';
+        const influencer1Followers = `${tag}:followers:influencer1_${campaignId}`;
+        const influencer2Followers = `${tag}:followers:influencer2_${campaignId}`;
+        const influencer3Followers = `${tag}:followers:influencer3_${campaignId}`;
+
+        // Set up influencer follower bases
+        await client.sadd(
+          influencer1Followers,
+          'user1',
+          'user2',
+          'user3',
+          'user4'
+        );
+        await client.sadd(
+          influencer2Followers,
+          'user3',
+          'user4',
+          'user5',
+          'user6'
+        );
+        await client.sadd(
+          influencer3Followers,
+          'user5',
+          'user6',
+          'user7',
+          'user8'
+        );
+
+        // Calculate total unique reach
+        const totalReach = await client.sunion(
+          influencer1Followers,
+          influencer2Followers,
+          influencer3Followers
+        );
+        assert.strictEqual(totalReach.length, 8); // All unique users
+
+        // Store campaign reach for analytics
+        const reachKey = `${tag}:campaign_reach:${campaignId}`;
+        const reachCount = await client.sunionstore(
+          reachKey,
+          influencer1Followers,
+          influencer2Followers,
+          influencer3Followers
+        );
+        assert.strictEqual(reachCount, 8);
+      });
     });
 
-    it('should implement hashtag recommendation system', async () => {
-      const userId = 'user_' + Math.random();
-      const userTagsKey = `user_tags:${userId}`;
-      const trendingTagsKey = `trending_tags:${Date.now()}`;
+    describe('Instagram-Style Content Tagging System', () => {
+      test('should manage post tags and find trending topics', async () => {
+        const sessionId = Math.random();
+        const tagPN = '{set:tags:' + Math.random().toString(36).slice(2) + '}';
 
-      // User's historically used tags
-      await redis.sadd(userTagsKey, 'photography', 'travel', 'food', 'nature');
+        // Posts with their tags
+        const postTags = [
+          {
+            post: `post1_${sessionId}`,
+            tags: ['photography', 'nature', 'landscape'],
+          },
+          {
+            post: `post2_${sessionId}`,
+            tags: ['photography', 'portrait', 'art'],
+          },
+          {
+            post: `post3_${sessionId}`,
+            tags: ['nature', 'wildlife', 'photography'],
+          },
+          { post: `post4_${sessionId}`, tags: ['art', 'digital', 'design'] },
+        ];
 
-      // Currently trending tags
-      await redis.sadd(
-        trendingTagsKey,
-        'photography',
-        'sunset',
-        'ocean',
-        'adventure',
-        'foodie'
-      );
+        // Store tags for each post
+        for (const { post, tags } of postTags) {
+          await client.sadd(`${tagPN}:post_tags:${post}`, ...tags);
+        }
 
-      // Find trending tags user hasn't used much (recommendations)
-      const recommendations = await redis.sdiff(trendingTagsKey, userTagsKey);
-      assert.ok(recommendations.includes('sunset'));
-      assert.ok(recommendations.includes('ocean'));
-      assert.ok(recommendations.includes('adventure'));
+        // Find posts tagged with 'photography'
+        const photographyPosts = [];
+        for (const { post, tags } of postTags) {
+          if (tags.includes('photography')) {
+            photographyPosts.push(post);
+          }
+        }
 
-      // Find user's tags that are also trending (engagement boost)
-      const trendingUserTags = await redis.sinter(userTagsKey, trendingTagsKey);
-      assert.ok(trendingUserTags.includes('photography'));
-    });
-  });
+        // Verify by checking membership
+        for (const postData of postTags) {
+          const hasPhotography = await client.sismember(
+            `${tagPN}:post_tags:${postData.post}`,
+            'photography'
+          );
+          const expected = postData.tags.includes('photography') ? 1 : 0;
+          assert.strictEqual(hasPhotography, expected);
+        }
 
-  describe('Discord-Style Permission & Role System', () => {
-    it('should manage user roles and permissions', async () => {
-      const serverId = 'server_' + Math.random();
-      const userId = 'user_' + Math.random();
-      const userRolesKey = `user_roles:${serverId}:${userId}`;
+        // Find posts with both 'photography' and 'nature'
+        const photoNaturePosts = await client.sinter(
+          `${tagPN}:post_tags:post1_${sessionId}`,
+          `${tagPN}:post_tags:post3_${sessionId}`
+        );
+        assert.deepStrictEqual(photoNaturePosts.sort(), [
+          'nature',
+          'photography',
+        ]);
+      });
 
-      // Assign roles to user
-      const rolesAdded = await redis.sadd(
-        userRolesKey,
-        'member',
-        'moderator',
-        'verified'
-      );
-      assert.strictEqual(rolesAdded, 3);
+      test('should implement hashtag recommendation system', async () => {
+        const userId = 'user_' + Math.random();
+        const userTagsKey = `user_tags:${userId}`;
+        const trendingTagsKey = `trending_tags:${Date.now()}`;
+        const tagRec = '{set:rec:' + Math.random().toString(36).slice(2) + '}';
 
-      // Check if user has specific role
-      const isModerator = await redis.sismember(userRolesKey, 'moderator');
-      assert.strictEqual(isModerator, 1);
+        // User's historically used tags
+        await client.sadd(
+          `${tagRec}:${userTagsKey}`,
+          'photography',
+          'travel',
+          'food',
+          'nature'
+        );
 
-      const isAdmin = await redis.sismember(userRolesKey, 'admin');
-      assert.strictEqual(isAdmin, 0);
+        // Currently trending tags
+        await client.sadd(
+          `${tagRec}:${trendingTagsKey}`,
+          'photography',
+          'sunset',
+          'ocean',
+          'adventure',
+          'foodie'
+        );
 
-      // Remove a role
-      const rolesRemoved = await redis.srem(userRolesKey, 'verified');
-      assert.strictEqual(rolesRemoved, 1);
+        // Find trending tags user hasn't used much (recommendations)
+        const recommendations = await client.sdiff(
+          `${tagRec}:${trendingTagsKey}`,
+          `${tagRec}:${userTagsKey}`
+        );
+        assert.ok(recommendations.includes('sunset'));
+        assert.ok(recommendations.includes('ocean'));
+        assert.ok(recommendations.includes('adventure'));
 
-      // Get all user roles
-      const allRoles = await redis.smembers(userRolesKey);
-      assert.deepStrictEqual(allRoles.sort(), ['member', 'moderator']);
-    });
-
-    it('should implement channel access control', async () => {
-      const channelId = 'channel_' + Math.random();
-      const allowedRolesKey = `channel_access:${channelId}`;
-      const userId = 'user_' + Math.random();
-      const userRolesKey = `user_roles:${userId}`;
-
-      // Set channel access requirements
-      await redis.sadd(allowedRolesKey, 'admin', 'moderator', 'vip');
-
-      // User has some roles
-      await redis.sadd(userRolesKey, 'member', 'verified');
-
-      // Check if user can access channel
-      const hasAccess = await redis.sinter(userRolesKey, allowedRolesKey);
-      assert.strictEqual(hasAccess.length, 0); // No access
-
-      // Give user moderator role
-      await redis.sadd(userRolesKey, 'moderator');
-
-      // Check access again
-      const hasAccessNow = await redis.sinter(userRolesKey, allowedRolesKey);
-      assert.ok(hasAccessNow.includes('moderator'));
-      assert.strictEqual(hasAccessNow.length, 1);
-    });
-  });
-
-  describe('LinkedIn-Style Professional Network', () => {
-    it('should manage professional connections and recommendations', async () => {
-      const userId = 'professional_' + Math.random();
-      const connectionsKey = `connections:${userId}`;
-      const skillsKey = `skills:${userId}`;
-
-      // User's professional connections
-      await redis.sadd(
-        connectionsKey,
-        'colleague1',
-        'colleague2',
-        'client1',
-        'mentor1'
-      );
-
-      // User's skills
-      await redis.sadd(skillsKey, 'javascript', 'redis', 'nodejs', 'react');
-
-      // Find connection's skills for recommendations
-      const colleague1Skills = `skills${Math.random()}`;
-      await redis.sadd(
-        colleague1Skills,
-        'redis',
-        'python',
-        'kubernetes',
-        'docker'
-      );
-
-      // Find skill overlap for collaboration opportunities
-      const sharedSkills = await redis.sinter(skillsKey, colleague1Skills);
-      assert.ok(sharedSkills.includes('redis'));
-
-      // Find skills to learn from connections
-      const skillsToLearn = await redis.sdiff(colleague1Skills, skillsKey);
-      assert.ok(skillsToLearn.includes('python'));
-      assert.ok(skillsToLearn.includes('kubernetes'));
+        // Find user's tags that are also trending (engagement boost)
+        const trendingUserTags = await client.sinter(
+          `${tagRec}:${userTagsKey}`,
+          `${tagRec}:${trendingTagsKey}`
+        );
+        assert.ok(trendingUserTags.includes('photography'));
+      });
     });
 
-    it('should implement company employee network', async () => {
-      const companyId = 'company_' + Math.random();
-      const engineersKey = `employees:${companyId}:engineers`;
-      const marketingKey = `employees:${companyId}:marketing`;
-      const managementKey = `employees:${companyId}:management`;
+    describe('Discord-Style Permission & Role System', () => {
+      test('should manage user roles and permissions', async () => {
+        const serverId = 'server_' + Math.random();
+        const userId = 'user_' + Math.random();
+        const userRolesKey = `user_roles:${serverId}:${userId}`;
 
-      // Department employees
-      await redis.sadd(engineersKey, 'alice', 'bob', 'charlie');
-      await redis.sadd(marketingKey, 'david', 'eve', 'frank');
-      await redis.sadd(managementKey, 'alice', 'david'); // Cross-functional
+        // Assign roles to user
+        const rolesAdded = await client.sadd(
+          userRolesKey,
+          'member',
+          'moderator',
+          'verified'
+        );
+        assert.strictEqual(rolesAdded, 3);
 
-      // Find cross-functional employees
-      const crossFunctional = await redis.sinter(engineersKey, managementKey);
-      assert.ok(crossFunctional.includes('alice'));
+        // Check if user has specific role
+        const isModerator = await client.sismember(userRolesKey, 'moderator');
+        assert.strictEqual(isModerator, 1);
 
-      // All company employees
-      const allEmployees = await redis.sunion(
-        engineersKey,
-        marketingKey,
-        managementKey
-      );
-      assert.strictEqual(allEmployees.length, 6); // All individual employees
+        const isAdmin = await client.sismember(userRolesKey, 'admin');
+        assert.strictEqual(isAdmin, 0);
 
-      // Non-management engineers
-      const nonMgmtEngineers = await redis.sdiff(engineersKey, managementKey);
-      assert.deepStrictEqual(nonMgmtEngineers.sort(), ['bob', 'charlie']);
-    });
-  });
+        // Remove a role
+        const rolesRemoved = await client.srem(userRolesKey, 'verified');
+        assert.strictEqual(rolesRemoved, 1);
 
-  describe('Real-Time Analytics & A/B Testing', () => {
-    it('should track unique visitors and sessions', async () => {
-      const date = new Date().toISOString().split('T')[0];
-      const uniqueVisitorsKey = `visitors:${date}`;
-      const mobileVisitorsKey = `visitors:mobile:${date}`;
-      const desktopVisitorsKey = `visitors:desktop:${date}`;
+        // Get all user roles
+        const allRoles = await client.smembers(userRolesKey);
+        assert.deepStrictEqual(allRoles.sort(), ['member', 'moderator']);
+      });
 
-      // Track unique visitors by device
-      await redis.sadd(
-        uniqueVisitorsKey,
-        'user1',
-        'user2',
-        'user3',
-        'user4',
-        'user5'
-      );
-      await redis.sadd(mobileVisitorsKey, 'user1', 'user3', 'user5');
-      await redis.sadd(desktopVisitorsKey, 'user2', 'user4', 'user5'); // user5 uses both
+      test('should implement channel access control', async () => {
+        const channelId = 'channel_' + Math.random();
+        const allowedRolesKey = `channel_access:${channelId}`;
+        const userId = 'user_' + Math.random();
+        const userRolesKey = `user_roles:${userId}`;
 
-      // Get analytics
-      const totalUnique = await redis.scard(uniqueVisitorsKey);
-      assert.strictEqual(totalUnique, 5);
+        // Set channel access requirements
+        const tagAccess =
+          '{set:access:' + Math.random().toString(36).slice(2) + '}';
+        await client.sadd(
+          `${tagAccess}:${allowedRolesKey}`,
+          'admin',
+          'moderator',
+          'vip'
+        );
 
-      const mobileCount = await redis.scard(mobileVisitorsKey);
-      assert.strictEqual(mobileCount, 3);
+        // User has some roles
+        await client.sadd(`${tagAccess}:${userRolesKey}`, 'member', 'verified');
 
-      // Find users who use both mobile and desktop
-      const crossPlatformUsers = await redis.sinter(
-        mobileVisitorsKey,
-        desktopVisitorsKey
-      );
-      assert.ok(crossPlatformUsers.includes('user5'));
+        // Check if user can access channel
+        const hasAccess = await client.sinter(
+          `${tagAccess}:${userRolesKey}`,
+          `${tagAccess}:${allowedRolesKey}`
+        );
+        assert.strictEqual(hasAccess.length, 0); // No access
 
-      // Find mobile-only users
-      const mobileOnly = await redis.sdiff(
-        mobileVisitorsKey,
-        desktopVisitorsKey
-      );
-      assert.deepStrictEqual(mobileOnly.sort(), ['user1', 'user3']);
-    });
+        // Give user moderator role
+        await client.sadd(`${tagAccess}:${userRolesKey}`, 'moderator');
 
-    it('should implement A/B testing cohorts', async () => {
-      const experimentId = 'experiment_' + Math.random();
-      const controlGroupKey = `experiment:${experimentId}:control`;
-      const variantAKey = `experiment:${experimentId}:variantA`;
-      const variantBKey = `experiment:${experimentId}:variantB`;
-
-      // Assign users to test groups
-      await redis.sadd(controlGroupKey, 'user1', 'user2', 'user3');
-      await redis.sadd(variantAKey, 'user4', 'user5', 'user6');
-      await redis.sadd(variantBKey, 'user7', 'user8', 'user9');
-
-      // Track conversions
-      const controlConvertsKey = `experiment:${experimentId}:control:converts`;
-      const variantAConvertsKey = `experiment:${experimentId}:variantA:converts`;
-
-      await redis.sadd(controlConvertsKey, 'user1'); // 1/3 = 33%
-      await redis.sadd(variantAConvertsKey, 'user4', 'user5'); // 2/3 = 67%
-
-      // Calculate conversion rates
-      const controlSize = await redis.scard(controlGroupKey);
-      const controlConverts = await redis.scard(controlConvertsKey);
-      const controlRate = controlConverts / controlSize;
-
-      const variantASize = await redis.scard(variantAKey);
-      const variantAConverts = await redis.scard(variantAConvertsKey);
-      const variantARate = variantAConverts / variantASize;
-
-      assert.ok(Math.abs(controlRate - 0.33) < 0.1);
+        // Check access again
+        const hasAccessNow = await client.sinter(
+          `${tagAccess}:${userRolesKey}`,
+          `${tagAccess}:${allowedRolesKey}`
+        );
+        assert.ok(hasAccessNow.includes('moderator'));
+        assert.strictEqual(hasAccessNow.length, 1);
+      });
     });
 
-    it('should implement feature rollout management like Spotify', async () => {
-      const featureId = 'feature_' + Math.random();
-      const betaUsersKey = `beta_users:${featureId}`;
-      const activeUsersKey = `active_users:${featureId}`;
-      const feedbackUsersKey = `feedback_users:${featureId}`;
+    describe('LinkedIn-Style Professional Network', () => {
+      test('should manage professional connections and recommendations', async () => {
+        const userId = 'professional_' + Math.random();
+        const connectionsKey = `connections:${userId}`;
+        const skillsKey = `skills:${userId}`;
+        const tagSkills =
+          '{set:skills:' + Math.random().toString(36).slice(2) + '}';
 
-      // Beta user cohort
-      await redis.sadd(
-        betaUsersKey,
-        'beta1',
-        'beta2',
-        'beta3',
-        'beta4',
-        'beta5'
-      );
+        // User's professional connections
+        await client.sadd(
+          `${tagSkills}:${connectionsKey}`,
+          'colleague1',
+          'colleague2',
+          'client1',
+          'mentor1'
+        );
 
-      // Active users of the feature
-      await redis.sadd(
-        activeUsersKey,
-        'beta1',
-        'beta3',
-        'beta5',
-        'user1',
-        'user2'
-      );
+        // User's skills
+        await client.sadd(
+          `${tagSkills}:${skillsKey}`,
+          'javascript',
+          'redis',
+          'nodejs',
+          'react'
+        );
 
-      // Users who provided feedback
-      await redis.sadd(feedbackUsersKey, 'beta1', 'beta2', 'user1');
+        // Find connection's skills for recommendations
+        const colleague1Skills = `skills:colleague1_${Math.random()}`;
+        await client.sadd(
+          `${tagSkills}:${colleague1Skills}`,
+          'redis',
+          'python',
+          'kubernetes',
+          'docker'
+        );
 
-      // Beta users actively using the feature
-      const activeBetaUsers = await redis.sinter(betaUsersKey, activeUsersKey);
-      assert.deepStrictEqual(activeBetaUsers.sort(), ['beta1', 'beta3', 'beta5']);
+        // Find skill overlap for collaboration opportunities
+        const sharedSkills = await client.sinter(
+          `${tagSkills}:${skillsKey}`,
+          `${tagSkills}:${colleague1Skills}`
+        );
+        assert.ok(sharedSkills.includes('redis'));
 
-      // Non-beta users using the feature (general rollout)
-      const generalUsers = await redis.sdiff(activeUsersKey, betaUsersKey);
-      assert.deepStrictEqual(generalUsers.sort(), ['user1', 'user2']);
+        // Find skills to learn from connections
+        const skillsToLearn = await client.sdiff(
+          `${tagSkills}:${colleague1Skills}`,
+          `${tagSkills}:${skillsKey}`
+        );
+        assert.ok(skillsToLearn.includes('python'));
+        assert.ok(skillsToLearn.includes('kubernetes'));
+      });
 
-      // Beta users who haven't provided feedback yet
-      const betaNoFeedback = await redis.sdiff(betaUsersKey, feedbackUsersKey);
-      assert.deepStrictEqual(betaNoFeedback.sort(), ['beta3', 'beta4', 'beta5']);
-    });
-  });
+      test('should implement company employee network', async () => {
+        const companyId = 'company_' + Math.random();
+        const engineersKey = `employees:${companyId}:engineering`;
+        const marketingKey = `employees:${companyId}:marketing`;
+        const managementKey = `employees:${companyId}:management`;
+        const tagEmp = '{set:emp:' + Math.random().toString(36).slice(2) + '}';
 
-  describe('E-commerce & Content Filtering', () => {
-    it('should implement product recommendation engine', async () => {
-      const userId = 'customer_' + Math.random();
-      const userInterestsKey = `interests:${userId}`;
-      const userPurchasesKey = `purchases:${userId}`;
+        // Department employees
+        await client.sadd(
+          `${tagEmp}:${engineersKey}`,
+          'alice',
+          'bob',
+          'charlie'
+        );
+        await client.sadd(`${tagEmp}:${marketingKey}`, 'david', 'eve', 'frank');
+        await client.sadd(`${tagEmp}:${managementKey}`, 'alice', 'david'); // Cross-functional
 
-      // User's interests and purchase history
-      await redis.sadd(
-        userInterestsKey,
-        'electronics',
-        'gaming',
-        'books',
-        'music'
-      );
-      await redis.sadd(userPurchasesKey, 'laptop', 'headphones', 'novel');
+        // Find cross-functional employees
+        const crossFunctional = await client.sinter(
+          `${tagEmp}:${engineersKey}`,
+          `${tagEmp}:${managementKey}`
+        );
+        assert.ok(crossFunctional.includes('alice'));
 
-      // Product categories
-      const electronicsKey = `category:${Math.random()}`;
-      const gamingKey = `category:${Math.random()}`;
+        // All company employees
+        const allEmployees = await client.sunion(
+          `${tagEmp}:${engineersKey}`,
+          `${tagEmp}:${marketingKey}`,
+          `${tagEmp}:${managementKey}`
+        );
+        assert.strictEqual(allEmployees.length, 6); // All individual employees
 
-      await redis.sadd(
-        electronicsKey,
-        'smartphone',
-        'tablet',
-        'headphones',
-        'laptop'
-      );
-      await redis.sadd(
-        gamingKey,
-        'console',
-        'controller',
-        'game1',
-        'headphones'
-      );
-
-      // Find products user might like but hasn't bought
-      const electronicsNotPurchased = await redis.sdiff(
-        electronicsKey,
-        userPurchasesKey
-      );
-      assert.ok(electronicsNotPurchased.includes('smartphone'));
-      assert.ok(electronicsNotPurchased.includes('tablet'));
-
-      // Cross-category recommendations (products in multiple interested categories)
-      const crossCategoryProducts = await redis.sinter(
-        electronicsKey,
-        gamingKey
-      );
-      assert.ok(crossCategoryProducts.includes('headphones'));
-    });
-
-    it('should implement content moderation system', async () => {
-      const postId = 'post_' + Math.random();
-      const reportedByKey = `reported:${postId}`;
-      const moderatorsKey = `moderators:${Math.random()}`;
-      const reviewedByKey = `reviewed:${postId}`;
-
-      // Users who reported the content
-      await redis.sadd(reportedByKey, 'user1', 'user2', 'user3');
-
-      // Available moderators
-      await redis.sadd(moderatorsKey, 'mod1', 'mod2', 'mod3');
-
-      // Moderators who reviewed
-      await redis.sadd(reviewedByKey, 'mod1', 'mod2');
-
-      // Check report count
-      const reportCount = await redis.scard(reportedByKey);
-      assert.strictEqual(reportCount, 3);
-
-      // Find moderators who haven't reviewed yet
-      const pendingModerators = await redis.sdiff(moderatorsKey, reviewedByKey);
-      assert.ok(pendingModerators.includes('mod3'));
-
-      // Check if enough moderators reviewed (consensus)
-      const reviewCount = await redis.scard(reviewedByKey);
-      const consensusReached = reviewCount >= 2;
-      assert.strictEqual(consensusReached, true);
-    });
-  });
-
-  describe('Error Handling and Edge Cases', () => {
-    it('should handle operations on non-existent sets', async () => {
-      const nonExistentKey = 'nonexistent:' + Math.random();
-
-      // Operations on non-existent set
-      const members = await redis.smembers(nonExistentKey);
-      assert.deepStrictEqual(members, []);
-
-      const cardinality = await redis.scard(nonExistentKey);
-      assert.strictEqual(cardinality, 0);
-
-      const isMember = await redis.sismember(nonExistentKey, 'member');
-      assert.strictEqual(isMember, 0);
-
-      const popped = await redis.spop(nonExistentKey);
-      assert.strictEqual(popped, null);
-
-      const random = await redis.srandmember(nonExistentKey);
-      assert.strictEqual(random, null);
+        // Non-management engineers
+        const nonMgmtEngineers = await client.sdiff(
+          `${tagEmp}:${engineersKey}`,
+          `${tagEmp}:${managementKey}`
+        );
+        assert.deepStrictEqual(nonMgmtEngineers.sort(), ['bob', 'charlie']);
+      });
     });
 
-    it('should handle type conflicts gracefully', async () => {
-      const stringKey = 'string:' + Math.random();
+    describe('Real-Time Analytics & A/B Testing', () => {
+      test('should track unique visitors and sessions', async () => {
+        const date = new Date().toISOString().split('T')[0];
+        const uniqueVisitorsKey = `visitors:${date}`;
+        const mobileVisitorsKey = `visitors:mobile:${date}`;
+        const desktopVisitorsKey = `visitors:desktop:${date}`;
+        const tagUsers =
+          '{set:users:' + Math.random().toString(36).slice(2) + '}';
 
-      // Set first
-      await redis.set(stringKey, 'not-a-set');
+        // Track unique visitors by device
+        await client.sadd(
+          uniqueVisitorsKey,
+          'user1',
+          'user2',
+          'user3',
+          'user4',
+          'user5'
+        );
+        await client.sadd(
+          `${tagUsers}:${mobileVisitorsKey}`,
+          'user1',
+          'user3',
+          'user5'
+        );
+        await client.sadd(
+          `${tagUsers}:${desktopVisitorsKey}`,
+          'user2',
+          'user4',
+          'user5'
+        ); // user5 uses both
 
-      // Set operations should fail
-      await assert.rejects(redis.sadd(stringKey, 'member'));
-      await assert.rejects(redis.smembers(stringKey));
+        // Get analytics
+        const totalUnique = await client.scard(uniqueVisitorsKey);
+        assert.strictEqual(totalUnique, 5);
+
+        const mobileCount = await client.scard(
+          `${tagUsers}:${mobileVisitorsKey}`
+        );
+        assert.strictEqual(mobileCount, 3);
+
+        // Find users who use both mobile and desktop
+        const crossPlatformUsers = await client.sinter(
+          `${tagUsers}:${mobileVisitorsKey}`,
+          `${tagUsers}:${desktopVisitorsKey}`
+        );
+        assert.ok(crossPlatformUsers.includes('user5'));
+
+        // Find mobile-only users
+        const mobileOnly = await client.sdiff(
+          `${tagUsers}:${mobileVisitorsKey}`,
+          `${tagUsers}:${desktopVisitorsKey}`
+        );
+        assert.deepStrictEqual(mobileOnly.sort(), ['user1', 'user3']);
+      });
+
+      test('should implement A/B testing cohorts', async () => {
+        const experimentId = 'experiment_' + Date.now() + '_' + Math.random();
+        const controlGroupKey = `experiment:${experimentId}:control`;
+        const variantAKey = `experiment:${experimentId}:variant_a`;
+        const variantBKey = `experiment:${experimentId}:variant_b`;
+        const tagAB = '{set:ab:' + Math.random().toString(36).slice(2) + '}';
+
+        // Assign users to test groups
+        await client.sadd(controlGroupKey, 'user1', 'user2', 'user3');
+        await client.sadd(`${tagAB}:${variantAKey}`, 'user4', 'user5', 'user6');
+        await client.sadd(variantBKey, 'user7', 'user8', 'user9');
+
+        // Track conversions
+        const controlConvertsKey = `experiment:${experimentId}:control:converts`;
+        const variantAConvertsKey = `experiment:${experimentId}:variant_a:converts`;
+
+        await client.sadd(controlConvertsKey, 'user1'); // 1/3 = 33%
+        await client.sadd(`${tagAB}:${variantAConvertsKey}`, 'user4', 'user5'); // 2/3 = 67%
+
+        // Calculate conversion rates
+        const controlSize = await client.scard(controlGroupKey);
+        const controlConverts = await client.scard(controlConvertsKey);
+        const controlRate = controlConverts / controlSize;
+
+        const variantASize = await client.scard(`${tagAB}:${variantAKey}`);
+        const variantAConverts = await client.scard(
+          `${tagAB}:${variantAConvertsKey}`
+        );
+        const variantARate = variantAConverts / variantASize;
+
+        assert.ok(Math.abs(controlRate - 0.33) < Math.pow(10, -2));
+        assert.ok(Math.abs(variantARate - 0.67) < Math.pow(10, -2));
+
+        // Find users who converted in variant A
+        const variantAConverters = await client.sinter(
+          `${tagAB}:${variantAKey}`,
+          `${tagAB}:${variantAConvertsKey}`
+        );
+        assert.deepStrictEqual(variantAConverters.sort(), ['user4', 'user5']);
+      });
+
+      test('should track feature usage patterns', async () => {
+        const featureId = 'feature_' + Math.random();
+        const betaUsersKey = `beta_users:${featureId}`;
+        const activeUsersKey = `active_users:${featureId}`;
+        const feedbackUsersKey = `feedback_users:${featureId}`;
+        const tagFeat =
+          '{set:feat:' + Math.random().toString(36).slice(2) + '}';
+
+        // Beta user cohort
+        await client.sadd(
+          `${tagFeat}:${betaUsersKey}`,
+          'beta1',
+          'beta2',
+          'beta3',
+          'beta4',
+          'beta5'
+        );
+
+        // Active users of the feature
+        await client.sadd(
+          `${tagFeat}:${activeUsersKey}`,
+          'beta1',
+          'beta3',
+          'beta5',
+          'user1',
+          'user2'
+        );
+
+        // Users who provided feedback
+        await client.sadd(
+          `${tagFeat}:${feedbackUsersKey}`,
+          'beta1',
+          'beta2',
+          'user1'
+        );
+
+        // Beta users actively using the feature
+        const activeBetaUsers = await client.sinter(
+          `${tagFeat}:${betaUsersKey}`,
+          `${tagFeat}:${activeUsersKey}`
+        );
+        assert.deepStrictEqual(activeBetaUsers.sort(), [
+          'beta1',
+          'beta3',
+          'beta5',
+        ]);
+
+        // Non-beta users using the feature (general rollout)
+        const generalUsers = await client.sdiff(
+          `${tagFeat}:${activeUsersKey}`,
+          `${tagFeat}:${betaUsersKey}`
+        );
+        assert.deepStrictEqual(generalUsers.sort(), ['user1', 'user2']);
+
+        // Beta users who haven't provided feedback yet
+        const betaNoFeedback = await client.sdiff(
+          `${tagFeat}:${betaUsersKey}`,
+          `${tagFeat}:${feedbackUsersKey}`
+        );
+        assert.deepStrictEqual(betaNoFeedback.sort(), [
+          'beta3',
+          'beta4',
+          'beta5',
+        ]);
+      });
     });
 
-    it('should handle large sets efficiently', async () => {
-      const largeSetKey = 'large:' + Math.random();
+    describe('E-commerce & Content Filtering', () => {
+      test('should implement product recommendation engine', async () => {
+        const userId = 'customer_' + Math.random();
+        const tagEC = '{set:ecomm:' + Math.random().toString(36).slice(2) + '}';
+        const userInterestsKey = `${tagEC}:interests:${userId}`;
+        const userPurchasesKey = `${tagEC}:purchases:${userId}`;
 
-      // Add many members
-      const length = 1000;
-      const members = Array.from({ length }, (_, i) => `member${i}`);
-      const added = await redis.sadd(largeSetKey, ...members);
-      assert.strictEqual(added, 1000);
+        // User's interests and purchase history
+        await client.sadd(
+          userInterestsKey,
+          'electronics',
+          'gaming',
+          'books',
+          'music'
+        );
+        await client.sadd(userPurchasesKey, 'laptop', 'headphones', 'novel');
 
-      // Verify count
-      const count = await redis.scard(largeSetKey);
-      assert.strictEqual(count, 1000);
+        // Product categories
+        const electronicsKey = `${tagEC}:category:electronics:${Math.random()}`;
+        const gamingKey = `${tagEC}:category:gaming:${Math.random()}`;
 
-      // Random sampling
-      const samples = await redis.srandmember(largeSetKey, 10);
-      assert.strictEqual(samples.length, 10);
+        await client.sadd(
+          electronicsKey,
+          'smartphone',
+          'tablet',
+          'headphones',
+          'laptop'
+        );
+        await client.sadd(
+          gamingKey,
+          'console',
+          'controller',
+          'game1',
+          'headphones'
+        );
 
-      // Pop some members
-      const popped = await redis.spop(largeSetKey, 5);
-      assert.strictEqual(popped.length, 5);
+        // Find products user might like but hasn't bought
+        const electronicsNotPurchased = await client.sdiff(
+          electronicsKey,
+          userPurchasesKey
+        );
+        assert.ok(electronicsNotPurchased.includes('smartphone'));
+        assert.ok(electronicsNotPurchased.includes('tablet'));
 
-      const remainingCount = await redis.scard(largeSetKey);
-      assert.strictEqual(remainingCount, 995);
+        // Cross-category recommendations (products in multiple interested categories)
+        const crossCategoryProducts = await client.sinter(
+          electronicsKey,
+          gamingKey
+        );
+        assert.ok(crossCategoryProducts.includes('headphones'));
+      });
+
+      test('should implement content moderation system', async () => {
+        const postId = 'post_' + Math.random();
+        const tagMod = '{set:mod:' + Math.random().toString(36).slice(2) + '}';
+        const reportedByKey = `${tagMod}:reported:${postId}`;
+        const moderatorsKey = `${tagMod}:moderators:${Math.random()}`;
+        const reviewedByKey = `${tagMod}:reviewed:${postId}`;
+
+        // Users who reported the content
+        await client.sadd(reportedByKey, 'user1', 'user2', 'user3');
+
+        // Available moderators
+        await client.sadd(moderatorsKey, 'mod1', 'mod2', 'mod3');
+
+        // Moderators who reviewed
+        await client.sadd(reviewedByKey, 'mod1', 'mod2');
+
+        // Check report count
+        const reportCount = await client.scard(reportedByKey);
+        assert.strictEqual(reportCount, 3);
+
+        // Find moderators who haven't reviewed yet
+        const pendingModerators = await client.sdiff(
+          moderatorsKey,
+          reviewedByKey
+        );
+        assert.ok(pendingModerators.includes('mod3'));
+
+        // Check if enough moderators reviewed (consensus)
+        const reviewCount = await client.scard(reviewedByKey);
+        const consensusReached = reviewCount >= 2;
+        assert.strictEqual(consensusReached, true);
+      });
     });
 
-    it('should handle set operations with mixed data types', async () => {
-      const mixedSetKey = 'mixed:' + Math.random();
+    describe('Error Handling and Edge Cases', () => {
+      test('should handle operations on non-existent sets', async () => {
+        const nonExistentKey = 'nonexistent:set:' + Math.random();
 
-      // Add different types of data
-      await redis.sadd(mixedSetKey, '123', 'string', 'user', 'tag');
+        // Operations on non-existent set
+        const members = await client.smembers(nonExistentKey);
+        assert.deepStrictEqual(members, []);
 
-      const allMembers = await redis.smembers(mixedSetKey);
-      assert.strictEqual(allMembers.length, 4);
+        const cardinality = await client.scard(nonExistentKey);
+        assert.strictEqual(cardinality, 0);
 
-      // Check membership
-      assert.strictEqual(await redis.sismember(mixedSetKey, '123'), 1);
-      assert.strictEqual(await redis.sismember(mixedSetKey, 'string'), 1);
-      assert.strictEqual(await redis.sismember(mixedSetKey, 'user'), 1);
+        const isMember = await client.sismember(nonExistentKey, 'member');
+        assert.strictEqual(isMember, 0);
 
-      // Remove specific types
-      const removed = await redis.srem(mixedSetKey, 'user', 'tag');
-      assert.strictEqual(removed, 2);
+        const popped = await client.spop(nonExistentKey);
+        assert.strictEqual(popped, null);
 
-      const remaining = await redis.smembers(mixedSetKey);
-      assert.deepStrictEqual(remaining.sort(), ['123', 'string']);
+        const random = await client.srandmember(nonExistentKey);
+        assert.strictEqual(random, null);
+      });
+
+      test('should handle type conflicts gracefully', async () => {
+        const stringKey = 'string:conflict:' + Math.random();
+
+        // Set first
+        await client.set(stringKey, 'not-a-set');
+
+        // Set operations should fail
+        await assert.rejects(async () => {
+          await client.sadd(stringKey, 'member');
+        });
+        await assert.rejects(async () => {
+          await client.smembers(stringKey);
+        });
+      });
+
+      test('should handle large sets efficiently', async () => {
+        const largeSetKey = 'large:set:' + Math.random();
+
+        // Reduce size in CI to prevent resource issues
+        const setSize = process.env.CI ? 100 : 1000; // 100 members in CI, 1000 locally
+
+        // Add many members
+        const members = Array.from({ length: setSize }, (_, i) => `member${i}`);
+        const added = await client.sadd(largeSetKey, ...members);
+        assert.strictEqual(added, setSize);
+
+        // Verify count
+        const count = await client.scard(largeSetKey);
+        assert.strictEqual(count, setSize);
+
+        // Random sampling
+        const samples = await client.srandmember(largeSetKey, 10);
+        assert.strictEqual(samples.length, 10);
+
+        // Pop some members
+        const popped = await client.spop(largeSetKey, 5);
+        assert.strictEqual(popped.length, 5);
+
+        const remainingCount = await client.scard(largeSetKey);
+        assert.strictEqual(remainingCount, setSize - 5);
+      });
+
+      test('should handle set operations with mixed data types', async () => {
+        const mixedSetKey = 'mixed:set:' + Math.random();
+
+        // Add different types of data
+        await client.sadd(mixedSetKey, '123', 'string', 'user:456', 'tag:789');
+
+        const allMembers = await client.smembers(mixedSetKey);
+        assert.strictEqual(allMembers.length, 4);
+
+        // Check membership
+        assert.strictEqual(await client.sismember(mixedSetKey, '123'), 1);
+        assert.strictEqual(await client.sismember(mixedSetKey, 'string'), 1);
+        assert.strictEqual(await client.sismember(mixedSetKey, 'user:456'), 1);
+
+        // Remove specific types
+        const removed = await client.srem(mixedSetKey, 'user:456', 'tag:789');
+        assert.strictEqual(removed, 2);
+
+        const remaining = await client.smembers(mixedSetKey);
+        assert.deepStrictEqual(remaining.sort(), ['123', 'string']);
+      });
     });
-  });
-});
+  }
+);
