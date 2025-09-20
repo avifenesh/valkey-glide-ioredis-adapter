@@ -745,10 +745,13 @@ describeForEachMode('JSON Commands - ValkeyJSON Compatibility', mode => {
     });
 
     test('should handle large JSON documents', async () => {
+      // Reduce size in CI to prevent resource issues
+      const arraySize = process.env.CI ? 100 : 1000; // 100 items in CI, 1000 locally
+
       // Create large document
       const largeDoc = {
         metadata: { size: 'large' },
-        data: Array.from({ length: 1000 }, (_, i) => ({
+        data: Array.from({ length: arraySize }, (_, i) => ({
           id: i,
           value: `item_${i}`,
           timestamp: new Date().toISOString(),

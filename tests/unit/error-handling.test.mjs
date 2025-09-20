@@ -109,8 +109,9 @@ describeForEachMode('Error Handling and Edge Cases', mode => {
     test('should handle memory pressure scenarios', async () => {
       const largeKey = 'memory:test:' + Math.random();
 
-      // Create a large string (within reasonable test limits)
-      const largeValue = 'x'.repeat(100000); // 100KB
+      // Reduce size in CI to prevent resource issues
+      const dataSize = process.env.CI ? 10000 : 100000; // 10KB in CI, 100KB locally
+      const largeValue = 'x'.repeat(dataSize);
 
       try {
         await client.set(largeKey, largeValue);

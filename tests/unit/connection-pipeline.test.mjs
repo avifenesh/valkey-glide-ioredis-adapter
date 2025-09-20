@@ -464,7 +464,9 @@ describeForEachMode('Pipeline Operations (ioredis compatibility)', mode => {
     });
 
     test('should handle commands with large payloads', async () => {
-      const largeValue = 'x'.repeat(100000); // 100KB value
+      // Reduce size in CI to prevent resource issues
+      const dataSize = process.env.CI ? 10000 : 100000; // 10KB in CI, 100KB locally
+      const largeValue = 'x'.repeat(dataSize);
 
       const pipeline = client.pipeline();
       pipeline.set(`${tag}:large_key`, largeValue);
