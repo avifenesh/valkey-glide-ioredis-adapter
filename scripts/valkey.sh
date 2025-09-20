@@ -14,7 +14,7 @@ show_usage() {
     echo "Usage: $0 {start|stop} {standalone|cluster|bundle}"
     echo ""
     echo "Commands:"
-    echo "  start standalone  - Start single Valkey instance on port 6383"
+    echo "  start standalone  - Start single Valkey instance with JSON module on port 6383"
     echo "  start cluster     - Start 3-node cluster with JSON module on ports 17000-17002"
     echo "  start bundle      - Start Valkey with JSON module on port 6380"
     echo "  stop standalone   - Stop standalone instance"
@@ -24,11 +24,11 @@ show_usage() {
 }
 
 start_standalone() {
-    echo -e "${YELLOW}Starting standalone Valkey on port 6383...${NC}"
+    echo -e "${YELLOW}Starting standalone Valkey with JSON module on port 6383...${NC}"
     docker run -d \
         --name valkey-standalone \
         -p 6383:6379 \
-        valkey/valkey:latest \
+        valkey/valkey-bundle:latest \
         >/dev/null
 
     # Wait for readiness
