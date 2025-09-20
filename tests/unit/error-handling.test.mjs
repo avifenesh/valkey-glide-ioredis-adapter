@@ -15,11 +15,7 @@ import {
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis, Cluster } = pkg;
-import {
-  describeForEachMode,
-  createClient,
-  keyTag,
-} from '../setup/dual-mode.mjs';
+import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
 import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describeForEachMode('Error Handling and Edge Cases', mode => {

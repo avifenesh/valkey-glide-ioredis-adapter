@@ -8,11 +8,7 @@ import assert from 'node:assert';
 // Import the module using the same pattern as existing tests
 import pkg from '../../dist/index.js';
 const { Redis, Cluster } = pkg;
-import {
-  describeForEachMode,
-  createClient,
-  keyTag,
-} from '../setup/dual-mode.mjs';
+import { describeForEachMode, createClient, keyTag} from '../setup/dual-mode.mjs';
 import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describeForEachMode('Clean Valkey Adapter Basic Functionality', mode => {
