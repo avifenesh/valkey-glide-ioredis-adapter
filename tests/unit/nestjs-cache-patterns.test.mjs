@@ -15,9 +15,13 @@ import {
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis, Cluster } = pkg;
-import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  keyTag,
+} from '../setup/dual-mode.mjs';
 
-describeForEachMode('NestJS Cache Integration Patterns', (mode) => {
+describeForEachMode('NestJS Cache Integration Patterns', mode => {
   let client;
   const tag = keyTag('nestjs');
 

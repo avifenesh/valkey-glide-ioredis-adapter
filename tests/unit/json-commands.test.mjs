@@ -22,23 +22,35 @@ import {
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis, Cluster } = pkg;
-import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  keyTag,
+} from '../setup/dual-mode.mjs';
 
 // Helper to check if JSON module is available
 async function checkJSONModule(client) {
   try {
-    await client.customCommand(['JSON.SET', 'test:json:check', '$', '{"test": true}']);
+    await client.customCommand([
+      'JSON.SET',
+      'test:json:check',
+      '$',
+      '{"test": true}',
+    ]);
     await client.customCommand(['JSON.DEL', 'test:json:check']);
     return true;
   } catch (error) {
-    if (error.message.includes('unknown command') || error.message.includes('JSON.SET')) {
+    if (
+      error.message.includes('unknown command') ||
+      error.message.includes('JSON.SET')
+    ) {
       return false;
     }
     return true; // Other errors indicate the command exists
   }
 }
 
-describeForEachMode('JSON Commands - ValkeyJSON Compatibility', (mode) => {
+describeForEachMode('JSON Commands - ValkeyJSON Compatibility', mode => {
   let client;
   const tag = keyTag('json');
 
@@ -49,7 +61,9 @@ describeForEachMode('JSON Commands - ValkeyJSON Compatibility', (mode) => {
     // Check if JSON module is available
     const hasJSON = await checkJSONModule(client);
     if (!hasJSON) {
-      throw new Error(`JSON module not available in ${mode} mode. Make sure to start with JSON module support.`);
+      throw new Error(
+        `JSON module not available in ${mode} mode. Make sure to start with JSON module support.`
+      );
     }
 
     // Clean slate: flush all data to prevent test pollution
@@ -87,7 +101,11 @@ describeForEachMode('JSON Commands - ValkeyJSON Compatibility', (mode) => {
       };
 
       // Set JSON document
-      const setResult = await client.jsonSet(`${tag}:user:123`, '$', userProfile);
+      const setResult = await client.jsonSet(
+        `${tag}:user:123`,
+        '$',
+        userProfile
+      );
       assert.strictEqual(setResult, 'OK');
 
       // Get entire document
@@ -207,7 +225,10 @@ describeForEachMode('JSON Commands - ValkeyJSON Compatibility', (mode) => {
       );
       assert.strictEqual(stringType, 'string');
 
-      const numberType = await client.jsonType(`${tag}:pathtest`, '$.metadata.total');
+      const numberType = await client.jsonType(
+        `${tag}:pathtest`,
+        '$.metadata.total'
+      );
       assert.strictEqual(numberType, 'integer');
     });
 
@@ -226,7 +247,10 @@ describeForEachMode('JSON Commands - ValkeyJSON Compatibility', (mode) => {
 
     test('should clear paths to empty/null values', async () => {
       // Clear an array
-      const clearCount = await client.jsonClear(`${tag}:pathtest`, '$.metadata.tags');
+      const clearCount = await client.jsonClear(
+        `${tag}:pathtest`,
+        '$.metadata.tags'
+      );
       assert.strictEqual(clearCount, 1);
 
       // Verify array is empty
@@ -282,7 +306,10 @@ describeForEachMode('JSON Commands - ValkeyJSON Compatibility', (mode) => {
       assert.ok(result);
 
       // Verify result
-      const final = await client.jsonGet(`${tag}:counters`, '$.stats.page_views');
+      const final = await client.jsonGet(
+        `${tag}:counters`,
+        '$.stats.page_views'
+      );
       const parsed = JSON.parse(final);
       assert.strictEqual(parsed, 200);
     });
@@ -309,7 +336,10 @@ describeForEachMode('JSON Commands - ValkeyJSON Compatibility', (mode) => {
       assert.ok(newLength > 0);
 
       // Verify result
-      const result = await client.jsonGet(`${tag}:strings`, '$.messages.welcome');
+      const result = await client.jsonGet(
+        `${tag}:strings`,
+        '$.messages.welcome'
+      );
       const parsed = JSON.parse(result);
       assert.strictEqual(parsed, 'Hello World');
     });
@@ -376,7 +406,11 @@ describeForEachMode('JSON Commands - ValkeyJSON Compatibility', (mode) => {
       assert.ok(popped);
 
       // Pop from specific index
-      const poppedAtIndex = await client.jsonArrPop(`${tag}:arrays`, '$.numbers', 0);
+      const poppedAtIndex = await client.jsonArrPop(
+        `${tag}:arrays`,
+        '$.numbers',
+        0
+      );
       assert.ok(poppedAtIndex);
 
       // Verify results
@@ -391,7 +425,12 @@ describeForEachMode('JSON Commands - ValkeyJSON Compatibility', (mode) => {
 
     test('should trim arrays', async () => {
       // Trim to keep only middle element
-      const newLength = await client.jsonArrTrim(`${tag}:arrays`, '$.numbers', 1, 1);
+      const newLength = await client.jsonArrTrim(
+        `${tag}:arrays`,
+        '$.numbers',
+        1,
+        1
+      );
       assert.strictEqual(newLength, 1);
 
       // Verify result
@@ -428,7 +467,10 @@ describeForEachMode('JSON Commands - ValkeyJSON Compatibility', (mode) => {
     });
 
     test('should get object length', async () => {
-      const configLength = await client.jsonObjLen(`${tag}:objects`, '$.config');
+      const configLength = await client.jsonObjLen(
+        `${tag}:objects`,
+        '$.config'
+      );
       assert.strictEqual(configLength, 4);
 
       const userLength = await client.jsonObjLen(`${tag}:objects`, '$.user');
@@ -450,11 +492,17 @@ describeForEachMode('JSON Commands - ValkeyJSON Compatibility', (mode) => {
 
     test('should toggle boolean values', async () => {
       // Toggle true to false
-      const result1 = await client.jsonToggle(`${tag}:booleans`, '$.flags.enabled');
+      const result1 = await client.jsonToggle(
+        `${tag}:booleans`,
+        '$.flags.enabled'
+      );
       assert.strictEqual(result1, 0); // 0 for false
 
       // Toggle false to true
-      const result2 = await client.jsonToggle(`${tag}:booleans`, '$.flags.debug');
+      const result2 = await client.jsonToggle(
+        `${tag}:booleans`,
+        '$.flags.debug'
+      );
       assert.strictEqual(result2, 1); // 1 for true
 
       // Verify results
@@ -502,7 +550,11 @@ describeForEachMode('JSON Commands - ValkeyJSON Compatibility', (mode) => {
       });
 
       // Decrease stock
-      await client.jsonNumIncrBy(`${tag}:product:prod_123`, '$.stock_count', -1);
+      await client.jsonNumIncrBy(
+        `${tag}:product:prod_123`,
+        '$.stock_count',
+        -1
+      );
 
       // Get updated product
       const updated = await client.jsonGet(`${tag}:product:prod_123`);
@@ -548,7 +600,11 @@ describeForEachMode('JSON Commands - ValkeyJSON Compatibility', (mode) => {
       );
 
       // Update preferences
-      await client.jsonSet(`${tag}:session:sess_789`, '$.preferences.theme', 'dark');
+      await client.jsonSet(
+        `${tag}:session:sess_789`,
+        '$.preferences.theme',
+        'dark'
+      );
 
       // Get final session state
       const finalSession = await client.jsonGet(`${tag}:session:sess_789`);

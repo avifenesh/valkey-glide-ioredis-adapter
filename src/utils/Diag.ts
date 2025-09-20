@@ -6,11 +6,7 @@
  *  - Or set granular flags: `ADAPTER_DIAG_CONNECT=1`, `ADAPTER_DIAG_LIFECYCLE=1`
  */
 
-type Scope =
-  | 'connect'
-  | 'lifecycle'
-  | 'commands'
-  | 'pubsub';
+type Scope = 'connect' | 'lifecycle' | 'commands' | 'pubsub';
 
 const GLOBAL_FLAG = 'ADAPTER_DIAG';
 const FLAGS: Record<Scope, string> = {
@@ -44,7 +40,7 @@ export function log(scope: Scope, message: string, meta?: unknown) {
   if (!enabled(scope)) return;
   // Single-line, grep-friendly format
   // Example: 2025-09-14T12:34:56.789Z [connect] begin {"host":"127.0.0.1","port":6383}
-  // eslint-disable-next-line no-console
+
   console.log(`${ts()} [${scope}] ${message}${safeMeta(meta)}`);
 }
 
@@ -53,4 +49,3 @@ export function isEnabled(scope?: Scope) {
 }
 
 export default { log, isEnabled };
-

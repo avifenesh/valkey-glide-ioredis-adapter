@@ -22,33 +22,39 @@ import {
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis, Cluster } = pkg;
-import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  keyTag,
+} from '../setup/dual-mode.mjs';
 
-describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mode) => {
-  let client;
-  const tag = keyTag('script');
+describeForEachMode(
+  'Script Commands - Atomic Operations & Business Logic',
+  mode => {
+    let client;
+    const tag = keyTag('script');
 
-  beforeEach(async () => {
-    client = await createClient(mode);
+    beforeEach(async () => {
+      client = await createClient(mode);
 
-    await client.connect();
+      await client.connect();
 
-    // Clean slate: flush all data to prevent test pollution
-    // GLIDE's flushall is multislot safe
-    try {
-      await client.flushall();
-    } catch (error) {
-      console.warn('Warning: Could not flush database:', error.message);
-    }
-  });
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
+    });
 
-  afterEach(async () => {
-    await client.quit();
-  });
+    afterEach(async () => {
+      await client.quit();
+    });
 
-  describe('Rate Limiting Patterns', () => {
-    test('should implement sliding window rate limiter with Lua script', async () => {
-      const rateLimitScript = `
+    describe('Rate Limiting Patterns', () => {
+      test('should implement sliding window rate limiter with Lua script', async () => {
+        const rateLimitScript = `
         local key = KEYS[1]
         local window = tonumber(ARGV[1])
         local limit = tonumber(ARGV[2])
@@ -70,54 +76,54 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         end
       `;
 
-      const key = `${tag}:rate_limit:user:${Math.random()}`;
-      const windowMs = 60000; // 1 minute
-      const limit = 5; // 5 requests per minute
+        const key = `${tag}:rate_limit:user:${Math.random()}`;
+        const windowMs = 60000; // 1 minute
+        const limit = 5; // 5 requests per minute
 
-      // Make 3 requests - all should be allowed
-      for (let i = 0; i < 3; i++) {
-        const result = await client.eval(
-          rateLimitScript,
-          1,
-          key,
-          windowMs.toString(),
-          limit.toString(),
-          Date.now().toString()
-        );
+        // Make 3 requests - all should be allowed
+        for (let i = 0; i < 3; i++) {
+          const result = await client.eval(
+            rateLimitScript,
+            1,
+            key,
+            windowMs.toString(),
+            limit.toString(),
+            Date.now().toString()
+          );
 
-        assert.ok(Array.isArray(result));
-        assert.strictEqual(result[0], 1); // Request allowed
-        assert.strictEqual(result[1], limit - i - 1); // Remaining requests (after current request)
-      }
-
-      // Make 3 more requests - 2 should be allowed, 1 should be blocked
-      let allowedCount = 0;
-      let blockedCount = 0;
-
-      for (let i = 0; i < 3; i++) {
-        const result = await client.eval(
-          rateLimitScript,
-          1,
-          key,
-          windowMs.toString(),
-          limit.toString(),
-          Date.now().toString()
-        );
-
-        if (result[0] === 1) {
-          allowedCount++;
-        } else {
-          blockedCount++;
+          assert.ok(Array.isArray(result));
+          assert.strictEqual(result[0], 1); // Request allowed
+          assert.strictEqual(result[1], limit - i - 1); // Remaining requests (after current request)
         }
-      }
 
-      // Verify overall behavior - requests were processed
-      assert.strictEqual(allowedCount + blockedCount, 3);
-      assert.ok(allowedCount >= 0); // At least some should be processed
-    });
+        // Make 3 more requests - 2 should be allowed, 1 should be blocked
+        let allowedCount = 0;
+        let blockedCount = 0;
 
-    test('should implement token bucket rate limiter like Stripe API', async () => {
-      const tokenBucketScript = `
+        for (let i = 0; i < 3; i++) {
+          const result = await client.eval(
+            rateLimitScript,
+            1,
+            key,
+            windowMs.toString(),
+            limit.toString(),
+            Date.now().toString()
+          );
+
+          if (result[0] === 1) {
+            allowedCount++;
+          } else {
+            blockedCount++;
+          }
+        }
+
+        // Verify overall behavior - requests were processed
+        assert.strictEqual(allowedCount + blockedCount, 3);
+        assert.ok(allowedCount >= 0); // At least some should be processed
+      });
+
+      test('should implement token bucket rate limiter like Stripe API', async () => {
+        const tokenBucketScript = `
         local bucket_key = KEYS[1]
         local max_tokens = tonumber(ARGV[1])
         local refill_rate = tonumber(ARGV[2])
@@ -148,56 +154,56 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         end
       `;
 
-      const bucketKey = `${tag}:token_bucket:api:${Math.random()}`;
-      const maxTokens = 10;
-      const refillRate = 2; // 2 tokens per second
-      const currentTime = Date.now();
+        const bucketKey = `${tag}:token_bucket:api:${Math.random()}`;
+        const maxTokens = 10;
+        const refillRate = 2; // 2 tokens per second
+        const currentTime = Date.now();
 
-      // Request 3 tokens - should be granted
-      const result1 = await client.eval(
-        tokenBucketScript,
-        1,
-        bucketKey,
-        maxTokens.toString(),
-        refillRate.toString(),
-        currentTime.toString(),
-        '3'
-      );
+        // Request 3 tokens - should be granted
+        const result1 = await client.eval(
+          tokenBucketScript,
+          1,
+          bucketKey,
+          maxTokens.toString(),
+          refillRate.toString(),
+          currentTime.toString(),
+          '3'
+        );
 
-      assert.strictEqual(result1[0], 1); // Granted
-      assert.strictEqual(result1[1], 7); // 7 tokens remaining
+        assert.strictEqual(result1[0], 1); // Granted
+        assert.strictEqual(result1[1], 7); // 7 tokens remaining
 
-      // Request 8 tokens - should be denied (only 7 available)
-      const result2 = await client.eval(
-        tokenBucketScript,
-        1,
-        bucketKey,
-        maxTokens.toString(),
-        refillRate.toString(),
-        (currentTime + 100).toString(),
-        '8'
-      );
+        // Request 8 tokens - should be denied (only 7 available)
+        const result2 = await client.eval(
+          tokenBucketScript,
+          1,
+          bucketKey,
+          maxTokens.toString(),
+          refillRate.toString(),
+          (currentTime + 100).toString(),
+          '8'
+        );
 
-      assert.strictEqual(result2[0], 0); // Denied
-      assert.strictEqual(result2[1], 7); // Still 7 tokens
+        assert.strictEqual(result2[0], 0); // Denied
+        assert.strictEqual(result2[1], 7); // Still 7 tokens
 
-      // Wait and request again - should get more tokens due to refill
-      const result3 = await client.eval(
-        tokenBucketScript,
-        1,
-        bucketKey,
-        maxTokens.toString(),
-        refillRate.toString(),
-        (currentTime + 2000).toString(), // 2 seconds later
-        '5'
-      );
+        // Wait and request again - should get more tokens due to refill
+        const result3 = await client.eval(
+          tokenBucketScript,
+          1,
+          bucketKey,
+          maxTokens.toString(),
+          refillRate.toString(),
+          (currentTime + 2000).toString(), // 2 seconds later
+          '5'
+        );
 
-      assert.strictEqual(result3[0], 1); // Granted (bucket refilled)
-      assert.ok(result3[1] >= 0); // Some tokens remaining
-    });
+        assert.strictEqual(result3[0], 1); // Granted (bucket refilled)
+        assert.ok(result3[1] >= 0); // Some tokens remaining
+      });
 
-    test('should implement fixed window rate limiter like Discord', async () => {
-      const fixedWindowScript = `
+      test('should implement fixed window rate limiter like Discord', async () => {
+        const fixedWindowScript = `
         local key = KEYS[1]
         local window_seconds = tonumber(ARGV[1])
         local limit = tonumber(ARGV[2])
@@ -220,47 +226,47 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         end
       `;
 
-      const key = `${tag}:fixed_rate:channel:${Math.random()}`;
-      const windowSeconds = 10; // 10 second window
-      const limit = 3; // 3 messages per 10 seconds
-      // Use fixed timestamp to avoid timing-related flakiness in CI
-      const baseTime = 1600000000000; // Fixed timestamp (2020-09-13)
+        const key = `${tag}:fixed_rate:channel:${Math.random()}`;
+        const windowSeconds = 10; // 10 second window
+        const limit = 3; // 3 messages per 10 seconds
+        // Use fixed timestamp to avoid timing-related flakiness in CI
+        const baseTime = 1600000000000; // Fixed timestamp (2020-09-13)
 
-      // Send 3 messages in the same window - all should be allowed
-      for (let i = 0; i < 3; i++) {
-        const result = await client.eval(
+        // Send 3 messages in the same window - all should be allowed
+        for (let i = 0; i < 3; i++) {
+          const result = await client.eval(
+            fixedWindowScript,
+            1,
+            key,
+            windowSeconds.toString(),
+            limit.toString(),
+            (baseTime + i * 100).toString()
+          );
+
+          assert.strictEqual(result[0], 1); // Allowed
+          assert.strictEqual(result[1], limit - i - 1); // Remaining
+          assert.ok(result[2] > 0); // Reset time
+        }
+
+        // 4th message should be denied
+        const result4 = await client.eval(
           fixedWindowScript,
           1,
           key,
           windowSeconds.toString(),
           limit.toString(),
-          (baseTime + i * 100).toString()
+          (baseTime + 400).toString()
         );
 
-        assert.strictEqual(result[0], 1); // Allowed
-        assert.strictEqual(result[1], limit - i - 1); // Remaining
-        assert.ok(result[2] > 0); // Reset time
-      }
-
-      // 4th message should be denied
-      const result4 = await client.eval(
-        fixedWindowScript,
-        1,
-        key,
-        windowSeconds.toString(),
-        limit.toString(),
-        (baseTime + 400).toString()
-      );
-
-      assert.strictEqual(result4[0], 0); // Denied
-      assert.strictEqual(result4[1], 0); // No remaining
-      assert.ok(result4[2] > 0); // Time until reset
+        assert.strictEqual(result4[0], 0); // Denied
+        assert.strictEqual(result4[1], 0); // No remaining
+        assert.ok(result4[2] > 0); // Time until reset
+      });
     });
-  });
 
-  describe('Atomic Business Operations', () => {
-    test('should implement atomic inventory management like Shopify', async () => {
-      const inventoryScript = `
+    describe('Atomic Business Operations', () => {
+      test('should implement atomic inventory management like Shopify', async () => {
+        const inventoryScript = `
         local product_key = KEYS[1]
         local order_id = ARGV[1]
         local requested_qty = tonumber(ARGV[2])
@@ -294,65 +300,65 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         end
       `;
 
-      const productKey = `${tag}:inventory:product:${Math.random()}`;
+        const productKey = `${tag}:inventory:product:${Math.random()}`;
 
-      // Initialize inventory
-      await client.hmset(
-        productKey,
-        'available',
-        '100',
-        'reserved',
-        '0',
-        'total',
-        '100'
-      );
+        // Initialize inventory
+        await client.hmset(
+          productKey,
+          'available',
+          '100',
+          'reserved',
+          '0',
+          'total',
+          '100'
+        );
 
-      // Reserve 25 items for order 1
-      const reservation1 = await client.eval(
-        inventoryScript,
-        1,
-        productKey,
-        'ORD-001',
-        '25'
-      );
+        // Reserve 25 items for order 1
+        const reservation1 = await client.eval(
+          inventoryScript,
+          1,
+          productKey,
+          'ORD-001',
+          '25'
+        );
 
-      assert.strictEqual(reservation1[0], 1); // Success
-      assert.strictEqual(reservation1[1], 75); // 75 available
-      assert.strictEqual(reservation1[2], 25); // 25 reserved
-      assert.strictEqual(reservation1[3], 'reserved');
+        assert.strictEqual(reservation1[0], 1); // Success
+        assert.strictEqual(reservation1[1], 75); // 75 available
+        assert.strictEqual(reservation1[2], 25); // 25 reserved
+        assert.strictEqual(reservation1[3], 'reserved');
 
-      // Reserve 80 items for order 2 - should fail
-      const reservation2 = await client.eval(
-        inventoryScript,
-        1,
-        productKey,
-        'ORD-002',
-        '80'
-      );
+        // Reserve 80 items for order 2 - should fail
+        const reservation2 = await client.eval(
+          inventoryScript,
+          1,
+          productKey,
+          'ORD-002',
+          '80'
+        );
 
-      assert.strictEqual(reservation2[0], 0); // Failure
-      assert.strictEqual(reservation2[1], 75); // Still 75 available
-      assert.strictEqual(reservation2[2], 25); // Still 25 reserved
-      assert.strictEqual(reservation2[3], 'insufficient_stock');
+        assert.strictEqual(reservation2[0], 0); // Failure
+        assert.strictEqual(reservation2[1], 75); // Still 75 available
+        assert.strictEqual(reservation2[2], 25); // Still 25 reserved
+        assert.strictEqual(reservation2[3], 'insufficient_stock');
 
-      // Reserve 50 items for order 3 - should succeed
-      const reservation3 = await client.eval(
-        inventoryScript,
-        1,
-        productKey,
-        'ORD-003',
-        '50'
-      );
+        // Reserve 50 items for order 3 - should succeed
+        const reservation3 = await client.eval(
+          inventoryScript,
+          1,
+          productKey,
+          'ORD-003',
+          '50'
+        );
 
-      assert.strictEqual(reservation3[0], 1); // Success
-      assert.strictEqual(reservation3[1], 25); // 25 available
-      assert.strictEqual(reservation3[2], 75); // 75 reserved
+        assert.strictEqual(reservation3[0], 1); // Success
+        assert.strictEqual(reservation3[1], 25); // 25 available
+        assert.strictEqual(reservation3[2], 75); // 75 reserved
+      });
     });
-  });
 
-  describe('Distributed Locking Patterns', () => {
-    test('should implement distributed lock with expiration like GitHub', async () => {
-      const distributedLockScript = `
+    describe('Distributed Locking Patterns', () => {
+      test('should implement distributed lock with expiration like GitHub', async () => {
+        const distributedLockScript = `
         local lock_key = KEYS[1]
         local lock_value = ARGV[1]
         local expiration_ms = tonumber(ARGV[2])
@@ -376,61 +382,61 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         end
       `;
 
-      const lockKey = `${tag}:repo:lock:${Math.random()}`;
-      const process1Id = 'process-1-uuid';
-      const process2Id = 'process-2-uuid';
-      const expirationMs = 5000; // 5 seconds
+        const lockKey = `${tag}:repo:lock:${Math.random()}`;
+        const process1Id = 'process-1-uuid';
+        const process2Id = 'process-2-uuid';
+        const expirationMs = 5000; // 5 seconds
 
-      // Process 1 acquires lock
-      const lock1 = await client.eval(
-        distributedLockScript,
-        1,
-        lockKey,
-        process1Id,
-        expirationMs.toString(),
-        Date.now().toString()
-      );
+        // Process 1 acquires lock
+        const lock1 = await client.eval(
+          distributedLockScript,
+          1,
+          lockKey,
+          process1Id,
+          expirationMs.toString(),
+          Date.now().toString()
+        );
 
-      assert.strictEqual(lock1[0], 1); // Acquired
-      assert.strictEqual(lock1[1], process1Id); // Correct owner
-      assert.strictEqual(lock1[2], expirationMs); // Correct expiration
+        assert.strictEqual(lock1[0], 1); // Acquired
+        assert.strictEqual(lock1[1], process1Id); // Correct owner
+        assert.strictEqual(lock1[2], expirationMs); // Correct expiration
 
-      // Process 2 tries to acquire same lock - should fail
-      const lock2 = await client.eval(
-        distributedLockScript,
-        1,
-        lockKey,
-        process2Id,
-        expirationMs.toString(),
-        Date.now().toString()
-      );
+        // Process 2 tries to acquire same lock - should fail
+        const lock2 = await client.eval(
+          distributedLockScript,
+          1,
+          lockKey,
+          process2Id,
+          expirationMs.toString(),
+          Date.now().toString()
+        );
 
-      assert.strictEqual(lock2[0], 0); // Failed
-      assert.strictEqual(lock2[1], process1Id); // Lock owned by process 1
-      assert.ok(lock2[2] <= expirationMs); // TTL remaining
+        assert.strictEqual(lock2[0], 0); // Failed
+        assert.strictEqual(lock2[1], process1Id); // Lock owned by process 1
+        assert.ok(lock2[2] <= expirationMs); // TTL remaining
 
-      // Process 1 extends its own lock - should succeed
-      const lock3 = await client.eval(
-        distributedLockScript,
-        1,
-        lockKey,
-        process1Id,
-        expirationMs.toString(),
-        Date.now().toString()
-      );
+        // Process 1 extends its own lock - should succeed
+        const lock3 = await client.eval(
+          distributedLockScript,
+          1,
+          lockKey,
+          process1Id,
+          expirationMs.toString(),
+          Date.now().toString()
+        );
 
-      assert.strictEqual(lock3[0], 1); // Extended
-      assert.strictEqual(lock3[1], process1Id); // Still owned by process 1
+        assert.strictEqual(lock3[0], 1); // Extended
+        assert.strictEqual(lock3[1], process1Id); // Still owned by process 1
+      });
     });
-  });
 
-  describe('Counter and Analytics Patterns', () => {
-    test('should implement atomic multi-counter updates for analytics', async () => {
-      if (mode === 'cluster') {
-        // Skip in cluster mode - multi-key analytics scripts access keys across different hash slots
-        return;
-      }
-      const analyticsScript = `
+    describe('Counter and Analytics Patterns', () => {
+      test('should implement atomic multi-counter updates for analytics', async () => {
+        if (mode === 'cluster') {
+          // Skip in cluster mode - multi-key analytics scripts access keys across different hash slots
+          return;
+        }
+        const analyticsScript = `
         local event_type = ARGV[1]
         local user_id = ARGV[2]
         local timestamp = tonumber(ARGV[3])
@@ -473,92 +479,94 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         return counters_updated
       `;
 
-      const eventType = `page_view_${Math.random()}`;
-      const userId = `user_${Math.random()}`;
-      const timestamp = Math.floor(Date.now() / 1000);
+        const eventType = `page_view_${Math.random()}`;
+        const userId = `user_${Math.random()}`;
+        const timestamp = Math.floor(Date.now() / 1000);
 
-      // Record multiple events
-      const result1 = await client.eval(
-        analyticsScript,
-        0,
-        eventType,
-        userId,
-        timestamp.toString()
-      );
+        // Record multiple events
+        const result1 = await client.eval(
+          analyticsScript,
+          0,
+          eventType,
+          userId,
+          timestamp.toString()
+        );
 
-      assert.ok(Array.isArray(result1));
-      assert.strictEqual(result1.length, 5); // 5 counters updated
+        assert.ok(Array.isArray(result1));
+        assert.strictEqual(result1.length, 5); // 5 counters updated
 
-      // Verify counter types and values - use unique events to avoid interference
-      const counterMap = new Map(result1);
-      assert.ok(counterMap.get('daily') >= 1);
-      assert.ok(counterMap.get('hourly') >= 1);
-      assert.ok(counterMap.get('user') >= 1);
-      assert.ok(counterMap.get('global') >= 1);
-      assert.ok(counterMap.get('unique_users') >= 1);
+        // Verify counter types and values - use unique events to avoid interference
+        const counterMap = new Map(result1);
+        assert.ok(counterMap.get('daily') >= 1);
+        assert.ok(counterMap.get('hourly') >= 1);
+        assert.ok(counterMap.get('user') >= 1);
+        assert.ok(counterMap.get('global') >= 1);
+        assert.ok(counterMap.get('unique_users') >= 1);
 
-      // Record another event for same user - unique users should not increase
-      const result2 = await client.eval(
-        analyticsScript,
-        0,
-        eventType,
-        userId,
-        timestamp.toString()
-      );
+        // Record another event for same user - unique users should not increase
+        const result2 = await client.eval(
+          analyticsScript,
+          0,
+          eventType,
+          userId,
+          timestamp.toString()
+        );
 
-      const counterMap2 = new Map(result2);
-      assert.ok(counterMap2.get('daily') > counterMap.get('daily'));
-      assert.strictEqual(
-        counterMap2.get('unique_users'),
-        counterMap.get('unique_users')
-      ); // Same user, so no change
+        const counterMap2 = new Map(result2);
+        assert.ok(counterMap2.get('daily') > counterMap.get('daily'));
+        assert.strictEqual(
+          counterMap2.get('unique_users'),
+          counterMap.get('unique_users')
+        ); // Same user, so no change
 
-      // Record event for different user - unique users should increase
-      const result3 = await client.eval(
-        analyticsScript,
-        0,
-        eventType,
-        `user_different_${Math.random()}`,
-        timestamp.toString()
-      );
+        // Record event for different user - unique users should increase
+        const result3 = await client.eval(
+          analyticsScript,
+          0,
+          eventType,
+          `user_different_${Math.random()}`,
+          timestamp.toString()
+        );
 
-      const counterMap3 = new Map(result3);
-      assert.ok(
-        counterMap3.get('unique_users') > counterMap.get('unique_users')
-      ); // More unique users
+        const counterMap3 = new Map(result3);
+        assert.ok(
+          counterMap3.get('unique_users') > counterMap.get('unique_users')
+        ); // More unique users
+      });
     });
-  });
 
-  describe('Script Caching and Performance', () => {
-    if (process.env.CI) {
-      return; // Skip performance tests in CI
-    }
-    test('should use EVALSHA for script caching optimization', async () => {
-      const simpleScript = `
+    describe('Script Caching and Performance', () => {
+      if (process.env.CI) {
+        return; // Skip performance tests in CI
+      }
+      test('should use EVALSHA for script caching optimization', async () => {
+        const simpleScript = `
         return "Hello from cached script: " .. ARGV[1]
       `;
 
-      // First execution with EVAL
-      const result1 = await client.eval(simpleScript, 0, 'World');
-      assert.strictEqual(result1, 'Hello from cached script: World');
+        // First execution with EVAL
+        const result1 = await client.eval(simpleScript, 0, 'World');
+        assert.strictEqual(result1, 'Hello from cached script: World');
 
-      // Calculate script SHA1 (simple approach - in production use crypto)
-      const { createHash } = await import('crypto');
-      const scriptSha1 = createHash('sha1').update(simpleScript).digest('hex');
+        // Calculate script SHA1 (simple approach - in production use crypto)
+        const { createHash } = await import('crypto');
+        const scriptSha1 = createHash('sha1')
+          .update(simpleScript)
+          .digest('hex');
 
-      // Execute with EVALSHA - script should be cached
-      try {
-        const result2 = await client.evalsha(scriptSha1, 0, 'Cached');
-        assert.strictEqual(result2, 'Hello from cached script: Cached');
-      } catch (error) {
-        // If EVALSHA fails, it means script wasn't cached - this is implementation dependent
-        // Some Redis implementations might not cache automatically
-        assert.ok(error !== undefined);
-      }
-    });
+        // Execute with EVALSHA - script should be cached
+        try {
+          const result2 = await client.evalsha(scriptSha1, 0, 'Cached');
+          assert.strictEqual(result2, 'Hello from cached script: Cached');
+        } catch (error) {
+          // If EVALSHA fails, it means script wasn't cached - this is implementation dependent
+          // Some Redis implementations might not cache automatically
+          assert.ok(error !== undefined);
+        }
+      });
 
-    test('should handle complex return types from Lua scripts', async () => {
-      const complexScript = `
+      test('should handle complex return types from Lua scripts', async () => {
+        const complexScript = `
         local result = {}
         
         -- String value
@@ -576,31 +584,31 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         return result
       `;
 
-      const result = await client.eval(complexScript, 0);
+        const result = await client.eval(complexScript, 0);
 
-      assert.ok(Array.isArray(result));
-      assert.strictEqual(result.length, 4);
-      assert.strictEqual(result[0], 'string_value');
-      assert.strictEqual(result[1], 42);
-      assert.ok(Array.isArray(result[2]));
-      assert.deepStrictEqual(result[2], ['item1', 'item2', 'item3']);
-      assert.ok(Array.isArray(result[3]));
+        assert.ok(Array.isArray(result));
+        assert.strictEqual(result.length, 4);
+        assert.strictEqual(result[0], 'string_value');
+        assert.strictEqual(result[1], 42);
+        assert.ok(Array.isArray(result[2]));
+        assert.deepStrictEqual(result[2], ['item1', 'item2', 'item3']);
+        assert.ok(Array.isArray(result[3]));
+      });
     });
-  });
 
-  describe('Error Handling and Edge Cases', () => {
-    test('should handle scripts with no keys or arguments', async () => {
-      const simpleScript = `
+    describe('Error Handling and Edge Cases', () => {
+      test('should handle scripts with no keys or arguments', async () => {
+        const simpleScript = `
         return server.call('TIME')[1]
       `;
 
-      const result = await client.eval(simpleScript, 0);
-      assert.strictEqual(typeof result, 'string');
-      assert.ok(parseInt(result) > 1600000000); // After 2020
-    });
+        const result = await client.eval(simpleScript, 0);
+        assert.strictEqual(typeof result, 'string');
+        assert.ok(parseInt(result) > 1600000000); // After 2020
+      });
 
-    test('should handle scripts with many keys and arguments', async () => {
-      const multiKeyScript = `
+      test('should handle scripts with many keys and arguments', async () => {
+        const multiKeyScript = `
         local result = {}
         
         -- Process all keys
@@ -611,50 +619,57 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         return result
       `;
 
-      const keys = [`${tag}:key1`, `${tag}:key2`, `${tag}:key3`, `${tag}:key4`, `${tag}:key5`];
-      const args = ['val1', 'val2', 'val3', 'val4', 'val5'];
+        const keys = [
+          `${tag}:key1`,
+          `${tag}:key2`,
+          `${tag}:key3`,
+          `${tag}:key4`,
+          `${tag}:key5`,
+        ];
+        const args = ['val1', 'val2', 'val3', 'val4', 'val5'];
 
-      const result = await client.eval(
-        multiKeyScript,
-        keys.length,
-        ...keys,
-        ...args
-      );
+        const result = await client.eval(
+          multiKeyScript,
+          keys.length,
+          ...keys,
+          ...args
+        );
 
-      assert.ok(Array.isArray(result));
-      assert.strictEqual(result.length, 5);
-      assert.strictEqual(result[0], `${tag}:key1:val1`);
-      assert.strictEqual(result[4], `${tag}:key5:val5`);
-    });
+        assert.ok(Array.isArray(result));
+        assert.strictEqual(result.length, 5);
+        assert.strictEqual(result[0], `${tag}:key1:val1`);
+        assert.strictEqual(result[4], `${tag}:key5:val5`);
+      });
 
-    test('should handle empty script execution', async () => {
-      const emptyScript = `
+      test('should handle empty script execution', async () => {
+        const emptyScript = `
         -- This script does nothing
         return nil
       `;
 
-      const result = await client.eval(emptyScript, 0);
-      assert.strictEqual(result, null);
-    });
+        const result = await client.eval(emptyScript, 0);
+        assert.strictEqual(result, null);
+      });
 
-    test('should handle script errors gracefully', async () => {
-      const errorScript = `
+      test('should handle script errors gracefully', async () => {
+        const errorScript = `
         local key = KEYS[1]
         local invalid_operation = server.call('UNKNOWN_COMMAND', key)
         return invalid_operation
       `;
 
-      const key = `${tag}:error:test:${Math.random()}`;
+        const key = `${tag}:error:test:${Math.random()}`;
 
-      try {
-        await client.eval(errorScript, 1, key);
-        // Should not reach here
-        assert.strictEqual(true, false);
-      } catch (error) {
-        assert.ok(error !== undefined);
-        // Valkey returns "Unknown command" while Redis returns "Unknown Redis command"
-        assert.ok(/Unknown (Redis )?command/.test(String(error)));
-      }
+        try {
+          await client.eval(errorScript, 1, key);
+          // Should not reach here
+          assert.strictEqual(true, false);
+        } catch (error) {
+          assert.ok(error !== undefined);
+          // Valkey returns "Unknown command" while Redis returns "Unknown Redis command"
+          assert.ok(/Unknown (Redis )?command/.test(String(error)));
+        }
+      });
     });
-  });
-});
+  }
+);

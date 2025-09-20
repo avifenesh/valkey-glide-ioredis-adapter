@@ -7,10 +7,14 @@ import { describe, test, beforeEach, afterEach, before } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis, Cluster } = pkg;
-import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  keyTag,
+} from '../setup/dual-mode.mjs';
 import { getStandaloneConfig } from '../utils/test-config.mjs';
 
-describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
+describeForEachMode('Enhanced Features for Queue Compatibility', mode => {
   let client;
   const tag = keyTag('enhanced');
 
@@ -140,7 +144,17 @@ describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
   describe('Enhanced ZSET operations', () => {
     beforeEach(async () => {
       // Set up test data
-      await client.zadd(`${tag}:testzset`, 1, 'one', 2, 'two', 3, 'three', 4, 'four');
+      await client.zadd(
+        `${tag}:testzset`,
+        1,
+        'one',
+        2,
+        'two',
+        3,
+        'three',
+        4,
+        'four'
+      );
     });
 
     test('zrangebyscore basic functionality', async () => {
@@ -149,7 +163,12 @@ describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
     });
 
     test('zrangebyscore with WITHSCORES', async () => {
-      const result = await client.zrangebyscore(`${tag}:testzset`, 1, 2, 'WITHSCORES');
+      const result = await client.zrangebyscore(
+        `${tag}:testzset`,
+        1,
+        2,
+        'WITHSCORES'
+      );
       assert.deepStrictEqual(result, ['one', '1', 'two', '2']);
     });
 
@@ -189,7 +208,11 @@ describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
     test('brpoplpush with existing data', async () => {
       await client.lpush(`${tag}:source`, 'item1', 'item2');
 
-      const result = await client.brpoplpush(`${tag}:source`, `${tag}:dest`, 0.1);
+      const result = await client.brpoplpush(
+        `${tag}:source`,
+        `${tag}:dest`,
+        0.1
+      );
       assert.strictEqual(result, 'item1');
 
       const destItems = await client.lrange(`${tag}:dest`, 0, -1);

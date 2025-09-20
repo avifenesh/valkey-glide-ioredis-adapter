@@ -152,7 +152,10 @@ export function getGlobalClientRegistry(): Set<BaseClient> {
   return globalClientRegistry;
 }
 
-export abstract class BaseClient extends EventEmitter implements IInternalClient {
+export abstract class BaseClient
+  extends EventEmitter
+  implements IInternalClient
+{
   public glideClient!: GlideClientType; // Always initialized in constructor
   protected subscriberClient?: GlideClientType; // Only created when needed for subscriptions
   protected ioredisCompatiblePubSub?: IoredisPubSubClient; // Only created when needed
@@ -285,7 +288,9 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
   private async snapshotSocketFiles(): Promise<string[]> {
     try {
       const files = await readdir('/tmp');
-      return files.filter(file => /^glide-socket-\d+-[a-f0-9-]+\.sock$/.test(file));
+      return files.filter(file =>
+        /^glide-socket-\d+-[a-f0-9-]+\.sock$/.test(file)
+      );
     } catch (error) {
       // Directory might not exist or access denied
       return [];
@@ -295,7 +300,9 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
   private async registerNewSocketFiles(beforeFiles: string[]): Promise<void> {
     try {
       const files = await readdir('/tmp');
-      const afterFiles = files.filter(file => /^glide-socket-\d+-[a-f0-9-]+\.sock$/.test(file));
+      const afterFiles = files.filter(file =>
+        /^glide-socket-\d+-[a-f0-9-]+\.sock$/.test(file)
+      );
       const newFiles = afterFiles.filter(file => !beforeFiles.includes(file));
 
       for (const fileName of newFiles) {
@@ -3205,15 +3212,12 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
       this.subscriberClient = undefined as unknown as GlideClientType;
       this.subscriberClientClosed = true;
       try {
-        await closeResourceWithTimeout(
-          'shared-subscriber-client',
-          () => {
-            const closeMethod = (existingSubscriber as any)?.close;
-            if (typeof closeMethod === 'function') {
-              return closeMethod.call(existingSubscriber);
-            }
+        await closeResourceWithTimeout('shared-subscriber-client', () => {
+          const closeMethod = (existingSubscriber as any)?.close;
+          if (typeof closeMethod === 'function') {
+            return closeMethod.call(existingSubscriber);
           }
-        );
+        });
       } catch (error) {
         if (!ErrorClassifier.shouldSuppress(error)) {
           Diag.log('pubsub', 'subscriber.close.error', {
@@ -4549,7 +4553,8 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
                 glideClient.close(),
                 new Promise(resolve => {
                   const t = setTimeout(resolve, 1000); // 1 second timeout for aggressive cleanup
-                  if (typeof (t as any).unref === 'function') (t as any).unref();
+                  if (typeof (t as any).unref === 'function')
+                    (t as any).unref();
                 }),
               ]).catch(() => {});
             }
@@ -4564,7 +4569,8 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
                 subscriberClient.close(),
                 new Promise(resolve => {
                   const t = setTimeout(resolve, 1000); // 1 second timeout for aggressive cleanup
-                  if (typeof (t as any).unref === 'function') (t as any).unref();
+                  if (typeof (t as any).unref === 'function')
+                    (t as any).unref();
                 }),
               ]).catch(() => {});
             }
@@ -4576,7 +4582,8 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
                 pubSubClient.disconnect(),
                 new Promise(resolve => {
                   const t = setTimeout(resolve, 500); // Shorter timeout for TCP disconnect
-                  if (typeof (t as any).unref === 'function') (t as any).unref();
+                  if (typeof (t as any).unref === 'function')
+                    (t as any).unref();
                 }),
               ]).catch(() => {});
             }
@@ -4607,7 +4614,11 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
         for (const handle of handles) {
           try {
             // Force destroy any remaining sockets (GLIDE backend connections)
-            if (handle && handle.constructor.name === 'Socket' && (handle as any).fd > 2) {
+            if (
+              handle &&
+              handle.constructor.name === 'Socket' &&
+              (handle as any).fd > 2
+            ) {
               if (typeof (handle as any).destroy === 'function') {
                 (handle as any).destroy();
               }

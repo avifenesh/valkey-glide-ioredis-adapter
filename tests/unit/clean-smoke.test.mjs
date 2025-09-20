@@ -8,9 +8,14 @@ import assert from 'node:assert';
 // Import the module using the same pattern as existing tests
 import pkg from '../../dist/index.js';
 const { Redis, Cluster } = pkg;
-import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
+import {
+  describeForEachMode,
+  createClient,
+  keyTag,
+} from '../setup/dual-mode.mjs';
+import { getStandaloneConfig } from '../utils/test-config.mjs';
 
-describeForEachMode('Clean Valkey Adapter Basic Functionality', (mode) => {
+describeForEachMode('Clean Valkey Adapter Basic Functionality', mode => {
   const tag = keyTag('smoke');
 
   it('should create adapter instance with lazyConnect', async () => {
@@ -64,7 +69,13 @@ describeForEachMode('Clean Valkey Adapter Basic Functionality', (mode) => {
     assert.strictEqual(client.status, 'disconnected');
 
     // Hash operations should work with lazy connection
-    await client.hset(`${tag}:test:hash`, 'field1', 'value1', 'field2', 'value2');
+    await client.hset(
+      `${tag}:test:hash`,
+      'field1',
+      'value1',
+      'field2',
+      'value2'
+    );
     assert.strictEqual(client.status, 'ready');
 
     const value1 = await client.hget(`${tag}:test:hash`, 'field1');

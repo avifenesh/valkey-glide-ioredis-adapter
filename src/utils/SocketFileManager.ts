@@ -13,7 +13,8 @@ import { join } from 'path';
 class SocketFileManager {
   private static ownSocketFiles = new Set<string>();
   private static readonly SOCKET_DIR = '/tmp';
-  private static readonly GLIDE_SOCKET_PATTERN = /^glide-socket-\d+-[a-f0-9-]+\.sock$/;
+  private static readonly GLIDE_SOCKET_PATTERN =
+    /^glide-socket-\d+-[a-f0-9-]+\.sock$/;
 
   /**
    * Register a socket file that belongs to our client instances
@@ -42,7 +43,9 @@ class SocketFileManager {
 
       for (const filePath of candidateFiles) {
         try {
-          const stats = await import('fs/promises').then(fs => fs.stat(filePath));
+          const stats = await import('fs/promises').then(fs =>
+            fs.stat(filePath)
+          );
           const fileAge = now - stats.mtime.getTime();
 
           // Only consider recent files that could belong to our session
