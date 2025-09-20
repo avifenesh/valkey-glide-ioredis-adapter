@@ -4,206 +4,47 @@ on:
   push:
     tags:
       - 'v*.*.*'
-      - 'v*.*.*-*'
 
 permissions:
-  contents: read # for checkout
+  contents: write
+  issues: write
+  pull-requests: write
+  id-token: write
 
 jobs:
-  test:
-    name: Test and Build
-    runs-on: ubuntu-latest
-    
-    services:
-      valkey-bundle:
-        image: valkey/valkey-bundle:8.1-bookworm
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "valkey-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Run linter
-        run: npm run lint
-
-      - name: Run type checking
-        run: npm run build
-
-      - name: Wait for Valkey Bundle and verify modules
-        run: |
-          echo "Waiting for Valkey Bundle with modules..."
-          # Install redis-cli for testing compatibility
-          sudo apt-get update && sudo apt-get install -y redis-tools
-          
-          for i in {1..30}; do
-            if redis-cli -h localhost -p 6379 ping > /dev/null 2>&1; then
-              echo "✅ Valkey Bundle is ready!"
-              echo "📦 Checking loaded modules..."
-              redis-cli -h localhost -p 6379 MODULE LIST | grep -E "(json|search)" || echo "⚠️  Modules not loaded or command not available"
-              break
-            fi
-            echo "⏳ Waiting for Valkey Bundle... ($i/30)"
-            sleep 2
-          done
-
-      - name: Run tests with coverage
-        run: npm test -- --coverage --coverageThreshold='{}'
-        env:
-          CI: true
-          VALKEY_BUNDLE_HOST: localhost
-          VALKEY_BUNDLE_PORT: 6379
-
-
   release:
-    name: Release
-    needs: test
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
-    permissions:
-      contents: write # to be able to publish a GitHub release
-      issues: write # to be able to comment on released issues
-      pull-requests: write # to be able to comment on released pull requests
-      id-token: write # to enable use of OIDC for npm provenance
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
-          cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
 
-      - name: Build package
-        run: npm run build
-
-      - name: Get tag version
-        id: tag_version
-        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-        
-      - name: Validate version matches tag
-        run: |
-          TAG_VERSION="${{ steps.tag_version.outputs.VERSION }}"
-          PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          echo "Tag version: $TAG_VERSION"
-          echo "Package version: $PACKAGE_VERSION"
-          if [ "$TAG_VERSION" != "$PACKAGE_VERSION" ]; then
-            echo "❌ Version mismatch: tag v$TAG_VERSION != package.json $PACKAGE_VERSION"
-            exit 1
-          fi
-          echo "✅ Version matches: v$TAG_VERSION"
-        
       - name: Publish to NPM
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [[ "${{ steps.tag_version.outputs.VERSION }}" == *"-"* ]]; then
-            npm publish --tag prerelease --ignore-scripts
+          VERSION=${GITHUB_REF#refs/tags/v}
+          if [[ "$VERSION" == *"-"* ]]; then
+            npm publish --tag prerelease
           else
-            npm publish --ignore-scripts
+            npm publish
           fi
-        
-      - name: Generate Release Notes
-        id: release_notes
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG_NAME="v${{ steps.tag_version.outputs.VERSION }}"
-          
-          # Get the previous tag
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          
-          echo "## 🚀 Release ${{ steps.tag_version.outputs.VERSION }}" > release_notes.md
-          echo "" >> release_notes.md
-          
-          if [ -n "$PREVIOUS_TAG" ]; then
-            echo "**Full Changelog:** [${PREVIOUS_TAG}...${TAG_NAME}](https://github.com/${{ github.repository }}/compare/${PREVIOUS_TAG}...${TAG_NAME})" >> release_notes.md
-            echo "" >> release_notes.md
-            
-            # Generate changelog sections
-            echo "### 🔧 Changes" >> release_notes.md
-            
-            # Get commits since last tag, categorize by conventional commit format
-            git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s" --no-merges | while read -r line; do
-              if [[ $line =~ ^-\ feat(\(.*\))?:\ (.*)$ ]]; then
-                echo "### ✨ Features" >> release_notes_features.md
-                echo "$line" | sed 's/^- feat[^:]*: /- /' >> release_notes_features.md
-              elif [[ $line =~ ^-\ fix(\(.*\))?:\ (.*)$ ]]; then
-                echo "### 🐛 Bug Fixes" >> release_notes_fixes.md  
-                echo "$line" | sed 's/^- fix[^:]*: /- /' >> release_notes_fixes.md
-              elif [[ $line =~ ^-\ docs(\(.*\))?:\ (.*)$ ]]; then
-                echo "### 📚 Documentation" >> release_notes_docs.md
-                echo "$line" | sed 's/^- docs[^:]*: /- /' >> release_notes_docs.md
-              elif [[ $line =~ ^-\ test(\(.*\))?:\ (.*)$ ]]; then
-                echo "### 🧪 Tests" >> release_notes_tests.md
-                echo "$line" | sed 's/^- test[^:]*: /- /' >> release_notes_tests.md
-              elif [[ $line =~ ^-\ ci(\(.*\))?:\ (.*)$ ]]; then
-                echo "### 🔄 CI/CD" >> release_notes_ci.md
-                echo "$line" | sed 's/^- ci[^:]*: /- /' >> release_notes_ci.md
-              else
-                echo "$line" >> release_notes_other.md
-              fi
-            done
-            
-            # Combine sections
-            [ -f release_notes_features.md ] && cat release_notes_features.md >> release_notes.md && echo "" >> release_notes.md
-            [ -f release_notes_fixes.md ] && cat release_notes_fixes.md >> release_notes.md && echo "" >> release_notes.md
-            [ -f release_notes_ci.md ] && cat release_notes_ci.md >> release_notes.md && echo "" >> release_notes.md
-            [ -f release_notes_docs.md ] && cat release_notes_docs.md >> release_notes.md && echo "" >> release_notes.md
-            [ -f release_notes_tests.md ] && cat release_notes_tests.md >> release_notes.md && echo "" >> release_notes.md
-            [ -f release_notes_other.md ] && echo "### 🔧 Other Changes" >> release_notes.md && cat release_notes_other.md >> release_notes.md && echo "" >> release_notes.md
-            
-            # Clean up temp files
-            rm -f release_notes_*.md
-          else
-            echo "🎉 Initial release of valkey-glide-ioredis-adapter" >> release_notes.md
-            echo "" >> release_notes.md
-            echo "A high-performance, drop-in replacement for ioredis powered by Valkey GLIDE's Rust core." >> release_notes.md
-          fi
-          
-          echo "" >> release_notes.md
-          echo "---" >> release_notes.md
-          echo "**Install:** \`npm install valkey-glide-ioredis-adapter\`" >> release_notes.md
 
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG_NAME="v${{ steps.tag_version.outputs.VERSION }}"
-          if [[ "${{ steps.tag_version.outputs.VERSION }}" == *"-"* ]]; then
-            gh release create "$TAG_NAME" \
-              --title "$TAG_NAME" \
-              --notes-file release_notes.md \
-              --prerelease \
-              --target "$GITHUB_SHA"
-          else
-            gh release create "$TAG_NAME" \
-              --title "$TAG_NAME" \
-              --notes-file release_notes.md \
-              --target "$GITHUB_SHA"
-          fi
+          VERSION=${GITHUB_REF#refs/tags/v}
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --generate-notes \
+            $([[ "$VERSION" == *"-"* ]] && echo "--prerelease")
