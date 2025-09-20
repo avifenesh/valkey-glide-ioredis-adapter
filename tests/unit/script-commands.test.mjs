@@ -21,15 +21,15 @@ import {
 } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+const { Redis, Cluster } = pkg;
+import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
 
-describe('Script Commands - Atomic Operations & Business Logic', () => {
+describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mode) => {
   let client;
+  const tag = keyTag('script');
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    client = new Redis(config);
+    client = await createClient(mode);
 
     await client.connect();
 
