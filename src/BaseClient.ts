@@ -7,6 +7,7 @@
  */
 
 import { EventEmitter } from 'events';
+import { readdir } from 'fs/promises';
 import {
   GlideClient,
   GlideClusterClient,
@@ -23,6 +24,7 @@ import Diag from './utils/Diag';
 import * as stringCommands from './commands/strings';
 import { IoredisPubSubClient } from './utils/IoredisPubSubClient';
 import { ErrorClassifier } from './utils/ErrorClassifier';
+import { SocketFileManager } from './utils/SocketFileManager';
 import * as keyCommands from './commands/keys';
 import * as streamCommands from './commands/streams';
 import * as serverCommands from './commands/server';
@@ -279,6 +281,32 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
     options: RedisOptions
   ): Promise<GlideClientType>;
 
+  // Socket file tracking helpers for safe cleanup
+  private async snapshotSocketFiles(): Promise<string[]> {
+    try {
+      const files = await readdir('/tmp');
+      return files.filter(file => /^glide-socket-\d+-[a-f0-9-]+\.sock$/.test(file));
+    } catch (error) {
+      // Directory might not exist or access denied
+      return [];
+    }
+  }
+
+  private async registerNewSocketFiles(beforeFiles: string[]): Promise<void> {
+    try {
+      const files = await readdir('/tmp');
+      const afterFiles = files.filter(file => /^glide-socket-\d+-[a-f0-9-]+\.sock$/.test(file));
+      const newFiles = afterFiles.filter(file => !beforeFiles.includes(file));
+
+      for (const fileName of newFiles) {
+        const socketPath = `/tmp/${fileName}`;
+        SocketFileManager.registerOwnSocketFile(socketPath);
+      }
+    } catch (error) {
+      // Ignore errors during socket file registration
+    }
+  }
+
   // Connection method for ioredis compatibility - idempotent and safe
   async connect(): Promise<void> {
     // If a prior shutdown completed, allow reconnection by clearing closing flags
@@ -322,8 +350,15 @@ export abstract class BaseClient extends EventEmitter implements IInternalClient
 
     this.pendingConnect = (async () => {
       try {
+        // Snapshot socket files before creating GLIDE client
+        const beforeFiles = await this.snapshotSocketFiles();
+
         const client = await this.createClient(this.options);
         Diag.log('connect', 'connect.client-created');
+
+        // Find and register new socket files
+        await this.registerNewSocketFiles(beforeFiles);
+
         // If a shutdown began while connecting, close immediately and skip exposing client
         if (this.isClosing) {
           try {
@@ -4506,11 +4541,17 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
             // Remove all listeners to prevent event loop hanging
             client.removeAllListeners();
 
-            // Force close underlying GLIDE clients without waiting
+            // Force close underlying GLIDE clients with short timeout
             const glideClient = (client as any).glideClient;
             if (glideClient && typeof glideClient.close === 'function') {
-              // Don't await - force immediate close
-              glideClient.close().catch(() => {});
+              // Give GLIDE Rust core time to cleanup properly
+              await Promise.race([
+                glideClient.close(),
+                new Promise(resolve => {
+                  const t = setTimeout(resolve, 1000); // 1 second timeout for aggressive cleanup
+                  if (typeof (t as any).unref === 'function') (t as any).unref();
+                }),
+              ]).catch(() => {});
             }
 
             const subscriberClient = (client as any).subscriberClient;
@@ -4518,14 +4559,26 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
               subscriberClient &&
               typeof subscriberClient.close === 'function'
             ) {
-              // Don't await - force immediate close
-              subscriberClient.close().catch(() => {});
+              // Give GLIDE Rust core time to cleanup properly
+              await Promise.race([
+                subscriberClient.close(),
+                new Promise(resolve => {
+                  const t = setTimeout(resolve, 1000); // 1 second timeout for aggressive cleanup
+                  if (typeof (t as any).unref === 'function') (t as any).unref();
+                }),
+              ]).catch(() => {});
             }
 
             // Force close pub/sub clients
             const pubSubClient = (client as any).ioredisCompatiblePubSub;
             if (pubSubClient) {
-              pubSubClient.disconnect().catch(() => {});
+              await Promise.race([
+                pubSubClient.disconnect(),
+                new Promise(resolve => {
+                  const t = setTimeout(resolve, 500); // Shorter timeout for TCP disconnect
+                  if (typeof (t as any).unref === 'function') (t as any).unref();
+                }),
+              ]).catch(() => {});
             }
 
             // Remove from registry immediately
@@ -4540,9 +4593,48 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
     // Clear the entire registry as a final step
     globalClientRegistry.clear();
 
+    // Graceful GLIDE socket cleanup (signals Rust processes to shut down)
+    try {
+      await SocketFileManager.closeAllSocketFiles();
+    } catch (error) {
+      // Ignore cleanup errors
+    }
+
+    // Aggressive native handle cleanup
+    try {
+      if ((process as any)._getActiveHandles) {
+        const handles = (process as any)._getActiveHandles();
+        for (const handle of handles) {
+          try {
+            // Force destroy any remaining sockets (GLIDE backend connections)
+            if (handle && handle.constructor.name === 'Socket' && (handle as any).fd > 2) {
+              if (typeof (handle as any).destroy === 'function') {
+                (handle as any).destroy();
+              }
+            }
+            // Unref timers that might be keeping event loop alive
+            if (
+              handle &&
+              (handle.constructor.name === 'Timeout' ||
+                handle.constructor.name === 'Timer' ||
+                handle.constructor.name === 'Immediate')
+            ) {
+              if (typeof (handle as any).unref === 'function') {
+                (handle as any).unref();
+              }
+            }
+          } catch (handleError) {
+            // Ignore individual handle cleanup errors
+          }
+        }
+      }
+    } catch (error) {
+      // Ignore handle enumeration errors
+    }
+
     // Give Node.js event loop a moment to process the closures
     await new Promise(resolve => {
-      const t = setTimeout(resolve, 50);
+      const t = setTimeout(resolve, 100); // Slightly longer for Rust cleanup
       (t as any).unref?.();
     });
   }
@@ -4556,6 +4648,13 @@ class DirectGlidePubSub implements DirectGlidePubSubInterface {
   static forceTerminate(exitCode: number = 0): never {
     // Immediate cleanup without waiting
     globalClientRegistry.clear();
+
+    // Emergency socket file cleanup
+    try {
+      SocketFileManager.closeAllSocketFiles().catch(() => {});
+    } catch (error) {
+      // Ignore errors during emergency cleanup
+    }
 
     // Force immediate process termination
     process.exit(exitCode);

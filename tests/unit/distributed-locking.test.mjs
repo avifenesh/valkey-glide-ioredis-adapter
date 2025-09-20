@@ -6,15 +6,15 @@
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+const { Redis, Cluster } = pkg;
+import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
 
-describe('Distributed Locking Patterns', () => {
+describeForEachMode('Distributed Locking Patterns', (mode) => {
   let client;
+  const tag = keyTag('lock');
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    client = new Redis(config);
+    client = await createClient(mode);
 
     await client.connect();
 
@@ -33,7 +33,7 @@ describe('Distributed Locking Patterns', () => {
 
   describe('Basic Lock Operations', () => {
     test('should acquire and release simple lock', async () => {
-      const lockKey = 'lock:resource:' + Math.random();
+      const lockKey = `${tag}:lock:resource:` + Math.random();
       const lockValue = 'client_' + Math.random();
 
       // Acquire lock
@@ -65,7 +65,7 @@ describe('Distributed Locking Patterns', () => {
     });
 
     test('should prevent duplicate lock acquisition', async () => {
-      const lockKey = 'lock:duplicate:' + Math.random();
+      const lockKey = `${tag}:lock:duplicate:` + Math.random();
       const client1Id = 'client1_' + Math.random();
       const client2Id = 'client2_' + Math.random();
 
@@ -87,7 +87,7 @@ describe('Distributed Locking Patterns', () => {
     });
 
     test('should handle lock expiration', async () => {
-      const lockKey = 'lock:expiring:' + Math.random();
+      const lockKey = `${tag}:lock:expiring:` + Math.random();
       const lockValue = 'expiring_client';
 
       // Acquire lock with short TTL
@@ -114,7 +114,7 @@ describe('Distributed Locking Patterns', () => {
 
   describe('Critical Section Protection', () => {
     test('should protect shared counter increment', async () => {
-      const counterKey = 'counter:protected:' + Math.random();
+      const counterKey = `${tag}:counter:protected:` + Math.random();
       const lockKey = `${counterKey}:lock`;
 
       // Initialize counter
@@ -287,7 +287,7 @@ describe('Distributed Locking Patterns', () => {
     });
 
     test('should handle job queue with exclusive processing', async () => {
-      const queueKey = 'job_queue:' + Math.random();
+      const queueKey = `${tag}:job_queue:` + Math.random();
       const processingSetKey = `${queueKey}:processing`;
 
       // Add jobs to queue
@@ -481,7 +481,7 @@ describe('Distributed Locking Patterns', () => {
     });
 
     test('should implement distributed semaphore', async () => {
-      const semaphoreKey = 'semaphore:' + Math.random();
+      const semaphoreKey = `${tag}:semaphore:` + Math.random();
       const maxPermits = 3;
 
       const acquirePermit = async clientId => {

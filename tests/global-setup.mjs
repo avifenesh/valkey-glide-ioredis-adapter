@@ -10,13 +10,21 @@ afterEach(async () => {
     const { Redis } = pkg;
     if (Redis.forceCloseAllClients) {
       await Promise.race([
-        Redis.forceCloseAllClients(300),
+        Redis.forceCloseAllClients(2000), // Give GLIDE Rust core more time
         new Promise(resolve => {
-          const t = setTimeout(resolve, 500);
+          const t = setTimeout(resolve, 3000); // Longer race timeout
           if (typeof t.unref === 'function') t.unref();
         }),
       ]);
     }
+
+    // Ensure socket files are cleaned up after each test
+    try {
+      const { SocketFileManager } = pkg;
+      if (SocketFileManager) {
+        await SocketFileManager.closeAllSocketFiles();
+      }
+    } catch {}
 
     // Optional leak check: ensure no clients remain after cleanup
     try {
@@ -59,15 +67,26 @@ after(async () => {
     if (Redis.forceCloseAllClients) {
       // Force close all clients with a timeout
       await Promise.race([
-        Redis.forceCloseAllClients(500),
+        Redis.forceCloseAllClients(3000), // Give GLIDE Rust core even more time at test end
         new Promise(resolve => {
-          const t = setTimeout(resolve, 1000);
+          const t = setTimeout(resolve, 5000); // Longer race timeout for final cleanup
           if (typeof t.unref === 'function') t.unref();
         }),
       ]);
     }
   } catch (error) {
     // Ignore errors during cleanup
+  }
+
+  // Graceful GLIDE socket cleanup
+  try {
+    const pkg = await import('../dist/index.js');
+    const { SocketFileManager } = pkg;
+    if (SocketFileManager) {
+      await SocketFileManager.closeAllSocketFiles();
+    }
+  } catch (error) {
+    // SocketFileManager might not be available
   }
 
   // Force unref all remaining timers to prevent hanging

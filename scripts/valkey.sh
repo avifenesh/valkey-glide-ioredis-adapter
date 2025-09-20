@@ -15,7 +15,7 @@ show_usage() {
     echo ""
     echo "Commands:"
     echo "  start standalone  - Start single Valkey instance on port 6383"
-    echo "  start cluster     - Start 3-node cluster on ports 17000-17002"
+    echo "  start cluster     - Start 3-node cluster with JSON module on ports 17000-17002"
     echo "  start bundle      - Start Valkey with JSON module on port 6380"
     echo "  stop standalone   - Stop standalone instance"
     echo "  stop cluster      - Stop cluster nodes"
@@ -44,14 +44,14 @@ start_standalone() {
 }
 
 start_cluster() {
-    echo -e "${YELLOW}Starting Valkey cluster on ports 17000-17002...${NC}"
+    echo -e "${YELLOW}Starting Valkey cluster with JSON module on ports 17000-17002...${NC}"
 
-    # Start cluster nodes
+    # Start cluster nodes using valkey-bundle for JSON module support
     for port in 17000 17001 17002; do
         docker run -d \
             --name valkey-node-$port \
             --network host \
-            valkey/valkey:latest \
+            valkey/valkey-bundle:latest \
             valkey-server \
             --port $port \
             --cluster-enabled yes \

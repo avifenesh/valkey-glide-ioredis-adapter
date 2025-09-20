@@ -7,6 +7,7 @@
 
 export { default as Redis } from './Redis';
 export { Cluster } from './Cluster';
+export { SocketFileManager } from './utils/SocketFileManager';
 export * from './types';
 
 import Redis from './Redis';

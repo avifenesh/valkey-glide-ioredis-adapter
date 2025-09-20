@@ -14,15 +14,15 @@ import {
 } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+const { Redis, Cluster } = pkg;
+import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
 
-describe('Error Handling and Edge Cases', () => {
+describeForEachMode('Error Handling and Edge Cases', (mode) => {
   let client;
+  const tag = keyTag('error');
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    client = new Redis(config);
+    client = await createClient(mode);
 
     await client.connect();
 

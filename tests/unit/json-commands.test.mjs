@@ -21,21 +21,36 @@ import {
 } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import {
-  getValkeyBundleTestConfig,
-  checkAvailableModules,
-  waitForValkeyBundle,
-} from '../utils/valkey-bundle-config.mjs';
+const { Redis, Cluster } = pkg;
+import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
 
-describe('JSON Commands - ValkeyJSON Compatibility', () => {
+// Helper to check if JSON module is available
+async function checkJSONModule(client) {
+  try {
+    await client.customCommand(['JSON.SET', 'test:json:check', '$', '{"test": true}']);
+    await client.customCommand(['JSON.DEL', 'test:json:check']);
+    return true;
+  } catch (error) {
+    if (error.message.includes('unknown command') || error.message.includes('JSON.SET')) {
+      return false;
+    }
+    return true; // Other errors indicate the command exists
+  }
+}
+
+describeForEachMode('JSON Commands - ValkeyJSON Compatibility', (mode) => {
   let client;
+  const tag = keyTag('json');
 
   before(async () => {
-    const config = await getValkeyBundleTestConfig();
-    client = new Redis(config);
-
+    client = await createClient(mode);
     await client.connect();
+
+    // Check if JSON module is available
+    const hasJSON = await checkJSONModule(client);
+    if (!hasJSON) {
+      throw new Error(`JSON module not available in ${mode} mode. Make sure to start with JSON module support.`);
+    }
 
     // Clean slate: flush all data to prevent test pollution
     // GLIDE's flushall is multislot safe
@@ -43,17 +58,6 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       await client.flushall();
     } catch (error) {
       console.warn('Warning: Could not flush database:', error.message);
-    } // Wait for valkey-bundle to be ready and check modules
-    const isReady = await waitForValkeyBundle(client);
-    if (!isReady) {
-      throw new Error(
-        'Valkey-bundle is not ready or modules not available. Make sure to start: docker-compose -f docker-compose.valkey-bundle.yml up -d'
-      );
-    }
-
-    const modules = await checkAvailableModules(client);
-    if (!modules.json) {
-      throw new Error('JSON module not available in valkey-bundle');
     }
   });
 
@@ -83,11 +87,11 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       };
 
       // Set JSON document
-      const setResult = await client.jsonSet('user:123', '$', userProfile);
+      const setResult = await client.jsonSet(`${tag}:user:123`, '$', userProfile);
       assert.strictEqual(setResult, 'OK');
 
       // Get entire document
-      const getResult = await client.jsonGet('user:123');
+      const getResult = await client.jsonGet(`${tag}:user:123`);
       assert.ok(getResult);
 
       const parsed = JSON.parse(getResult);
@@ -117,17 +121,17 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
         },
       };
 
-      await client.jsonSet('complex:doc', '$', complexDoc);
+      await client.jsonSet(`${tag}:complex:doc`, '$', complexDoc);
 
       // Get specific nested paths
       const userName = await client.jsonGet(
-        'complex:doc',
+        `${tag}:complex:doc`,
         '$.user.profile.name'
       );
       assert.ok(userName);
 
       const preferences = await client.jsonGet(
-        'complex:doc',
+        `${tag}:complex:doc`,
         '$.user.profile.preferences'
       );
       assert.ok(preferences);
@@ -140,7 +144,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
     test('should handle JSON SET with conditions (NX/XX)', async () => {
       // Test NX (only if not exists)
       const result1 = await client.jsonSet(
-        'conditional:test',
+        `${tag}:conditional:test`,
         '$',
         { value: 1 },
         'NX'
@@ -149,7 +153,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Should fail with NX since key exists
       const result2 = await client.jsonSet(
-        'conditional:test',
+        `${tag}:conditional:test`,
         '$',
         { value: 2 },
         'NX'
@@ -158,7 +162,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Should succeed with XX since key exists
       const result3 = await client.jsonSet(
-        'conditional:test',
+        `${tag}:conditional:test`,
         '$',
         { value: 3 },
         'XX'
@@ -166,7 +170,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       assert.strictEqual(result3, 'OK');
 
       // Verify the value was updated
-      const final = await client.jsonGet('conditional:test');
+      const final = await client.jsonGet(`${tag}:conditional:test`);
       const parsed = JSON.parse(final);
       assert.strictEqual(parsed.value, 3);
     });
@@ -186,34 +190,34 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
           tags: ['active', 'verified'],
         },
       };
-      await client.jsonSet('pathtest', '$', testDoc);
+      await client.jsonSet(`${tag}:pathtest`, '$', testDoc);
     });
 
     test('should get type information for paths', async () => {
       // Test different data types
-      const rootType = await client.jsonType('pathtest', '$');
+      const rootType = await client.jsonType(`${tag}:pathtest`, '$');
       assert.strictEqual(rootType, 'object');
 
-      const arrayType = await client.jsonType('pathtest', '$.users');
+      const arrayType = await client.jsonType(`${tag}:pathtest`, '$.users');
       assert.strictEqual(arrayType, 'array');
 
       const stringType = await client.jsonType(
-        'pathtest',
+        `${tag}:pathtest`,
         '$.metadata.updated'
       );
       assert.strictEqual(stringType, 'string');
 
-      const numberType = await client.jsonType('pathtest', '$.metadata.total');
+      const numberType = await client.jsonType(`${tag}:pathtest`, '$.metadata.total');
       assert.strictEqual(numberType, 'integer');
     });
 
     test('should delete specific paths', async () => {
       // Delete a specific array element
-      const deleteCount = await client.jsonDel('pathtest', '$.users[1]');
+      const deleteCount = await client.jsonDel(`${tag}:pathtest`, '$.users[1]');
       assert.strictEqual(deleteCount, 1);
 
       // Verify deletion
-      const users = await client.jsonGet('pathtest', '$.users');
+      const users = await client.jsonGet(`${tag}:pathtest`, '$.users');
       const parsed = JSON.parse(users);
       assert.strictEqual(parsed.length, 2);
       assert.strictEqual(parsed[0].name, 'Alice');
@@ -222,11 +226,11 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
     test('should clear paths to empty/null values', async () => {
       // Clear an array
-      const clearCount = await client.jsonClear('pathtest', '$.metadata.tags');
+      const clearCount = await client.jsonClear(`${tag}:pathtest`, '$.metadata.tags');
       assert.strictEqual(clearCount, 1);
 
       // Verify array is empty
-      const tags = await client.jsonGet('pathtest', '$.metadata.tags');
+      const tags = await client.jsonGet(`${tag}:pathtest`, '$.metadata.tags');
       const parsed = JSON.parse(tags);
       assert.deepStrictEqual(parsed, []);
     });
@@ -241,13 +245,13 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
           conversion_rate: 2.5,
         },
       };
-      await client.jsonSet('counters', '$', counterDoc);
+      await client.jsonSet(`${tag}:counters`, '$', counterDoc);
     });
 
     test('should increment numeric values', async () => {
       // Increment integer
       const result1 = await client.jsonNumIncrBy(
-        'counters',
+        `${tag}:counters`,
         '$.stats.page_views',
         15
       );
@@ -255,14 +259,14 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
 
       // Increment float
       const result2 = await client.jsonNumIncrBy(
-        'counters',
+        `${tag}:counters`,
         '$.stats.conversion_rate',
         0.5
       );
       assert.ok(result2);
 
       // Verify results
-      const final = await client.jsonGet('counters', '$.stats');
+      const final = await client.jsonGet(`${tag}:counters`, '$.stats');
       const parsed = JSON.parse(final);
       assert.strictEqual(parsed.page_views, 115);
       assert.strictEqual(parsed.conversion_rate, 3.0);
@@ -271,14 +275,14 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
     test('should multiply numeric values', async () => {
       // Multiply by 2
       const result = await client.jsonNumMultBy(
-        'counters',
+        `${tag}:counters`,
         '$.stats.page_views',
         2
       );
       assert.ok(result);
 
       // Verify result
-      const final = await client.jsonGet('counters', '$.stats.page_views');
+      const final = await client.jsonGet(`${tag}:counters`, '$.stats.page_views');
       const parsed = JSON.parse(final);
       assert.strictEqual(parsed, 200);
     });
@@ -292,27 +296,27 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
           description: 'This is a test',
         },
       };
-      await client.jsonSet('strings', '$', textDoc);
+      await client.jsonSet(`${tag}:strings`, '$', textDoc);
     });
 
     test('should append to string values', async () => {
       // Append to string
       const newLength = await client.jsonStrAppend(
-        'strings',
+        `${tag}:strings`,
         '$.messages.welcome',
         ' World'
       );
       assert.ok(newLength > 0);
 
       // Verify result
-      const result = await client.jsonGet('strings', '$.messages.welcome');
+      const result = await client.jsonGet(`${tag}:strings`, '$.messages.welcome');
       const parsed = JSON.parse(result);
       assert.strictEqual(parsed, 'Hello World');
     });
 
     test('should get string length', async () => {
       const length = await client.jsonStrLen(
-        'strings',
+        `${tag}:strings`,
         '$.messages.description'
       );
       assert.strictEqual(length, 14); // 'This is a test' = 14 characters
@@ -326,13 +330,13 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
         numbers: [1, 2, 3],
         mixed: ['hello', 42, true],
       };
-      await client.jsonSet('arrays', '$', arrayDoc);
+      await client.jsonSet(`${tag}:arrays`, '$', arrayDoc);
     });
 
     test('should append to arrays', async () => {
       // Append to fruit array
       const newLength = await client.jsonArrAppend(
-        'arrays',
+        `${tag}:arrays`,
         '$.items',
         'orange',
         'grape'
@@ -340,7 +344,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       assert.strictEqual(newLength, 4);
 
       // Verify result
-      const result = await client.jsonGet('arrays', '$.items');
+      const result = await client.jsonGet(`${tag}:arrays`, '$.items');
       const parsed = JSON.parse(result);
       assert.deepStrictEqual(parsed, ['apple', 'banana', 'orange', 'grape']);
     });
@@ -348,7 +352,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
     test('should insert into arrays', async () => {
       // Insert at position 1
       const newLength = await client.jsonArrInsert(
-        'arrays',
+        `${tag}:arrays`,
         '$.numbers',
         1,
         1.5
@@ -356,42 +360,42 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       assert.strictEqual(newLength, 4);
 
       // Verify result
-      const result = await client.jsonGet('arrays', '$.numbers');
+      const result = await client.jsonGet(`${tag}:arrays`, '$.numbers');
       const parsed = JSON.parse(result);
       assert.deepStrictEqual(parsed, [1, 1.5, 2, 3]);
     });
 
     test('should get array length', async () => {
-      const length = await client.jsonArrLen('arrays', '$.mixed');
+      const length = await client.jsonArrLen(`${tag}:arrays`, '$.mixed');
       assert.strictEqual(length, 3);
     });
 
     test('should pop elements from arrays', async () => {
       // Pop from end (default)
-      const popped = await client.jsonArrPop('arrays', '$.items');
+      const popped = await client.jsonArrPop(`${tag}:arrays`, '$.items');
       assert.ok(popped);
 
       // Pop from specific index
-      const poppedAtIndex = await client.jsonArrPop('arrays', '$.numbers', 0);
+      const poppedAtIndex = await client.jsonArrPop(`${tag}:arrays`, '$.numbers', 0);
       assert.ok(poppedAtIndex);
 
       // Verify results
-      const items = await client.jsonGet('arrays', '$.items');
+      const items = await client.jsonGet(`${tag}:arrays`, '$.items');
       const itemsParsed = JSON.parse(items);
       assert.deepStrictEqual(itemsParsed, ['apple']); // banana was popped
 
-      const numbers = await client.jsonGet('arrays', '$.numbers');
+      const numbers = await client.jsonGet(`${tag}:arrays`, '$.numbers');
       const numbersParsed = JSON.parse(numbers);
       assert.deepStrictEqual(numbersParsed, [2, 3]); // 1 was popped from index 0
     });
 
     test('should trim arrays', async () => {
       // Trim to keep only middle element
-      const newLength = await client.jsonArrTrim('arrays', '$.numbers', 1, 1);
+      const newLength = await client.jsonArrTrim(`${tag}:arrays`, '$.numbers', 1, 1);
       assert.strictEqual(newLength, 1);
 
       // Verify result
-      const result = await client.jsonGet('arrays', '$.numbers');
+      const result = await client.jsonGet(`${tag}:arrays`, '$.numbers');
       const parsed = JSON.parse(result);
       assert.deepStrictEqual(parsed, [2]); // Only middle element remains
     });
@@ -411,11 +415,11 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
           role: 'admin',
         },
       };
-      await client.jsonSet('objects', '$', objectDoc);
+      await client.jsonSet(`${tag}:objects`, '$', objectDoc);
     });
 
     test('should get object keys', async () => {
-      const keys = await client.jsonObjKeys('objects', '$.config');
+      const keys = await client.jsonObjKeys(`${tag}:objects`, '$.config');
       assert.ok(Array.isArray(keys));
       assert.ok(keys.includes('theme'));
       assert.ok(keys.includes('language'));
@@ -424,10 +428,10 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
     });
 
     test('should get object length', async () => {
-      const configLength = await client.jsonObjLen('objects', '$.config');
+      const configLength = await client.jsonObjLen(`${tag}:objects`, '$.config');
       assert.strictEqual(configLength, 4);
 
-      const userLength = await client.jsonObjLen('objects', '$.user');
+      const userLength = await client.jsonObjLen(`${tag}:objects`, '$.user');
       assert.strictEqual(userLength, 2);
     });
   });
@@ -441,20 +445,20 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
           experimental: true,
         },
       };
-      await client.jsonSet('booleans', '$', boolDoc);
+      await client.jsonSet(`${tag}:booleans`, '$', boolDoc);
     });
 
     test('should toggle boolean values', async () => {
       // Toggle true to false
-      const result1 = await client.jsonToggle('booleans', '$.flags.enabled');
+      const result1 = await client.jsonToggle(`${tag}:booleans`, '$.flags.enabled');
       assert.strictEqual(result1, 0); // 0 for false
 
       // Toggle false to true
-      const result2 = await client.jsonToggle('booleans', '$.flags.debug');
+      const result2 = await client.jsonToggle(`${tag}:booleans`, '$.flags.debug');
       assert.strictEqual(result2, 1); // 1 for true
 
       // Verify results
-      const final = await client.jsonGet('booleans', '$.flags');
+      const final = await client.jsonGet(`${tag}:booleans`, '$.flags');
       const parsed = JSON.parse(final);
       assert.strictEqual(parsed.enabled, false);
       assert.strictEqual(parsed.debug, true);
@@ -485,23 +489,23 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       };
 
       // Store product
-      await client.jsonSet('product:prod_123', '$', product);
+      await client.jsonSet(`${tag}:product:prod_123`, '$', product);
 
       // Update price
-      await client.jsonNumMultBy('product:prod_123', '$.price', 0.9); // 10% discount
+      await client.jsonNumMultBy(`${tag}:product:prod_123`, '$.price', 0.9); // 10% discount
 
       // Add new review
-      await client.jsonArrAppend('product:prod_123', '$.reviews', {
+      await client.jsonArrAppend(`${tag}:product:prod_123`, '$.reviews', {
         user: 'user3',
         rating: 5,
         comment: 'Amazing laptop',
       });
 
       // Decrease stock
-      await client.jsonNumIncrBy('product:prod_123', '$.stock_count', -1);
+      await client.jsonNumIncrBy(`${tag}:product:prod_123`, '$.stock_count', -1);
 
       // Get updated product
-      const updated = await client.jsonGet('product:prod_123');
+      const updated = await client.jsonGet(`${tag}:product:prod_123`);
       const parsedProduct = JSON.parse(updated);
 
       assert.ok(Math.abs(parsedProduct.price - 1169.99) < Math.pow(10, -2)); // Discounted price
@@ -527,27 +531,27 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       };
 
       // Store session
-      await client.jsonSet('session:sess_789', '$', session);
+      await client.jsonSet(`${tag}:session:sess_789`, '$', session);
 
       // Track page view
       await client.jsonNumIncrBy(
-        'session:sess_789',
+        `${tag}:session:sess_789`,
         '$.activity.page_views',
         1
       );
 
       // Add action
       await client.jsonArrAppend(
-        'session:sess_789',
+        `${tag}:session:sess_789`,
         '$.activity.actions_performed',
         { action: 'view_profile', timestamp: '2024-01-01T10:00:00.000Z' }
       );
 
       // Update preferences
-      await client.jsonSet('session:sess_789', '$.preferences.theme', 'dark');
+      await client.jsonSet(`${tag}:session:sess_789`, '$.preferences.theme', 'dark');
 
       // Get final session state
-      const finalSession = await client.jsonGet('session:sess_789');
+      const finalSession = await client.jsonGet(`${tag}:session:sess_789`);
       const parsed = JSON.parse(finalSession);
 
       assert.strictEqual(parsed.activity.page_views, 1);
@@ -578,20 +582,20 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       };
 
       // Store configuration
-      await client.jsonSet('app:config', '$', config);
+      await client.jsonSet(`${tag}:app:config`, '$', config);
 
       // Enable maintenance mode
-      await client.jsonToggle('app:config', '$.maintenance_mode');
+      await client.jsonToggle(`${tag}:app:config`, '$.maintenance_mode');
 
       // Update cache settings
-      await client.jsonNumIncrBy('app:config', '$.cache.ttl', 1200); // Add 20 minutes
-      await client.jsonNumMultBy('app:config', '$.cache.max_size', 2); // Double max size
+      await client.jsonNumIncrBy(`${tag}:app:config`, '$.cache.ttl', 1200); // Add 20 minutes
+      await client.jsonNumMultBy(`${tag}:app:config`, '$.cache.max_size', 2); // Double max size
 
       // Enable beta features
-      await client.jsonToggle('app:config', '$.features.beta_features');
+      await client.jsonToggle(`${tag}:app:config`, '$.features.beta_features');
 
       // Get updated config
-      const updated = await client.jsonGet('app:config');
+      const updated = await client.jsonGet(`${tag}:app:config`);
       const parsedConfig = JSON.parse(updated);
 
       assert.strictEqual(parsedConfig.maintenance_mode, true);
