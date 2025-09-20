@@ -8,6 +8,7 @@ import assert from 'node:assert';
 import pkg from '../../dist/index.js';
 const { Redis, Cluster } = pkg;
 import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
+import { getStandaloneConfig } from '../utils/test-config.mjs';
 
 describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
   let client;
@@ -72,6 +73,11 @@ describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
 
   describe('Static createClient factory', () => {
     test('creates client type', async () => {
+      if (mode === 'cluster') {
+        // Cluster mode doesn't have static createClient factory
+        return;
+      }
+      const config = getStandaloneConfig();
       const client = Redis.createClient('client', config);
       try {
         assert.ok(client instanceof Redis);
@@ -82,6 +88,11 @@ describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
     });
 
     test('creates subscriber type', async () => {
+      if (mode === 'cluster') {
+        // Cluster mode doesn't have static createClient factory
+        return;
+      }
+      const config = getStandaloneConfig();
       const subscriber = Redis.createClient('subscriber', config);
       try {
         assert.ok(subscriber instanceof Redis);
@@ -92,6 +103,11 @@ describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
     });
 
     test('creates bclient type with blocking ops enabled', async () => {
+      if (mode === 'cluster') {
+        // Cluster mode doesn't have static createClient factory
+        return;
+      }
+      const config = getStandaloneConfig();
       const bclient = Redis.createClient('bclient', config);
       try {
         assert.ok(bclient instanceof Redis);
@@ -103,6 +119,11 @@ describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
     });
 
     test('returns client immediately (Bull compatibility)', async () => {
+      if (mode === 'cluster') {
+        // Cluster mode doesn't have static createClient factory
+        return;
+      }
+      const config = getStandaloneConfig();
       const start = Date.now();
       const client = Redis.createClient('client', config);
       const elapsed = Date.now() - start;
@@ -119,22 +140,22 @@ describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
   describe('Enhanced ZSET operations', () => {
     beforeEach(async () => {
       // Set up test data
-      await client.zadd('testzset', 1, 'one', 2, 'two', 3, 'three', 4, 'four');
+      await client.zadd(`${tag}:testzset`, 1, 'one', 2, 'two', 3, 'three', 4, 'four');
     });
 
     test('zrangebyscore basic functionality', async () => {
-      const result = await client.zrangebyscore('testzset', 1, 3);
+      const result = await client.zrangebyscore(`${tag}:testzset`, 1, 3);
       assert.deepStrictEqual(result, ['one', 'two', 'three']);
     });
 
     test('zrangebyscore with WITHSCORES', async () => {
-      const result = await client.zrangebyscore('testzset', 1, 2, 'WITHSCORES');
+      const result = await client.zrangebyscore(`${tag}:testzset`, 1, 2, 'WITHSCORES');
       assert.deepStrictEqual(result, ['one', '1', 'two', '2']);
     });
 
     test('zrangebyscore with LIMIT', async () => {
       const result = await client.zrangebyscore(
-        'testzset',
+        `${tag}:testzset`,
         1,
         4,
         'LIMIT',
@@ -145,19 +166,19 @@ describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
     });
 
     test('zrevrangebyscore functionality', async () => {
-      const result = await client.zrevrangebyscore('testzset', 3, 1);
+      const result = await client.zrevrangebyscore(`${tag}:testzset`, 3, 1);
       assert.deepStrictEqual(result, ['three', 'two', 'one']);
     });
 
     test('zpopmin functionality', async () => {
-      const result = await client.zpopmin('testzset', 2);
+      const result = await client.zpopmin(`${tag}:testzset`, 2);
       assert.strictEqual(result.length, 4); // member, score, member, score
       assert.strictEqual(result[0], 'one');
       assert.strictEqual(result[1], '1');
     });
 
     test('zpopmax functionality', async () => {
-      const result = await client.zpopmax('testzset', 1);
+      const result = await client.zpopmax(`${tag}:testzset`, 1);
       assert.strictEqual(result.length, 2); // member, score
       assert.strictEqual(result[0], 'four');
       assert.strictEqual(result[1], '4');
@@ -166,32 +187,37 @@ describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
 
   describe('Blocking operations', () => {
     test('brpoplpush with existing data', async () => {
-      await client.lpush('source', 'item1', 'item2');
+      await client.lpush(`${tag}:source`, 'item1', 'item2');
 
-      const result = await client.brpoplpush('source', 'dest', 0.1);
+      const result = await client.brpoplpush(`${tag}:source`, `${tag}:dest`, 0.1);
       assert.strictEqual(result, 'item1');
 
-      const destItems = await client.lrange('dest', 0, -1);
+      const destItems = await client.lrange(`${tag}:dest`, 0, -1);
       assert.deepStrictEqual(destItems, ['item1']);
     });
 
     test('blpop with existing data', async () => {
-      await client.lpush('testlist', 'item1');
+      await client.lpush(`${tag}:testlist`, 'item1');
 
-      const result = await client.blpop('testlist', 0.1);
-      assert.deepStrictEqual(result, ['testlist', 'item1']);
+      const result = await client.blpop(`${tag}:testlist`, 0.1);
+      assert.deepStrictEqual(result, [`${tag}:testlist`, 'item1']);
     });
 
     test('brpop with existing data', async () => {
-      await client.lpush('testlist', 'item1', 'item2');
+      await client.lpush(`${tag}:testlist`, 'item1', 'item2');
 
-      const result = await client.brpop('testlist', 0.1);
-      assert.deepStrictEqual(result, ['testlist', 'item1']);
+      const result = await client.brpop(`${tag}:testlist`, 0.1);
+      assert.deepStrictEqual(result, [`${tag}:testlist`, 'item1']);
     });
   });
 
   describe('Enhanced duplicate method', () => {
     test('preserves client type when duplicating', async () => {
+      if (mode === 'cluster') {
+        // Cluster mode doesn't have static createClient factory
+        return;
+      }
+      const config = getStandaloneConfig();
       const original = Redis.createClient('bclient', config);
       let duplicated;
       try {
@@ -206,6 +232,10 @@ describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
     });
 
     test('allows override options', async () => {
+      if (mode === 'cluster') {
+        // Cluster mode has different port configuration
+        return;
+      }
       const targetPort = process.env.REDIS_PORT
         ? Number(process.env.REDIS_PORT)
         : 6383;
@@ -227,7 +257,7 @@ describeForEachMode('Enhanced Features for Queue Compatibility', (mode) => {
         duplicated = await client.duplicate();
         const elapsed = Date.now() - start;
 
-        assert.ok(duplicated instanceof Redis);
+        assert.ok(duplicated instanceof (mode === 'cluster' ? Cluster : Redis));
         assert.ok(elapsed < 100); // Should return immediately
 
         // Verify connection works

@@ -9,59 +9,34 @@ import assert from 'node:assert';
 
 import pkg from '../../dist/index.js';
 const { Redis, Cluster } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
 
-function getClusterConfig() {
-  return [
-    { host: 'localhost', port: 17000 },
-    { host: 'localhost', port: 17001 },
-    { host: 'localhost', port: 17002 },
-  ];
-}
+describeForEachMode('String Commands (Dual-Mode Example)', (mode) => {
+  let client;
+  const tag = keyTag('dual');
 
-// Test modes to run
-const testModes = [
-  {
-    name: 'standalone',
-    createClient: () => new Redis(getStandaloneConfig()),
-  },
-];
+  describe('Basic String Operations', () => {
+    beforeEach(async () => {
+      client = await createClient(mode);
+      await client.connect();
 
-// Add cluster tests by default (unless explicitly disabled)
-// This ensures feature parity between standalone and cluster
-if (process.env.DISABLE_CLUSTER_TESTS !== 'true') {
-  testModes.push({
-    name: 'cluster',
-    createClient: () => new Cluster(getClusterConfig(), { lazyConnect: true }),
-  });
-}
+      // Clean slate: flush all data to prevent test pollution
+      // GLIDE's flushall is multislot safe
+      try {
+        await client.flushall();
+      } catch (error) {
+        console.warn('Warning: Could not flush database:', error.message);
+      }
+    });
 
-testModes.forEach(({ name: mode, createClient }) => {
-  describe(`String Commands (${mode} mode)`, () => {
-    describe('Basic String Operations', () => {
-      let client;
-
-      beforeEach(async () => {
-        client = createClient();
-        await client.connect();
-
-        // Clean slate: flush all data to prevent test pollution
-        // GLIDE's flushall is multislot safe
-        try {
-          await client.flushall();
-        } catch (error) {
-          console.warn('Warning: Could not flush database:', error.message);
-        }
-      });
-
-      afterEach(async () => {
-        if (client) {
-          await client.quit();
-        }
-      });
+    afterEach(async () => {
+      if (client) {
+        await client.quit();
+      }
+    });
 
       it('should set and get string values', async () => {
-        const key = `test:${mode}:${Date.now()}`;
+        const key = `${tag}:test:${mode}:${Date.now()}`;
         const value = `hello-${mode}`;
 
         await client.set(key, value);
@@ -71,7 +46,7 @@ testModes.forEach(({ name: mode, createClient }) => {
       });
 
       it('should handle SET with expiration', async () => {
-        const key = `test:expire:${mode}:${Date.now()}`;
+        const key = `${tag}:test:expire:${mode}:${Date.now()}`;
         const value = `expire-${mode}`;
 
         await client.setex(key, 1, value);
@@ -83,7 +58,7 @@ testModes.forEach(({ name: mode, createClient }) => {
       });
 
       it('should increment and decrement counters', async () => {
-        const key = `test:counter:${mode}:${Date.now()}`;
+        const key = `${tag}:test:counter:${mode}:${Date.now()}`;
 
         await client.set(key, '10');
 
@@ -121,7 +96,7 @@ testModes.forEach(({ name: mode, createClient }) => {
       });
 
       it('should handle conditional operations', async () => {
-        const key = `test:conditional:${mode}:${Date.now()}`;
+        const key = `${tag}:test:conditional:${mode}:${Date.now()}`;
 
         // SETNX - set if not exists (should succeed)
         const result1 = await client.setnx(key, 'first');
@@ -138,54 +113,54 @@ testModes.forEach(({ name: mode, createClient }) => {
     });
 
     describe('Advanced String Operations', () => {
-      let client;
+      let advancedClient;
 
       beforeEach(async () => {
-        client = createClient();
-        await client.connect();
+        advancedClient = await createClient(mode);
+        await advancedClient.connect();
 
         // Clean slate: flush all data to prevent test pollution
         // GLIDE's flushall is multislot safe
         try {
-          await client.flushall();
+          await advancedClient.flushall();
         } catch (error) {
           console.warn('Warning: Could not flush database:', error.message);
         }
       });
 
       afterEach(async () => {
-        if (client) {
-          await client.quit();
+        if (advancedClient) {
+          await advancedClient.quit();
         }
       });
 
       it('should handle string ranges and manipulation', async () => {
-        const key = `test:range:${mode}:${Date.now()}`;
+        const key = `${tag}:test:range:${mode}:${Date.now()}`;
         const value = 'Hello World';
 
-        await client.set(key, value);
+        await advancedClient.set(key, value);
 
         // GETRANGE
-        const range = await client.getrange(key, 0, 4);
+        const range = await advancedClient.getrange(key, 0, 4);
         assert.strictEqual(range, 'Hello');
 
         // SETRANGE
-        await client.setrange(key, 6, 'Redis');
-        const modified = await client.get(key);
+        await advancedClient.setrange(key, 6, 'Redis');
+        const modified = await advancedClient.get(key);
         assert.strictEqual(modified, 'Hello Redis');
       });
 
       it('should handle bit operations', async () => {
-        const key = `test:bits:${mode}:${Date.now()}`;
+        const key = `${tag}:test:bits:${mode}:${Date.now()}`;
 
         // Set some bits
-        await client.setbit(key, 0, 1);
-        await client.setbit(key, 2, 1);
+        await advancedClient.setbit(key, 0, 1);
+        await advancedClient.setbit(key, 2, 1);
 
         // Get bits
-        const bit0 = await client.getbit(key, 0);
-        const bit1 = await client.getbit(key, 1);
-        const bit2 = await client.getbit(key, 2);
+        const bit0 = await advancedClient.getbit(key, 0);
+        const bit1 = await advancedClient.getbit(key, 1);
+        const bit2 = await advancedClient.getbit(key, 2);
 
         assert.strictEqual(bit0, 1);
         assert.strictEqual(bit1, 0);
@@ -193,4 +168,3 @@ testModes.forEach(({ name: mode, createClient }) => {
       });
     });
   });
-});

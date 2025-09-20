@@ -14,15 +14,15 @@ import {
 } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+const { Redis, Cluster } = pkg;
+import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
 
-describe('GraphQL Subscriptions Patterns', () => {
+describeForEachMode('GraphQL Subscriptions Patterns', (mode) => {
   let client;
+  const tag = keyTag('graphql');
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    client = new Redis(config);
+    client = await createClient(mode);
 
     await client.connect();
 
@@ -41,7 +41,7 @@ describe('GraphQL Subscriptions Patterns', () => {
 
   describe('Basic Pub/Sub Operations', () => {
     test('should publish and handle subscription messages', async () => {
-      const channel = 'user:notifications:' + Math.random();
+      const channel = `${tag}:user:notifications:` + Math.random();
       const message = {
         type: 'USER_UPDATED',
         userId: 123,
@@ -59,7 +59,7 @@ describe('GraphQL Subscriptions Patterns', () => {
     });
 
     test('should handle multiple message types on same channel', async () => {
-      const channel = 'graphql:events:' + Math.random();
+      const channel = `${tag}:graphql:events:` + Math.random();
 
       const messages = [
         { type: 'USER_CREATED', userId: 1, data: { name: 'Alice' } },
@@ -78,7 +78,7 @@ describe('GraphQL Subscriptions Patterns', () => {
   describe('Real-time GraphQL Subscription Patterns', () => {
     test('should simulate subscription to post comments', async () => {
       const postId = 'post_' + Math.random();
-      const commentChannel = `post:${postId}:comments`;
+      const commentChannel = `${tag}:post:${postId}:comments`;
 
       // Simulate new comment event
       const newComment = {
@@ -118,7 +118,7 @@ describe('GraphQL Subscriptions Patterns', () => {
 
     test('should simulate user activity subscriptions', async () => {
       const userId = 'user_' + Math.random();
-      const activityChannel = `user:${userId}:activity`;
+      const activityChannel = `${tag}:user:${userId}:activity`;
 
       const activities = [
         {
@@ -153,7 +153,7 @@ describe('GraphQL Subscriptions Patterns', () => {
 
     test('should handle chat room subscriptions', async () => {
       const roomId = 'room_' + Math.random();
-      const chatChannel = `chat:${roomId}:messages`;
+      const chatChannel = `${tag}:chat:${roomId}:messages`;
 
       const chatMessage = {
         subscription: 'MESSAGE_SENT',
@@ -198,9 +198,9 @@ describe('GraphQL Subscriptions Patterns', () => {
 
       // Different notification types
       const channels = [
-        `notifications:email:${Math.random()}`,
-        `notifications:push:${Math.random()}`,
-        `notifications:sms:${Math.random()}`,
+        `${tag}:notifications:email:${Math.random()}`,
+        `${tag}:notifications:push:${Math.random()}`,
+        `${tag}:notifications:sms:${Math.random()}`,
       ];
 
       const notificationData = {
@@ -224,7 +224,7 @@ describe('GraphQL Subscriptions Patterns', () => {
     });
 
     test('should simulate global event broadcasting', async () => {
-      const globalChannel = 'global:events:' + Math.random();
+      const globalChannel = `${tag}:global:events:` + Math.random();
 
       const globalEvents = [
         {
@@ -263,7 +263,7 @@ describe('GraphQL Subscriptions Patterns', () => {
   describe('Subscription Management Patterns', () => {
     test('should manage subscription metadata', async () => {
       const subscriptionId = 'sub_' + Math.random();
-      const metadataKey = `subscriptions:${subscriptionId}:meta`;
+      const metadataKey = `${tag}:subscriptions:${subscriptionId}:meta`;
 
       const subscriptionMeta = {
         id: subscriptionId,
@@ -294,8 +294,8 @@ describe('GraphQL Subscriptions Patterns', () => {
 
     test('should handle subscription cleanup', async () => {
       const subscriptionId = 'cleanup_' + Math.random();
-      const metadataKey = `subscriptions:${subscriptionId}:meta`;
-      const channelMappingKey = `subscriptions:${subscriptionId}:channels`;
+      const metadataKey = `${tag}:subscriptions:${subscriptionId}:meta`;
+      const channelMappingKey = `${tag}:subscriptions:${subscriptionId}:channels`;
 
       // Setup subscription data
       await client.set(metadataKey, JSON.stringify({ id: subscriptionId }));
@@ -315,7 +315,7 @@ describe('GraphQL Subscriptions Patterns', () => {
 
     test('should track active subscriptions per user', async () => {
       const userId = 'user_' + Math.random();
-      const userSubscriptionsKey = `user:${userId}:subscriptions`;
+      const userSubscriptionsKey = `${tag}:user:${userId}:subscriptions`;
 
       const subscriptionIds = ['sub_1', 'sub_2', 'sub_3'];
 
@@ -348,7 +348,7 @@ describe('GraphQL Subscriptions Patterns', () => {
     test('should handle batch message publishing', async () => {
       const channels = Array.from(
         { length: 5 },
-        (_, i) => `batch:channel:${i}:${Math.random()}`
+        (_, i) => `${tag}:batch:channel:${i}:${Math.random()}`
       );
 
       const batchMessage = {
@@ -370,9 +370,9 @@ describe('GraphQL Subscriptions Patterns', () => {
     });
 
     test('should implement message deduplication', async () => {
-      const channel = 'dedup:channel:' + Math.random();
+      const channel = `${tag}:dedup:channel:` + Math.random();
       const messageId = 'msg_' + Math.random();
-      const dedupKey = `message:dedup:${messageId}`;
+      const dedupKey = `${tag}:message:dedup:${messageId}`;
 
       const message = {
         id: messageId,
@@ -400,7 +400,7 @@ describe('GraphQL Subscriptions Patterns', () => {
 
     test('should implement rate limiting for subscriptions', async () => {
       const userId = 'ratelimit_' + Math.random();
-      const rateLimitKey = `ratelimit:subscription:${userId}`;
+      const rateLimitKey = `${tag}:ratelimit:subscription:${userId}`;
       const windowSize = 60; // 1 minute window
       const maxSubscriptions = 5;
 
@@ -435,7 +435,7 @@ describe('GraphQL Subscriptions Patterns', () => {
 
   describe('Error Handling and Resilience', () => {
     test('should handle malformed subscription messages', async () => {
-      const channel = 'error:channel:' + Math.random();
+      const channel = `${tag}:error:channel:` + Math.random();
 
       // Valid message
       const validMessage = { type: 'VALID', data: 'test' };
@@ -456,8 +456,8 @@ describe('GraphQL Subscriptions Patterns', () => {
 
     test('should handle subscription timeout and cleanup', async () => {
       const subscriptionId = 'timeout_' + Math.random();
-      const timeoutKey = `subscription:timeout:${subscriptionId}`;
-      const heartbeatKey = `subscription:heartbeat:${subscriptionId}`;
+      const timeoutKey = `${tag}:subscription:timeout:${subscriptionId}`;
+      const heartbeatKey = `${tag}:subscription:heartbeat:${subscriptionId}`;
 
       // Set initial heartbeat
       await client.setex(heartbeatKey, 30, Date.now().toString());
@@ -485,8 +485,8 @@ describe('GraphQL Subscriptions Patterns', () => {
     });
 
     test('should handle connection recovery scenarios', async () => {
-      const recoveryChannel = 'recovery:test:' + Math.random();
-      const reconnectKey = `reconnect:${Math.random()}`;
+      const recoveryChannel = `${tag}:recovery:test:` + Math.random();
+      const reconnectKey = `${tag}:reconnect:${Math.random()}`;
 
       // Store connection state
       const connectionState = {

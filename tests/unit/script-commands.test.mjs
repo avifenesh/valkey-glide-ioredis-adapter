@@ -148,7 +148,7 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         end
       `;
 
-      const bucketKey = `token_bucket:api:${Math.random()}`;
+      const bucketKey = `${tag}:token_bucket:api:${Math.random()}`;
       const maxTokens = 10;
       const refillRate = 2; // 2 tokens per second
       const currentTime = Date.now();
@@ -220,7 +220,7 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         end
       `;
 
-      const key = `fixed_rate:channel:${Math.random()}`;
+      const key = `${tag}:fixed_rate:channel:${Math.random()}`;
       const windowSeconds = 10; // 10 second window
       const limit = 3; // 3 messages per 10 seconds
       // Use fixed timestamp to avoid timing-related flakiness in CI
@@ -294,7 +294,7 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         end
       `;
 
-      const productKey = `inventory:product:${Math.random()}`;
+      const productKey = `${tag}:inventory:product:${Math.random()}`;
 
       // Initialize inventory
       await client.hmset(
@@ -376,7 +376,7 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         end
       `;
 
-      const lockKey = `repo:lock:${Math.random()}`;
+      const lockKey = `${tag}:repo:lock:${Math.random()}`;
       const process1Id = 'process-1-uuid';
       const process2Id = 'process-2-uuid';
       const expirationMs = 5000; // 5 seconds
@@ -640,7 +640,7 @@ describeForEachMode('Script Commands - Atomic Operations & Business Logic', (mod
         return invalid_operation
       `;
 
-      const key = `error:test:${Math.random()}`;
+      const key = `${tag}:error:test:${Math.random()}`;
 
       try {
         await client.eval(errorScript, 1, key);

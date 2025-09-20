@@ -13,15 +13,15 @@
 import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+const { Redis, Cluster } = pkg;
+import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
 
-describe('Redis Adapter Edge Cases & Production Scenarios', () => {
+describeForEachMode('Redis Adapter Edge Cases & Production Scenarios', (mode) => {
   let client;
+  const tag = keyTag('edge');
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    client = new Redis(config);
+    client = await createClient(mode);
 
     await client.connect();
 
@@ -43,27 +43,27 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
   describe('Connection Edge Cases', () => {
     test('should handle reconnection scenarios gracefully', async () => {
       // Test basic connection
-      await client.set('connection:test', 'initial');
-      const value = await client.get('connection:test');
+      await client.set(`${tag}:connection:test`, 'initial');
+      const value = await client.get(`${tag}:connection:test`);
       assert.strictEqual(value, 'initial');
 
       // Simulate connection recovery (common in cloud environments)
       // The adapter should handle this transparently
-      await client.set('connection:test:recovery', 'after_reconnect');
-      const recoveryValue = await client.get('connection:test:recovery');
+      await client.set(`${tag}:connection:test:recovery`, 'after_reconnect');
+      const recoveryValue = await client.get(`${tag}:connection:test:recovery`);
       assert.strictEqual(recoveryValue, 'after_reconnect');
     });
 
     test('should handle concurrent connection attempts', async () => {
       // Clean up any existing test data
-      await client.del('concurrent:counter');
+      await client.del(`${tag}:concurrent:counter`);
 
       // Multiple operations at connection time (startup scenario)
       // First, do concurrent SETs
       const setPromises = [
-        client.set('concurrent:1', 'value1'),
-        client.set('concurrent:2', 'value2'),
-        client.set('concurrent:3', 'value3'),
+        client.set(`${tag}:concurrent:1`, 'value1'),
+        client.set(`${tag}:concurrent:2`, 'value2'),
+        client.set(`${tag}:concurrent:3`, 'value3'),
       ];
       const setResults = await Promise.all(setPromises);
       assert.strictEqual(setResults[0], 'OK');
@@ -71,7 +71,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       assert.strictEqual(setResults[2], 'OK');
 
       // Then do GET and INCR after SETs are complete
-      const getValue = await client.get('concurrent:1');
+      const getValue = await client.get(`${tag}:concurrent:1`);
       const incrResult = await client.incr('concurrent:counter');
 
       assert.strictEqual(getValue, 'value1');
@@ -159,7 +159,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
     test('should handle memory pressure scenarios', async () => {
       // Simulate memory pressure with many keys
       const keyCount = 1000;
-      const keyPrefix = 'memory:pressure:';
+      const keyPrefix = `${tag}:memory:pressure:`;
 
       // Create many keys
       for (let i = 0; i < keyCount; i++) {
@@ -181,7 +181,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
     test('should handle concurrent high-frequency operations', async () => {
       // High-frequency operations (analytics, counters)
       const operations = 100;
-      const counterKey = 'concurrent:high:frequency';
+      const counterKey = `${tag}:concurrent:high:frequency`;
 
       // Concurrent increments
       const incrPromises = Array.from({ length: operations }, () =>
@@ -205,7 +205,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
   describe('Data Type Edge Cases', () => {
     test('should handle type conflicts gracefully', async () => {
-      const key = 'type:conflict:test';
+      const key = `${tag}:type:conflict:test`;
 
       // Set
       await client.set(key, 'string_value');
@@ -226,7 +226,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
     test('should handle empty collections correctly', async () => {
       // Empty list operations
-      const emptyListKey = 'empty:list';
+      const emptyListKey = `${tag}:empty:list`;
       const listLen = await client.llen(emptyListKey);
       assert.strictEqual(listLen, 0);
 
@@ -234,7 +234,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       assert.strictEqual(listItem, null);
 
       // Empty set operations
-      const emptySetKey = 'empty:set';
+      const emptySetKey = `${tag}:empty:set`;
       const setSize = await client.scard(emptySetKey);
       assert.strictEqual(setSize, 0);
 
@@ -242,7 +242,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       assert.strictEqual(setMember, null);
 
       // Empty hash operations
-      const emptyHashKey = 'empty:hash';
+      const emptyHashKey = `${tag}:empty:hash`;
       const hashLen = await client.hlen(emptyHashKey);
       assert.strictEqual(hashLen, 0);
 
@@ -250,7 +250,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       assert.deepStrictEqual(hashFields, {});
 
       // Empty sorted set operations
-      const emptyZSetKey = 'empty:zset';
+      const emptyZSetKey = `${tag}:empty:zset`;
       const zsetSize = await client.zcard(emptyZSetKey);
       assert.strictEqual(zsetSize, 0);
 
@@ -259,7 +259,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
     });
 
     test('should handle special numeric values in sorted sets', async () => {
-      const key = 'specials:zset';
+      const key = `${tag}:specials:zset`;
 
       // Add members with special numeric values
       await client.zadd(
@@ -296,7 +296,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
   describe('Command Parameter Edge Cases', () => {
     test('should handle SET command with all options', async () => {
-      const key = 'set:options:test';
+      const key = `${tag}:set:options:test`;
 
       // SET with EX (seconds)
       await client.set(key, 'with_ex', 'EX', 10);
@@ -347,7 +347,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
     });
 
     test('should handle ZADD with duplicate members', async () => {
-      const key = 'zadd:duplicates:test';
+      const key = `${tag}:zadd:duplicates:test`;
 
       // Initial add
       const result1 = await client.zadd(key, 100, 'member1', 200, 'member2');
@@ -366,7 +366,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
     });
 
     test('should handle ZRANGEBYSCORE with complex ranges', async () => {
-      const key = 'zrange:complex:test';
+      const key = `${tag}:zrange:complex:test`;
 
       // Add test data
       await client.zadd(
@@ -443,7 +443,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
     });
 
     test('should handle pipeline with errors', async () => {
-      const key = 'pipeline:error:test';
+      const key = `${tag}:pipeline:error:test`;
 
       // Set up conflicting data type
       await client.set(key, 'string_value');
@@ -462,7 +462,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
     });
 
     test('should handle transaction with WATCH', async () => {
-      const key = 'transaction:watch:test';
+      const key = `${tag}:transaction:watch:test`;
       await client.set(key, '100');
 
       // Start watching
@@ -486,7 +486,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
     });
 
     test('should handle transaction abort on WATCH violation', async () => {
-      const key = 'transaction:abort:test';
+      const key = `${tag}:transaction:abort:test`;
       await client.set(key, '100');
 
       // Create second connection to modify watched key
@@ -520,12 +520,12 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       await assert.rejects(client.set('', 'value'));
 
       // Type errors
-      const stringKey = 'error:key';
+      const stringKey = `${tag}:error:key`;
       await client.set(stringKey, 'string_value');
       await assert.rejects(client.lpush(stringKey, 'item'));
 
       // Non-existent key operations that should return defaults
-      const result1 = await client.get('nonexistent:key');
+      const result1 = await client.get(`${tag}:nonexistent:key`);
       assert.strictEqual(result1, null);
 
       const result2 = await client.llen('nonexistent:list');
@@ -557,7 +557,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
     test('should handle malformed data gracefully', async () => {
       // Binary data
-      const binaryKey = 'binary:data:test';
+      const binaryKey = `${tag}:binary:data:test`;
       const binaryData = Buffer.from([0, 1, 2, 3, 255, 254, 253]).toString(
         'binary'
       );
@@ -615,11 +615,11 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
 
     test('should handle FLUSHDB safely in test environment', async () => {
       // Add test data
-      await client.set('flush:test:1', 'value1');
-      await client.set('flush:test:2', 'value2');
+      await client.set(`${tag}:flush:test:1`, 'value1');
+      await client.set(`${tag}:flush:test:2`, 'value2`);
 
       // Verify data exists
-      const value1 = await client.get('flush:test:1');
+      const value1 = await client.get(`${tag}:flush:test:1`);
       assert.strictEqual(value1, 'value1');
 
       try {
@@ -628,7 +628,7 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
           await client.flushdb();
 
           // Verify data is gone
-          const flushedValue = await client.get('flush:test:1');
+          const flushedValue = await client.get(`${tag}:flush:test:1`);
           assert.strictEqual(flushedValue, null);
         }
       } catch (error) {
@@ -645,14 +645,14 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
       const scriptSha = await client.script('LOAD', script);
 
       // Set test data
-      await client.set('lua:test:key', 'lua_value');
+      await client.set(`${tag}:lua:test:key`, 'lua_value');
 
       // Execute by SHA
-      const result = await client.evalsha(scriptSha, 1, 'lua:test:key');
+      const result = await client.evalsha(scriptSha, 1, `${tag}:lua:test:key`);
       assert.strictEqual(result, 'lua_value');
 
       // Execute script directly
-      const directResult = await client.eval(script, 1, 'lua:test:key');
+      const directResult = await client.eval(script, 1, `${tag}:lua:test:key`);
       assert.strictEqual(directResult, 'lua_value');
     });
 
@@ -670,15 +670,15 @@ describe('Redis Adapter Edge Cases & Production Scenarios', () => {
         return new_value
       `;
 
-      const result1 = await client.eval(script, 1, 'lua:counter', '10');
+      const result1 = await client.eval(script, 1, `${tag}:lua:counter`, '10');
       assert.strictEqual(result1, 10);
 
-      const result2 = await client.eval(script, 1, 'lua:counter', '25');
+      const result2 = await client.eval(script, 1, `${tag}:lua:counter`, '25');
       assert.strictEqual(result2, 35);
     });
 
     test('should handle stream operations', async () => {
-      const streamKey = 'test:stream:advanced';
+      const streamKey = `${tag}:test:stream:advanced`;
 
       // Clean up any existing stream data
       try {

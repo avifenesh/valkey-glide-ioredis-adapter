@@ -14,15 +14,15 @@ import {
 } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { getStandaloneConfig } from '../utils/test-config.mjs';
+const { Redis, Cluster } = pkg;
+import { describeForEachMode, createClient, keyTag } from '../setup/dual-mode.mjs';
 
-describe('NestJS Cache Integration Patterns', () => {
+describeForEachMode('NestJS Cache Integration Patterns', (mode) => {
   let client;
+  const tag = keyTag('nestjs');
 
   beforeEach(async () => {
-    const config = getStandaloneConfig();
-    client = new Redis(config);
+    client = await createClient(mode);
 
     await client.connect();
 
@@ -41,7 +41,7 @@ describe('NestJS Cache Integration Patterns', () => {
 
   describe('Cache Manager Pattern', () => {
     test('should implement basic cache GET/SET with TTL', async () => {
-      const cacheKey = 'cache:user:profile:' + Math.random();
+      const cacheKey = `${tag}:cache:user:profile:` + Math.random();
 
       // Cache user profile data
       const userProfile = {
@@ -71,7 +71,7 @@ describe('NestJS Cache Integration Patterns', () => {
     });
 
     test('should handle cache miss gracefully', async () => {
-      const nonExistentKey = 'cache:missing:' + Math.random();
+      const nonExistentKey = `${tag}:cache:missing:` + Math.random();
 
       const result = await client.get(nonExistentKey);
       assert.strictEqual(result, null);
@@ -248,7 +248,7 @@ describe('NestJS Cache Integration Patterns', () => {
     });
 
     test('should handle cache stampede with SET NX', async () => {
-      const popularKey = 'cache:popular:article:' + Math.random();
+      const popularKey = `${tag}:cache:popular:article:` + Math.random();
       const lockKey = `${popularKey}:lock`;
 
       // Simulate multiple concurrent requests
@@ -297,24 +297,24 @@ describe('NestJS Cache Integration Patterns', () => {
 
   describe('Cache Invalidation Patterns', () => {
     test('should implement tag-based cache invalidation', async () => {
-      const baseKey = 'cache:tagged:' + Math.random();
+      const baseKey = `${tag}:cache:tagged:` + Math.random();
 
       // Create caches with tags
       const userCaches = [
         {
           key: `${baseKey}:user:1:profile`,
           data: { name: 'User 1' },
-          tags: ['user:1', 'profile'],
+          tags: [`${tag}:user:1`, 'profile'],
         },
         {
           key: `${baseKey}:user:1:posts`,
           data: { posts: [] },
-          tags: ['user:1', 'posts'],
+          tags: [`${tag}:user:1`, 'posts'],
         },
         {
           key: `${baseKey}:user:2:profile`,
           data: { name: 'User 2' },
-          tags: ['user:2', 'profile'],
+          tags: [`${tag}:user:2`, 'profile'],
         },
       ];
 
@@ -330,7 +330,7 @@ describe('NestJS Cache Integration Patterns', () => {
         }
       }
 
-      // Invalidate all caches tagged with 'user:1'
+      // Invalidate all caches tagged with '${tag}:user:1'
       const tagKey = `${baseKey}:tag:user:1`;
       const keysToInvalidate = await client.smembers(tagKey);
 
@@ -348,7 +348,7 @@ describe('NestJS Cache Integration Patterns', () => {
     });
 
     test('should implement time-based cache refresh', async () => {
-      const refreshKey = 'cache:refresh:' + Math.random();
+      const refreshKey = `${tag}:cache:refresh:` + Math.random();
       const lastRefreshKey = `${refreshKey}:last_refresh`;
 
       // Initial cache setup
@@ -389,8 +389,8 @@ describe('NestJS Cache Integration Patterns', () => {
       return; // Skip performance tests in CI
     }
     test('should track cache hit/miss statistics', async () => {
-      const statsKey = 'cache:stats:' + Math.random();
-      const dataKey = 'cache:data:' + Math.random();
+      const statsKey = `${tag}:cache:stats:` + Math.random();
+      const dataKey = `${tag}:cache:data:` + Math.random();
 
       // Simulate cache operations with statistics
       const trackCacheOperation = async operation => {
@@ -425,7 +425,7 @@ describe('NestJS Cache Integration Patterns', () => {
     });
 
     test('should implement cache warming strategy', async () => {
-      const warmupPrefix = 'cache:warmup:' + Math.random();
+      const warmupPrefix = `${tag}:cache:warmup:` + Math.random();
 
       // Critical data that should always be cached
       const criticalData = [
@@ -466,7 +466,7 @@ describe('NestJS Cache Integration Patterns', () => {
 
   describe('Error Handling and Resilience', () => {
     test('should handle cache failures gracefully', async () => {
-      const resilientKey = 'cache:resilient:' + Math.random();
+      const resilientKey = `${tag}:cache:resilient:` + Math.random();
 
       // Simulate cache operation with fallback
       const cacheWithFallback = async (key, fallbackData) => {
@@ -493,7 +493,7 @@ describe('NestJS Cache Integration Patterns', () => {
     });
 
     test('should handle expired cache keys properly', async () => {
-      const expiringKey = 'cache:expiring:' + Math.random();
+      const expiringKey = `${tag}:cache:expiring:` + Math.random();
 
       // Set cache with very short TTL
       await client.setex(
