@@ -54,8 +54,8 @@ export DISABLE_STANDALONE_TESTS="true"
 # Run tests
 echo -e "${YELLOW}Running cluster tests...${NC}"
 
-# Find test files - include cluster-specific tests
-TEST_FILES=$(find tests -name "*.test.mjs" | sort)
+# Find cluster test files
+TEST_FILES=$(find tests/cluster -name "*.test.mjs" | sort)
 
 # Run tests
 node --test \
