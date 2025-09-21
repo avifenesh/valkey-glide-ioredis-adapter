@@ -765,14 +765,15 @@ describeForEachMode('JSON Commands - ValkeyJSON Compatibility', mode => {
 
       // Get array length
       const length = await client.jsonArrLen('large:doc', '$.data');
-      assert.strictEqual(length, 1000);
+      assert.strictEqual(length, arraySize);
 
-      // Get specific element
-      const element = await client.jsonGet('large:doc', '$.data[500]');
+      // Get specific element (use middle index)
+      const middleIndex = Math.floor(arraySize / 2);
+      const element = await client.jsonGet('large:doc', `$.data[${middleIndex}]`);
       assert.ok(element);
 
       const parsed = JSON.parse(element);
-      assert.strictEqual(parsed.id, 500);
+      assert.strictEqual(parsed.id, middleIndex);
     });
   });
 
