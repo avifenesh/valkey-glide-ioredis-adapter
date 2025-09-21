@@ -1,50 +1,44 @@
 /**
  * ioredis-Compatible Pub/Sub Client for Valkey
- * 
+ *
  * Direct TCP connection with RESP protocol parsing for full binary data support.
- * Connects to Valkey server using Redis protocol for full ioredis compatibility.
- * Used for Socket.IO compatibility and applications requiring binary message handling.
- * 
- * Part of the dual pub/sub architecture:
- * - DirectGlidePubSub: High-performance GLIDE native callbacks (text only)
- * - IoredisPubSubClient: Full ioredis compatibility with binary support
+ * Provides Socket.IO compatibility and binary message handling through the
+ * dual pub/sub architecture.
  */
 
 import { EventEmitter } from 'events';
 import { Socket } from 'net';
 import { RedisOptions } from '../types';
-
-// RESP protocol constants for better maintainability
-const RESP_TYPES = {
-  ARRAY: '*',
-  BULK_STRING: '$',
-  INTEGER: ':',
-  CRLF: '\r\n'
-} as const;
-
-// Connection timeout and retry constants
-const CONNECTION_DEFAULTS = {
-  TIMEOUT: 10000,
-  DEFAULT_PORT: 6379,
-  DEFAULT_HOST: 'localhost'
-} as const;
+import { CONNECTION, BUFFER_LIMITS, PUBSUB } from '../constants';
 
 interface RespMessage {
-  type: 'message' | 'pmessage' | 'subscribe' | 'psubscribe' | 'unsubscribe' | 'punsubscribe';
+  type:
+    | 'message'
+    | 'pmessage'
+    | 'subscribe'
+    | 'psubscribe'
+    | 'unsubscribe'
+    | 'punsubscribe';
   channel: string;
   pattern?: string;
   message?: string | Buffer;
   count?: number;
 }
 
-
 export class IoredisPubSubClient extends EventEmitter {
   private socket: Socket | null = null;
-  private connectionStatus: 'disconnected' | 'connecting' | 'connected' = 'disconnected';
+  private connectionStatus: 'disconnected' | 'connecting' | 'connected' =
+    'disconnected';
   private readonly subscriptions = new Set<string>();
   private readonly patternSubscriptions = new Set<string>();
-  private buffer = Buffer.alloc(0);
+  private buffer = Buffer.alloc(BUFFER_LIMITS.INITIAL_BUFFER_SIZE);
   private readonly keyPrefix: string;
+  private readonly maxBufferSize = BUFFER_LIMITS.MAX_BUFFER_SIZE;
+  // Awaitable unsubscribe acks
+  private pendingUnsub = new Map<string, () => void>();
+  private pendingPUnsub = new Map<string, () => void>();
+  private unsubAllResolve: (() => void) | null = null;
+  private punsubAllResolve: (() => void) | null = null;
 
   constructor(private options: RedisOptions) {
     super();
@@ -61,24 +55,61 @@ export class IoredisPubSubClient extends EventEmitter {
     this.emit('connecting');
 
     return new Promise<void>((resolve, reject) => {
-      const timeoutMs = this.options.connectTimeout || CONNECTION_DEFAULTS.TIMEOUT;
+      const timeoutMs =
+        this.options.connectTimeout || CONNECTION.DEFAULT_CONNECT_TIMEOUT_MS;
       const timeout = setTimeout(() => {
         this.cleanup();
         reject(new Error(`Connection timeout after ${timeoutMs}ms`));
       }, timeoutMs);
+      (timeout as any).unref?.();
 
       this.socket = new Socket();
+      // Prevent this socket from keeping the event loop alive
+      try {
+        this.socket.unref();
+      } catch {}
 
-      // Connection success handler
-      this.socket.once('connect', () => {
+      this.socket.once('connect', async () => {
+        try {
+          this.socket && this.socket.unref && this.socket.unref();
+        } catch {}
         clearTimeout(timeout);
-        this.connectionStatus = 'connected';
-        this.emit('connect');
-        this.emit('ready');
-        resolve();
+        try {
+          // Optional AUTH
+          if (this.options.password) {
+            if (this.options.username) {
+              await this.sendCommand([
+                'AUTH',
+                this.options.username,
+                this.options.password,
+              ]);
+            } else {
+              await this.sendCommand(['AUTH', this.options.password]);
+            }
+          }
+          // Optional CLIENT SETNAME
+          if (this.options.clientName) {
+            await this.sendCommand([
+              'CLIENT',
+              'SETNAME',
+              this.options.clientName,
+            ]);
+          }
+          // Optional SELECT
+          if (typeof this.options.db === 'number') {
+            await this.sendCommand(['SELECT', String(this.options.db)]);
+          }
+          this.connectionStatus = 'connected';
+          this.emit('connect');
+          this.emit('ready');
+          resolve();
+        } catch (handshakeErr) {
+          this.cleanup();
+          this.emit('error', handshakeErr as Error);
+          reject(handshakeErr);
+        }
       });
 
-      // Data handler for RESP protocol
       this.socket.on('data', (data: Buffer) => {
         try {
           this.handleRespData(data);
@@ -87,7 +118,6 @@ export class IoredisPubSubClient extends EventEmitter {
         }
       });
 
-      // Error handler
       this.socket.once('error', (error: Error) => {
         clearTimeout(timeout);
         this.cleanup();
@@ -95,7 +125,6 @@ export class IoredisPubSubClient extends EventEmitter {
         reject(error);
       });
 
-      // Connection close handler
       this.socket.on('close', (hadError: boolean) => {
         this.connectionStatus = 'disconnected';
         this.emit('close');
@@ -107,8 +136,8 @@ export class IoredisPubSubClient extends EventEmitter {
 
       // Initiate connection
       this.socket.connect(
-        this.options.port ?? CONNECTION_DEFAULTS.DEFAULT_PORT,
-        this.options.host ?? CONNECTION_DEFAULTS.DEFAULT_HOST
+        this.options.port ?? CONNECTION.DEFAULT_PORT,
+        this.options.host ?? CONNECTION.DEFAULT_HOST
       );
     });
   }
@@ -116,44 +145,70 @@ export class IoredisPubSubClient extends EventEmitter {
   /**
    * Gracefully disconnect from server and clean up resources
    */
-  disconnect(): void {
-    this.cleanup();
+  async disconnect(): Promise<void> {
+    await this.cleanup();
   }
 
   /**
    * Internal cleanup method for connection resources
    */
-  private cleanup(): void {
+  private async cleanup(): Promise<void> {
     if (this.socket) {
       this.socket.removeAllListeners();
       if (!this.socket.destroyed) {
-        this.socket.end();
-        this.socket.destroy();
+        // Properly close the socket with a promise
+        await new Promise<void>(resolve => {
+          const onClose = () => {
+            resolve();
+          };
+          this.socket!.once('close', onClose);
+          this.socket!.end();
+          this.socket!.destroy();
+          // Fallback timeout in case close event doesn't fire
+          const t = setTimeout(() => {
+            this.socket?.removeListener('close', onClose);
+            resolve();
+          }, 100);
+          (t as any).unref?.();
+        });
       }
       this.socket = null;
     }
     this.connectionStatus = 'disconnected';
-    this.buffer = Buffer.alloc(0); // Clear parsing buffer
+    this.buffer = Buffer.alloc(0);
   }
 
-  // === RESP Protocol Parsing ===
-  
   /**
-   * Handles incoming RESP data by parsing messages and updating buffer
-   * @param data Incoming buffer data from socket
+   * Handles incoming RESP data by parsing messages and updating buffer.
+   * @param data - Incoming buffer data from socket
+   * @private
    */
   private handleRespData(data: Buffer): void {
+    // Check if buffer would exceed maximum size
+    if (this.buffer.length + data.length > this.maxBufferSize) {
+      const error = new Error(
+        `Buffer overflow: exceeds maximum size of ${this.maxBufferSize} bytes`
+      );
+      this.emit('error', error);
+      // Sliding window: drop oldest data to make room for new data
+      const bytesToDrop = this.buffer.length + data.length - this.maxBufferSize;
+      if (bytesToDrop < this.buffer.length) {
+        this.buffer = this.buffer.subarray(bytesToDrop);
+      } else {
+        // If new data itself is too large, keep only the last maxBufferSize bytes of new data
+        this.buffer = Buffer.alloc(0);
+        data = data.subarray(data.length - this.maxBufferSize);
+      }
+    }
+
     this.buffer = Buffer.concat([this.buffer, data]);
 
-    // Parse all complete messages from buffer
     while (this.buffer.length > 0) {
       const parseResult = this.parseRespMessage(this.buffer);
       if (!parseResult) break;
 
-      // Update buffer to remove parsed data
       this.buffer = this.buffer.subarray(parseResult.consumed);
 
-      // Process parsed pub/sub message
       if (parseResult.message) {
         this.handlePubSubMessage(parseResult.message);
       }
@@ -161,275 +216,318 @@ export class IoredisPubSubClient extends EventEmitter {
   }
 
   /**
-   * Parse a single RESP message from buffer
-   * @param buffer Buffer containing RESP data
+   * Parses a single RESP message from buffer.
+   * @param buffer - Buffer containing RESP data
    * @returns Parsed message and bytes consumed, or null if incomplete
+   * @private
    */
   private parseRespMessage(
     buffer: Buffer
   ): { message: RespMessage | null; consumed: number } | null {
     if (buffer.length === 0) return null;
-    
+
     const firstByte = buffer[0];
     if (firstByte === undefined) return null;
-    
+
     const respType = String.fromCharCode(firstByte);
 
-    if (respType === RESP_TYPES.ARRAY) {
-      // Array type - pub/sub messages are arrays
+    if (respType === PUBSUB.RESP_ARRAY) {
       return this.parseRespArray(buffer);
     }
 
-    // Skip non-array types (not expected in pub/sub context)
-    const crlfIndex = buffer.indexOf(RESP_TYPES.CRLF);
+    const crlfIndex = buffer.indexOf(PUBSUB.RESP_CRLF);
     if (crlfIndex === -1) return null;
 
-    return { message: null, consumed: crlfIndex + RESP_TYPES.CRLF.length };
+    return { message: null, consumed: crlfIndex + PUBSUB.RESP_CRLF.length };
   }
 
   /**
-   * Parse RESP array containing pub/sub message
-   * @param buffer Buffer starting with array marker '*'
+   * Parses RESP array containing pub/sub message.
+   * @param buffer - Buffer starting with array marker '*'
    * @returns Parsed pub/sub message and bytes consumed
+   * @private
    */
   private parseRespArray(
     buffer: Buffer
   ): { message: RespMessage | null; consumed: number } | null {
-    let pos = 1; // Skip array marker '*'
+    let pos = 1;
 
-    // Read array length
-    const lengthEnd = buffer.indexOf(RESP_TYPES.CRLF, pos);
+    const lengthEnd = buffer.indexOf(PUBSUB.RESP_CRLF, pos);
     if (lengthEnd === -1) return null;
 
     const arrayLength = parseInt(buffer.subarray(pos, lengthEnd).toString());
     if (isNaN(arrayLength) || arrayLength < 0) return null;
-    
-    pos = lengthEnd + RESP_TYPES.CRLF.length;
+
+    pos = lengthEnd + PUBSUB.RESP_CRLF.length;
 
     const elements: (string | Buffer)[] = [];
 
-    // Parse each array element
     for (let i = 0; i < arrayLength; i++) {
       if (pos >= buffer.length) return null;
 
       const elementTypeByte = buffer[pos];
       if (elementTypeByte === undefined) return null;
-      
+
       const elementType = String.fromCharCode(elementTypeByte);
 
-      if (elementType === RESP_TYPES.BULK_STRING) {
-        // Parse bulk string element
+      if (elementType === PUBSUB.RESP_BULK_STRING) {
         const bulkStringResult = this.parseBulkString(buffer, pos);
         if (!bulkStringResult) return null;
-        
+
         elements.push(bulkStringResult.value);
         pos = bulkStringResult.consumed;
-      } else if (elementType === RESP_TYPES.INTEGER) {
-        // Parse integer element
-        const crlfIndex = buffer.indexOf(RESP_TYPES.CRLF, pos);
+      } else if (elementType === PUBSUB.RESP_INTEGER) {
+        const crlfIndex = buffer.indexOf(PUBSUB.RESP_CRLF, pos);
         if (crlfIndex === -1) return null;
-        
+
         const intValue = buffer.subarray(pos + 1, crlfIndex).toString();
         elements.push(intValue);
-        pos = crlfIndex + RESP_TYPES.CRLF.length;
+        pos = crlfIndex + PUBSUB.RESP_CRLF.length;
       } else {
-        // Unexpected element type in pub/sub message
         return null;
       }
     }
 
-    // Parse pub/sub message from elements
     const message = this.createPubSubMessage(elements);
     return { message, consumed: pos };
   }
 
   /**
-   * Creates a pub/sub message from parsed RESP array elements
-   * @param elements Array elements from RESP array
+   * Creates a pub/sub message from parsed RESP array elements.
+   * @param elements - Array elements from RESP array
    * @returns Parsed pub/sub message or null if invalid
+   * @private
    */
-  private createPubSubMessage(elements: (string | Buffer)[]): RespMessage | null {
+  private createPubSubMessage(
+    elements: (string | Buffer)[]
+  ): RespMessage | null {
     if (elements.length < 3) return null;
 
     const messageType = this.bufferToString(elements[0]!);
-    
+
     switch (messageType) {
       case 'message':
         if (elements.length >= 3 && elements[2] !== undefined) {
           return {
             type: 'message',
             channel: this.bufferToString(elements[1]!),
-            message: elements[2] // Preserve Buffer for binary data
+            message: elements[2],
           };
         }
         break;
-        
+
       case 'pmessage':
         if (elements.length >= 4 && elements[3] !== undefined) {
           return {
             type: 'pmessage',
             pattern: this.bufferToString(elements[1]!),
             channel: this.bufferToString(elements[2]!),
-            message: elements[3] // Preserve Buffer for binary data
+            message: elements[3],
           };
         }
         break;
-        
+
       case 'subscribe':
       case 'psubscribe':
+      case 'unsubscribe':
+      case 'punsubscribe':
         if (elements.length >= 3) {
           const count = parseInt(this.bufferToString(elements[2]!));
           return {
-            type: messageType as 'subscribe' | 'psubscribe',
+            type: messageType as any,
             channel: this.bufferToString(elements[1]!),
-            count: isNaN(count) ? 0 : count
+            count: isNaN(count) ? 0 : count,
           };
         }
         break;
     }
-    
-    return null; // Unknown or invalid message type
+
+    return null;
   }
 
   /**
-   * Safely converts Buffer or string to string
-   * @param value Buffer or string value
+   * Safely converts Buffer or string to string.
+   * @param value - Buffer or string value
    * @returns String representation
+   * @private
    */
   private bufferToString(value: string | Buffer): string {
     return Buffer.isBuffer(value) ? value.toString() : String(value);
   }
 
   /**
-   * Parse RESP bulk string from buffer
-   * @param buffer Buffer containing RESP data
-   * @param startPos Starting position in buffer (should point to '$')
+   * Parses RESP bulk string from buffer.
+   * @param buffer - Buffer containing RESP data
+   * @param startPos - Starting position in buffer (should point to '$')
    * @returns Parsed bulk string value and bytes consumed
+   * @private
    */
   private parseBulkString(
     buffer: Buffer,
     startPos: number
   ): { value: Buffer; consumed: number } | null {
     if (startPos >= buffer.length) return null;
-    
-    // Verify bulk string marker
+
     const startByte = buffer[startPos];
-    if (startByte === undefined || String.fromCharCode(startByte) !== RESP_TYPES.BULK_STRING) {
+    if (
+      startByte === undefined ||
+      String.fromCharCode(startByte) !== PUBSUB.RESP_BULK_STRING
+    ) {
       return null;
     }
 
-    let pos = startPos + 1; // Skip '$' marker
+    let pos = startPos + 1;
 
-    // Find length specification end
-    const lengthEnd = buffer.indexOf(RESP_TYPES.CRLF, pos);
+    const lengthEnd = buffer.indexOf(PUBSUB.RESP_CRLF, pos);
     if (lengthEnd === -1) return null;
 
-    // Parse string length
     const stringLength = parseInt(buffer.subarray(pos, lengthEnd).toString());
     if (isNaN(stringLength) || stringLength < 0) return null;
-    
-    pos = lengthEnd + RESP_TYPES.CRLF.length;
 
-    // Check if we have enough data for the string + CRLF
-    if (pos + stringLength + RESP_TYPES.CRLF.length > buffer.length) return null;
+    pos = lengthEnd + PUBSUB.RESP_CRLF.length;
 
-    // Extract raw Buffer to preserve binary data (critical for Socket.IO/MessagePack)
+    if (pos + stringLength + PUBSUB.RESP_CRLF.length > buffer.length)
+      return null;
+
     const value = buffer.subarray(pos, pos + stringLength);
-    pos += stringLength + RESP_TYPES.CRLF.length;
+    pos += stringLength + PUBSUB.RESP_CRLF.length;
 
     return { value, consumed: pos };
   }
 
-  // === Event Emission ===
-  
   /**
-   * Process parsed pub/sub message and emit appropriate events
-   * @param message Parsed pub/sub message
+   * Processes parsed pub/sub message and emits appropriate events.
+   * @param message - Parsed pub/sub message
+   * @private
    */
   private handlePubSubMessage(message: RespMessage): void {
     switch (message.type) {
       case 'message':
         this.handleRegularMessage(message);
         break;
-        
+
       case 'pmessage':
         this.handlePatternMessage(message);
         break;
-        
-      // Subscription confirmations are handled but not emitted as user events
+
       case 'subscribe':
       case 'psubscribe':
-        // These are internal confirmations, no user-facing events needed
         break;
+      case 'unsubscribe': {
+        // Resolve channel-specific or all-unsubscribe awaits
+        const key = message.channel;
+        const resolver = this.pendingUnsub.get(key);
+        if (resolver) {
+          this.pendingUnsub.delete(key);
+          try {
+            resolver();
+          } catch {}
+        }
+        if ((message.count ?? 0) === 0 && this.unsubAllResolve) {
+          const r = this.unsubAllResolve;
+          this.unsubAllResolve = null;
+          try {
+            r();
+          } catch {}
+        }
+        break;
+      }
+      case 'punsubscribe': {
+        const key = message.channel;
+        const resolver = this.pendingPUnsub.get(key);
+        if (resolver) {
+          this.pendingPUnsub.delete(key);
+          try {
+            resolver();
+          } catch {}
+        }
+        if ((message.count ?? 0) === 0 && this.punsubAllResolve) {
+          const r = this.punsubAllResolve;
+          this.punsubAllResolve = null;
+          try {
+            r();
+          } catch {}
+        }
+        break;
+      }
     }
   }
 
   /**
-   * Handle regular channel message
+   * Handles regular channel message.
+   * @param message - Message object containing channel and data
+   * @private
    */
   private handleRegularMessage(message: RespMessage): void {
     if (!message.channel || message.message === undefined) return;
 
     const cleanChannel = this.removeKeyPrefix(message.channel);
-    const messageData = message.message!; // Safe after undefined check
+    const messageData = message.message!;
     const messageBuffer = this.ensureBuffer(messageData);
 
-    // Emit both string and buffer variants for compatibility
     this.emit('message', cleanChannel, messageData);
     this.emit('messageBuffer', cleanChannel, messageBuffer);
   }
 
   /**
-   * Handle pattern-based message
+   * Handles pattern-based message.
+   * @param message - Message object containing pattern, channel, and data
+   * @private
    */
   private handlePatternMessage(message: RespMessage): void {
-    if (!message.pattern || !message.channel || message.message === undefined) return;
+    if (!message.pattern || !message.channel || message.message === undefined)
+      return;
 
     const cleanPattern = this.removeKeyPrefix(message.pattern);
     const cleanChannel = this.removeKeyPrefix(message.channel);
-    const messageData = message.message!; // Safe after undefined check
+    const messageData = message.message!;
     const messageBuffer = this.ensureBuffer(messageData);
 
-    // Emit both string and buffer variants for compatibility  
     this.emit('pmessage', cleanPattern, cleanChannel, messageData);
     this.emit('pmessageBuffer', cleanPattern, cleanChannel, messageBuffer);
   }
 
   /**
-   * Remove key prefix from channel/pattern name if present
+   * Removes key prefix from channel/pattern name if present.
+   * @param name - Channel or pattern name
+   * @returns Name without prefix
+   * @private
    */
   private removeKeyPrefix(name: string): string {
-    return this.keyPrefix && name.startsWith(this.keyPrefix) 
+    return this.keyPrefix && name.startsWith(this.keyPrefix)
       ? name.substring(this.keyPrefix.length)
       : name;
   }
 
   /**
-   * Ensure message is available as Buffer for binary compatibility
+   * Ensures message is available as Buffer for binary compatibility.
+   * @param message - Message data as string or Buffer
+   * @returns Buffer representation of the message
+   * @private
    */
   private ensureBuffer(message: string | Buffer): Buffer {
-    return Buffer.isBuffer(message) 
-      ? message 
+    return Buffer.isBuffer(message)
+      ? message
       : Buffer.from(String(message), 'utf8');
   }
 
-  // === Command Transmission ===
-
   /**
-   * Send RESP command to server
-   * @param command Array of command arguments
+   * Sends RESP command to server.
+   * @param command - Array of command arguments
+   * @private
    */
   private async sendCommand(command: string[]): Promise<void> {
     await this.ensureConnected();
-    
+
     const respCommand = this.buildRespCommand(command);
     this.socket!.write(respCommand);
   }
 
   /**
-   * Send RESP command with binary data to server
-   * @param command Array of command arguments
-   * @param binaryData Binary message data
+   * Sends RESP command with binary data to server.
+   * @param command - Array of command arguments
+   * @param binaryData - Binary message data
+   * @private
    */
   private async sendCommandWithBinary(
     command: string[],
@@ -441,42 +539,40 @@ export class IoredisPubSubClient extends EventEmitter {
       ? binaryData
       : Buffer.from(binaryData, 'utf8');
 
-    // Build command header
     const totalArgs = command.length + 1;
-    let header = `${RESP_TYPES.ARRAY}${totalArgs}${RESP_TYPES.CRLF}`;
+    let header = `${PUBSUB.RESP_ARRAY}${totalArgs}${PUBSUB.RESP_CRLF}`;
 
-    // Add string command arguments
     for (const arg of command) {
-      header += `${RESP_TYPES.BULK_STRING}${Buffer.byteLength(arg)}${RESP_TYPES.CRLF}${arg}${RESP_TYPES.CRLF}`;
+      header += `${PUBSUB.RESP_BULK_STRING}${Buffer.byteLength(arg)}${PUBSUB.RESP_CRLF}${arg}${PUBSUB.RESP_CRLF}`;
     }
 
-    // Add binary data length
-    header += `${RESP_TYPES.BULK_STRING}${dataBuffer.length}${RESP_TYPES.CRLF}`;
+    header += `${PUBSUB.RESP_BULK_STRING}${dataBuffer.length}${PUBSUB.RESP_CRLF}`;
 
-    // Send command in parts to handle binary data properly
     this.socket!.write(header);
     this.socket!.write(dataBuffer);
-    this.socket!.write(RESP_TYPES.CRLF);
+    this.socket!.write(PUBSUB.RESP_CRLF);
   }
 
   /**
-   * Build RESP command string from arguments
-   * @param command Command arguments
+   * Builds RESP command string from arguments.
+   * @param command - Command arguments
    * @returns RESP formatted command string
+   * @private
    */
   private buildRespCommand(command: string[]): string {
-    let resp = `${RESP_TYPES.ARRAY}${command.length}${RESP_TYPES.CRLF}`;
-    
+    let resp = `${PUBSUB.RESP_ARRAY}${command.length}${PUBSUB.RESP_CRLF}`;
+
     for (const arg of command) {
       const argBytes = Buffer.byteLength(arg);
-      resp += `${RESP_TYPES.BULK_STRING}${argBytes}${RESP_TYPES.CRLF}${arg}${RESP_TYPES.CRLF}`;
+      resp += `${PUBSUB.RESP_BULK_STRING}${argBytes}${PUBSUB.RESP_CRLF}${arg}${PUBSUB.RESP_CRLF}`;
     }
-    
+
     return resp;
   }
 
   /**
-   * Ensure connection is established before sending commands
+   * Ensures connection is established before sending commands.
+   * @private
    */
   private async ensureConnected(): Promise<void> {
     if (!this.socket || this.connectionStatus !== 'connected') {
@@ -484,11 +580,9 @@ export class IoredisPubSubClient extends EventEmitter {
     }
   }
 
-  // === Public API Methods ===
-
   /**
-   * Subscribe to a channel
-   * @param channel Channel name to subscribe to
+   * Subscribes to a channel.
+   * @param channel - Channel name to subscribe to
    */
   async subscribe(channel: string): Promise<void> {
     const prefixedChannel = this.keyPrefix + channel;
@@ -497,23 +591,50 @@ export class IoredisPubSubClient extends EventEmitter {
   }
 
   /**
-   * Unsubscribe from channel(s)
-   * @param channel Specific channel to unsubscribe from, or undefined for all
+   * Unsubscribes from channel(s).
+   * @param channel - Specific channel to unsubscribe from, or undefined for all
    */
   async unsubscribe(channel?: string): Promise<void> {
     if (channel) {
       const prefixedChannel = this.keyPrefix + channel;
       this.subscriptions.delete(prefixedChannel);
+      const ack = new Promise<void>(resolve =>
+        this.pendingUnsub.set(prefixedChannel, resolve)
+      );
       await this.sendCommand(['UNSUBSCRIBE', prefixedChannel]);
+      await Promise.race([
+        ack,
+        new Promise<void>(r => {
+          const t = setTimeout(r, 500);
+          (t as any).unref?.();
+          (t as any).unref?.();
+        }),
+      ]);
     } else {
       this.subscriptions.clear();
+      const ack = new Promise<void>(
+        resolve => (this.unsubAllResolve = resolve)
+      );
       await this.sendCommand(['UNSUBSCRIBE']);
+      await Promise.race([
+        ack,
+        new Promise<void>(r => {
+          const t = setTimeout(r, 500);
+          (t as any).unref?.();
+          (t as any).unref?.();
+        }),
+      ]);
+    }
+    // Auto-close socket when nothing is subscribed
+    if (this.subscriptions.size === 0 && this.patternSubscriptions.size === 0) {
+      // Don't await disconnect here to avoid blocking
+      this.disconnect().catch(() => {});
     }
   }
 
   /**
-   * Subscribe to a pattern
-   * @param pattern Pattern to subscribe to (supports wildcards)
+   * Subscribes to a pattern.
+   * @param pattern - Pattern to subscribe to (supports wildcards)
    */
   async psubscribe(pattern: string): Promise<void> {
     const prefixedPattern = this.keyPrefix + pattern;
@@ -522,39 +643,62 @@ export class IoredisPubSubClient extends EventEmitter {
   }
 
   /**
-   * Unsubscribe from pattern(s)
-   * @param pattern Specific pattern to unsubscribe from, or undefined for all
+   * Unsubscribes from pattern(s).
+   * @param pattern - Specific pattern to unsubscribe from, or undefined for all
    */
   async punsubscribe(pattern?: string): Promise<void> {
     if (pattern) {
       const prefixedPattern = this.keyPrefix + pattern;
       this.patternSubscriptions.delete(prefixedPattern);
+      const ack = new Promise<void>(resolve =>
+        this.pendingPUnsub.set(prefixedPattern, resolve)
+      );
       await this.sendCommand(['PUNSUBSCRIBE', prefixedPattern]);
+      await Promise.race([
+        ack,
+        new Promise<void>(r => {
+          const t = setTimeout(r, 500);
+          (t as any).unref?.();
+          (t as any).unref?.();
+        }),
+      ]);
     } else {
       this.patternSubscriptions.clear();
+      const ack = new Promise<void>(
+        resolve => (this.punsubAllResolve = resolve)
+      );
       await this.sendCommand(['PUNSUBSCRIBE']);
+      await Promise.race([
+        ack,
+        new Promise<void>(r => {
+          const t = setTimeout(r, 500);
+          (t as any).unref?.();
+          (t as any).unref?.();
+        }),
+      ]);
+    }
+    // Auto-close socket when nothing is subscribed
+    if (this.subscriptions.size === 0 && this.patternSubscriptions.size === 0) {
+      // Don't await disconnect here to avoid blocking
+      this.disconnect().catch(() => {});
     }
   }
 
   /**
-   * Publish message to channel
-   * @param channel Channel to publish to
-   * @param message Message data (string or binary)
-   * @returns Number of subscribers that received the message (always 1 in this implementation)
+   * Publishes message to channel.
+   * @param channel - Channel to publish to
+   * @param message - Message data (string or binary)
+   * @returns Number of subscribers that received the message
    */
   async publish(channel: string, message: string | Buffer): Promise<number> {
     const prefixedChannel = this.keyPrefix + channel;
-
-    // Note: Pub/sub connections are typically one-way, so we don't get 
-    // the actual subscriber count. Return 1 to indicate successful send.
     await this.sendCommandWithBinary(['PUBLISH', prefixedChannel], message);
     return 1;
   }
 
-  // === ioredis Compatibility ===
-
   /**
-   * Get connection status in ioredis-compatible format
+   * Gets connection status in ioredis-compatible format.
+   * @returns Connection status string
    */
   get status(): string {
     switch (this.connectionStatus) {
@@ -568,7 +712,7 @@ export class IoredisPubSubClient extends EventEmitter {
   }
 
   /**
-   * Create a duplicate client instance with same configuration
+   * Creates a duplicate client instance with same configuration.
    * @returns New IoredisPubSubClient instance
    */
   duplicate(): IoredisPubSubClient {

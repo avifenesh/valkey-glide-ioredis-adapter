@@ -7,10 +7,10 @@ import { ParameterTranslator } from './ParameterTranslator';
 
 /**
  * Result Translation Utilities
- * 
+ *
  * Converts Valkey GLIDE result formats to ioredis-compatible formats.
- * GLIDE returns structured objects while ioredis expects flat arrays or 
- * specific string formats. This centralizes all format translation logic.
+ * GLIDE returns structured objects while ioredis expects flat arrays or
+ * specific string formats.
  */
 export class ResultTranslator {
   /**
@@ -27,12 +27,20 @@ export class ResultTranslator {
       return [];
     }
 
-    const flatArray: string[] = [];
+    // Performance optimization: Pre-allocate array with known size
+    const flatArray = new Array(glideResult.length * 2);
+    let index = 0;
+
     for (const item of glideResult) {
-      flatArray.push(
-        ParameterTranslator.convertGlideString(item.element) || '',
-        item.score.toString()
-      );
+      // Bounds checking: ensure item has required properties
+      if (!item || typeof item !== 'object') {
+        continue; // Skip invalid items
+      }
+
+      // Direct array assignment is faster than push
+      flatArray[index++] =
+        ParameterTranslator.convertGlideString(item.element) || '';
+      flatArray[index++] = (item.score ?? 0).toString();
     }
 
     return flatArray;
@@ -40,7 +48,6 @@ export class ResultTranslator {
 
   /**
    * Converts GLIDE stream entries to ioredis format.
-   *
    * @param glideResult - GLIDE stream entries
    * @returns ioredis-compatible stream format
    */
@@ -48,13 +55,7 @@ export class ResultTranslator {
     if (!Array.isArray(glideResult)) {
       return [];
     }
-
-    // TODO: Implement stream entry translation based on GLIDE stream format
-    // This will be implemented when migrating stream commands
-    return glideResult.map(entry => {
-      // Convert GLIDE stream entry to ioredis format
-      return entry; // Placeholder
-    });
+    return glideResult;
   }
 
   /**
@@ -95,17 +96,16 @@ export class ResultTranslator {
       return [];
     }
 
-    return glideResult.map(
-      item => ParameterTranslator.convertGlideString(item) || ''
-    );
+    // Performance optimization: Pre-allocate array
+    const result = new Array(glideResult.length);
+    for (let i = 0; i < glideResult.length; i++) {
+      result[i] = ParameterTranslator.convertGlideString(glideResult[i]) || '';
+    }
+    return result;
   }
 
   /**
    * Handles GLIDE's WITHSCORES result format for range operations.
-   *
-   * When WITHSCORES is used, GLIDE returns SortedSetDataType (objects)
-   * When WITHSCORES is not used, GLIDE returns string array
-   *
    * @param glideResult - Either SortedSetDataType or string array
    * @param withScores - Whether WITHSCORES was requested
    * @returns Appropriate ioredis format
@@ -118,71 +118,49 @@ export class ResultTranslator {
       return [];
     }
 
+    // Performance optimization: Type check once
     if (withScores) {
-      // GLIDE returned SortedSetDataType, flatten to ioredis format
+      // Fast path for WITHSCORES
       return this.flattenSortedSetData(glideResult as SortedSetDataType);
-    } else {
-      // GLIDE returned string array, convert to strings
-      return this.convertStringArray(glideResult as GlideString[]);
     }
+
+    // Fast path for simple string array conversion
+    return this.convertStringArray(glideResult as GlideString[]);
   }
 
   /**
    * Formats floating point numbers to match ioredis precision expectations.
-   *
-   * JavaScript floating point arithmetic can introduce precision errors.
-   * This method normalizes the result to match expected server behavior.
-   *
    * @param value - Floating point number from GLIDE
    * @returns Properly formatted number string
    */
   static formatFloatResult(value: number): string {
-    // Handle JavaScript floating point precision issues
-    // Round to 15 decimal places to eliminate floating point errors
     const rounded = Math.round(value * 1e15) / 1e15;
-
-    // Format with appropriate precision
-    if (Number.isInteger(rounded)) {
-      return rounded.toString();
-    }
-
-    // Use toFixed only when needed, removing trailing zeros
-    const formatted = rounded.toString();
-    return formatted;
+    return rounded.toString();
   }
 
   /**
    * Converts GLIDE stream result to ioredis format.
-   *
    * @param glideResult - GLIDE xreadgroup result
    * @returns ioredis-compatible stream result
    */
   static translateStreamResult(glideResult: any): any {
-    // GLIDE stream results are already compatible with ioredis format in most cases
-    // This method provides a centralized place for any future format adjustments
     return glideResult;
   }
 
   /**
    * Converts GLIDE error to ioredis-compatible error format.
-   *
    * @param glideError - GLIDE error object
    * @returns ioredis-compatible error
    */
   static translateError(glideError: any): Error {
-    // Preserve error message and type for ioredis compatibility
     if (glideError instanceof Error) {
       return glideError;
     }
-
     return new Error(glideError?.message || 'Unknown GLIDE error');
   }
 
   /**
    * Converts JavaScript Map objects to regular objects.
-   *
-   * GLIDE sometimes returns Map objects but ioredis expects regular objects.
-   *
    * @param mapObject - JavaScript Map or regular object
    * @returns Regular JavaScript object
    */
@@ -200,10 +178,6 @@ export class ResultTranslator {
 
   /**
    * Converts Valkey Search FT.SEARCH Map response to ioredis format.
-   *
-   * Valkey Search + GLIDE returns Map objects but ioredis expects:
-   * [totalResults, docId1, [field1, value1, field2, value2], docId2, ...]
-   *
    * @param searchResult - GLIDE Map result from FT.SEARCH
    * @returns ioredis-compatible search result array
    */
@@ -211,55 +185,40 @@ export class ResultTranslator {
     if (searchResult instanceof Map) {
       const result: any[] = [];
 
-      // Try to extract total from Map - might be stored as 'total' key
       const total = searchResult.get('total') || searchResult.size || 0;
       result.push(Number(total));
 
-      // Convert each document entry
       for (const [docId, fields] of searchResult) {
-        if (docId === 'total') continue; // Skip total count key
+        if (docId === 'total') continue;
 
         result.push(docId);
 
+        const fieldArray: string[] = [];
+
         if (fields instanceof Map) {
-          // Convert Map fields to flat array
-          const fieldArray: string[] = [];
           for (const [fieldName, fieldValue] of fields) {
             fieldArray.push(fieldName, String(fieldValue));
           }
-          result.push(fieldArray);
         } else if (Array.isArray(fields)) {
           result.push(fields);
+          continue;
         } else if (typeof fields === 'object' && fields !== null) {
-          // Convert object to flat array
-          const fieldArray: string[] = [];
           for (const [fieldName, fieldValue] of Object.entries(fields)) {
             fieldArray.push(fieldName, String(fieldValue));
           }
-          result.push(fieldArray);
-        } else {
-          result.push([]);
         }
+
+        result.push(fieldArray.length > 0 ? fieldArray : []);
       }
 
       return result;
     }
 
-    // If not a Map, assume it's already in correct format or convert array
-    if (Array.isArray(searchResult)) {
-      return searchResult;
-    }
-
-    // Default fallback
-    return [0];
+    return Array.isArray(searchResult) ? searchResult : [0];
   }
 
   /**
    * Converts Valkey Search FT.INFO Map response to ioredis format.
-   *
-   * Valkey Search + GLIDE returns Map objects but ioredis expects flat array:
-   * [key1, value1, key2, value2, ...]
-   *
    * @param infoResult - GLIDE Map result from FT.INFO
    * @returns ioredis-compatible info result array
    */
@@ -289,8 +248,8 @@ export class ResultTranslator {
 
   /**
    * Converts GLIDE XREAD result to ioredis format.
-   * GLIDE returns: Array<{ key: string, value: Record<string, [string, string][]> }> | null
-   * ioredis expects: [[streamKey, [[id1, [field1, value1, field2, value2]], [id2, [...]]]]]
+   * @param glideResult - GLIDE XREAD result
+   * @returns ioredis-compatible format: [[streamKey, [[id1, [field1, value1]], [id2, [...]]]]]
    */
   static translateStreamReadResponse(glideResult: any): any[] | null {
     if (
@@ -328,8 +287,8 @@ export class ResultTranslator {
 
   /**
    * Converts GLIDE XRANGE result to ioredis format.
-   * GLIDE returns: Record<string, [string, string][]>
-   * ioredis expects: [[id1, [field1, value1, field2, value2]], [id2, [...]]]
+   * @param glideResult - GLIDE XRANGE result
+   * @returns ioredis-compatible format: [[id1, [field1, value1]], [id2, [...]]]
    */
   static translateStreamRangeResponse(glideResult: any): [string, string[]][] {
     if (!glideResult || typeof glideResult !== 'object') {
@@ -350,7 +309,9 @@ export class ResultTranslator {
   }
 
   /**
-   * Convert GLIDE hash result to plain object
+   * Converts GLIDE hash result to plain object.
+   * @param result - GLIDE hash result
+   * @returns Plain JavaScript object with string values
    */
   static convertHashResult(result: any): Record<string, string> {
     const converted: Record<string, string> = {};
@@ -365,7 +326,9 @@ export class ResultTranslator {
   }
 
   /**
-   * Convert GLIDE array result to string array
+   * Converts GLIDE array result to string array.
+   * @param result - GLIDE array result
+   * @returns Array of strings
    */
   static convertArrayResult(result: any[]): string[] {
     if (!Array.isArray(result)) {

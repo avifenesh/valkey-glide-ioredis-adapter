@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2025-01-27
+
+### 🎯 **Major Architecture Refactor - Production Ready**
+- **Complete Architecture Overhaul**: Rebuilt core client architecture for better GLIDE integration
+- **Enhanced Connection Management**: Improved connection handling, auto-connect logic, and cleanup
+- **Binary Pub/Sub Support**: Added support for binary and pattern message events
+- **Test Infrastructure Overhaul**: Complete test migration to ES modules with 35+ test improvements
+
+### ✨ **Features Added**
+- **Enhanced Geo Commands**: Improved geosearch and georadius methods with token-based syntax and structured options
+- **Binary Pub/Sub Events**: Full support for binary data in pub/sub operations
+- **Auto-Connect Logic**: Duplicate instances now auto-connect automatically
+- **Dynamic Key Tagging**: Implemented dynamic tagging for keys in scripting and set command tests
+- **ES Module Support**: Complete test migration from TypeScript to ES modules (.mjs)
+- **Sequential Test Runner**: New test runner for better test isolation and reliability
+
+### 🐛 **Bug Fixes**
+- **Connection Handling**: Fixed connection cleanup and disconnect handling issues
+- **Test Infrastructure**: Resolved 35+ test-related issues including hanging promises and cleanup
+- **GLIDE API Usage**: Fixed deprecation warnings and improved GLIDE API integration
+- **Import Issues**: Fixed missing Cluster import in fastify-redis integration tests
+- **Session Store**: Resolved session store test cleanup issues
+- **BullMQ Integration**: Improved test isolation and cleanup in BullMQ integration tests
+
+### 🔧 **Technical Improvements**
+- **Code Quality**: Eliminated code duplication and improved type safety across the codebase
+- **Test Reliability**: Enhanced test infrastructure with better setup, cleanup, and error handling
+- **Connection Management**: Improved auto-connection logic and connection state handling
+- **Error Handling**: Enhanced error handling and cleanup throughout the codebase
+- **Performance**: Optimized GLIDE API usage and reduced deprecation warnings
+
+### 📚 **Documentation & Infrastructure**
+- **Comprehensive Documentation**: Enhanced CLAUDE.md, AGENTS.md, and migration guides
+- **CI/CD Improvements**: Updated GitHub workflows and dependency management
+- **Code Quality Tools**: Added ESLint configuration and improved code formatting
+- **Test Documentation**: Added comprehensive testing guides and command references
+- **Architecture Documentation**: Enhanced architecture and command mapping documentation
+
+### 🧹 **Cleanup & Maintenance**
+- **File Organization**: Cleaned up project structure and removed conversion artifacts
+- **Code Formatting**: Applied consistent Prettier formatting across all files
+- **Linting**: Achieved 100% linting compliance with zero errors
+- **Type Safety**: Maintained full TypeScript support while using ES modules for tests
+
 ## [0.4.0] - 2025-08-31
 
 ### ✨ Features Added

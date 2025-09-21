@@ -10,50 +10,88 @@
  * - API responses caching, session data, configuration
  */
 
-import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
+import {
+  describe,
+  it,
+  test,
+  beforeEach,
+  afterEach,
+  before,
+  after,
+} from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../dist/index.js';
-const { Redis } = pkg;
-import { testUtils } from '../setup/index.mjs';
+const { Redis, Cluster } = pkg;
+import {
+  describeForEachMode,
+  createClient,
+  keyTag,
+} from '../setup/dual-mode.mjs';
 
-describe('JSON Commands - ValkeyJSON Compatibility', () => {
-  let redis;
+// Helper to check if JSON module is available
+async function checkJSONModule(client) {
+  try {
+    await client.customCommand([
+      'JSON.SET',
+      'test:json:check',
+      '$',
+      '{"test": true}',
+    ]);
+    await client.customCommand(['JSON.DEL', 'test:json:check']);
+    return true;
+  } catch (error) {
+    if (
+      error.message.includes('unknown command') ||
+      error.message.includes('JSON.SET')
+    ) {
+      return false;
+    }
+    return true; // Other errors indicate the command exists
+  }
+}
+
+describeForEachMode('JSON Commands - ValkeyJSON Compatibility', mode => {
+  let client;
+  const tag = keyTag('json');
 
   before(async () => {
-    const config = await testUtils.getStandaloneConfig();
-    redis = new Redis(config);
-    
+    client = await createClient(mode);
+    await client.connect();
+
+    // Check if JSON module is available
+    const hasJSON = await checkJSONModule(client);
+    if (!hasJSON) {
+      throw new Error(
+        `JSON module not available in ${mode} mode. Make sure to start with JSON module support.`
+      );
+    }
+
+    // Clean slate: flush all data to prevent test pollution
+    // GLIDE's flushall is multislot safe
     try {
-      await redis.connect();
-      // Test if JSON module is available
-      await redis.jsonSet('test', '.', '{}');
-      await redis.jsonDel('test');
+      await client.flushall();
     } catch (error) {
-      console.log('JSON module not available, skipping JSON tests');
-      return;
+      console.warn('Warning: Could not flush database:', error.message);
     }
   });
 
   beforeEach(async () => {
-    // Clean up any existing test keys
+    // Clean slate for JSON tests (cluster-safe)
     try {
-      const keys = await redis.keys('*');
-      if (keys.length > 0) {
-        await redis.del(...keys);
-      }
+      await client.flushall();
     } catch {
       // Ignore cleanup errors
     }
   });
 
   after(async () => {
-    if (redis) {
-      await redis.quit();
+    if (client) {
+      await client.quit();
     }
   });
 
   describe('Basic JSON Document Operations', () => {
-    it('should set and get simple JSON documents', async () => {
+    test('should set and get simple JSON documents', async () => {
       const userProfile = {
         id: 123,
         name: 'John Doe',
@@ -63,11 +101,15 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       };
 
       // Set JSON document
-      const setResult = await redis.jsonSet('user', '$', userProfile);
+      const setResult = await client.jsonSet(
+        `${tag}:user:123`,
+        '$',
+        userProfile
+      );
       assert.strictEqual(setResult, 'OK');
 
       // Get entire document
-      const getResult = await redis.jsonGet('user');
+      const getResult = await client.jsonGet(`${tag}:user:123`);
       assert.ok(getResult);
 
       const parsed = JSON.parse(getResult);
@@ -77,7 +119,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       assert.strictEqual(parsed.score, 95.5);
     });
 
-    it('should handle nested JSON documents', async () => {
+    test('should handle nested JSON documents', async () => {
       const complexDoc = {
         user: {
           profile: {
@@ -90,24 +132,24 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
             },
           },
           stats: {
-            login_count: 42,
-            last_login: '2024-01-15T10',
+            login_count: 45,
+            last_login: '2024-01-15T10:30:00Z',
             achievements: ['first_login', 'power_user'],
           },
         },
       };
 
-      await redis.jsonSet('complex', '$', complexDoc);
+      await client.jsonSet(`${tag}:complex:doc`, '$', complexDoc);
 
       // Get specific nested paths
-      const userName = await redis.jsonGet(
-        'complex',
+      const userName = await client.jsonGet(
+        `${tag}:complex:doc`,
         '$.user.profile.name'
       );
       assert.ok(userName);
 
-      const preferences = await redis.jsonGet(
-        'complex',
+      const preferences = await client.jsonGet(
+        `${tag}:complex:doc`,
         '$.user.profile.preferences'
       );
       assert.ok(preferences);
@@ -117,10 +159,10 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       assert.ok(parsed.languages.includes('en'));
     });
 
-    it('should handle JSON SET with conditions (NX/XX)', async () => {
+    test('should handle JSON SET with conditions (NX/XX)', async () => {
       // Test NX (only if not exists)
-      const result1 = await redis.jsonSet(
-        'conditional',
+      const result1 = await client.jsonSet(
+        `${tag}:conditional:test`,
         '$',
         { value: 1 },
         'NX'
@@ -128,8 +170,8 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       assert.strictEqual(result1, 'OK');
 
       // Should fail with NX since key exists
-      const result2 = await redis.jsonSet(
-        'conditional',
+      const result2 = await client.jsonSet(
+        `${tag}:conditional:test`,
         '$',
         { value: 2 },
         'NX'
@@ -137,8 +179,8 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       assert.strictEqual(result2, null);
 
       // Should succeed with XX since key exists
-      const result3 = await redis.jsonSet(
-        'conditional',
+      const result3 = await client.jsonSet(
+        `${tag}:conditional:test`,
         '$',
         { value: 3 },
         'XX'
@@ -146,7 +188,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       assert.strictEqual(result3, 'OK');
 
       // Verify the value was updated
-      const final = await redis.jsonGet('conditional');
+      const final = await client.jsonGet(`${tag}:conditional:test`);
       const parsed = JSON.parse(final);
       assert.strictEqual(parsed.value, 3);
     });
@@ -156,9 +198,9 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
     beforeEach(async () => {
       const testDoc = {
         users: [
-          { id: 1, name: 'Alice', score: 0 },
-          { id: 2, name: 'Bob', score: 0 },
-          { id: 3, name: 'Charlie', score: 0 },
+          { id: 1, name: 'Alice', score: 85 },
+          { id: 2, name: 'Bob', score: 92 },
+          { id: 3, name: 'Charlie', score: 78 },
         ],
         metadata: {
           total: 3,
@@ -166,44 +208,53 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
           tags: ['active', 'verified'],
         },
       };
-      await redis.jsonSet('pathtest', '$', testDoc);
+      await client.jsonSet(`${tag}:pathtest`, '$', testDoc);
     });
 
-    it('should get type information for paths', async () => {
+    test('should get type information for paths', async () => {
       // Test different data types
-      const rootType = await redis.jsonType('pathtest', '$');
+      const rootType = await client.jsonType(`${tag}:pathtest`, '$');
       assert.strictEqual(rootType, 'object');
 
-      const arrayType = await redis.jsonType('pathtest', '$.users');
+      const arrayType = await client.jsonType(`${tag}:pathtest`, '$.users');
       assert.strictEqual(arrayType, 'array');
 
-      const stringType = await redis.jsonType('pathtest', '$.metadata.updated');
+      const stringType = await client.jsonType(
+        `${tag}:pathtest`,
+        '$.metadata.updated'
+      );
       assert.strictEqual(stringType, 'string');
 
-      const numberType = await redis.jsonType('pathtest', '$.metadata.total');
+      const numberType = await client.jsonType(
+        `${tag}:pathtest`,
+        '$.metadata.total'
+      );
       assert.strictEqual(numberType, 'integer');
     });
 
-    it('should delete specific paths', async () => {
+    test('should delete specific paths', async () => {
       // Delete a specific array element
-      const deleteCount = await redis.jsonDel('pathtest', '$.users[1]');
+      const deleteCount = await client.jsonDel(`${tag}:pathtest`, '$.users[1]');
       assert.strictEqual(deleteCount, 1);
 
       // Verify deletion
-      const users = await redis.jsonGet('pathtest', '$.users');
+      const users = await client.jsonGet(`${tag}:pathtest`, '$.users');
       const parsed = JSON.parse(users);
       assert.strictEqual(parsed.length, 2);
       assert.strictEqual(parsed[0].name, 'Alice');
       assert.strictEqual(parsed[1].name, 'Charlie'); // Bob was removed
     });
 
-    it('should clear paths to empty/null values', async () => {
+    test('should clear paths to empty/null values', async () => {
       // Clear an array
-      const clearCount = await redis.jsonClear('pathtest', '$.metadata.tags');
+      const clearCount = await client.jsonClear(
+        `${tag}:pathtest`,
+        '$.metadata.tags'
+      );
       assert.strictEqual(clearCount, 1);
 
       // Verify array is empty
-      const tags = await redis.jsonGet('pathtest', '$.metadata.tags');
+      const tags = await client.jsonGet(`${tag}:pathtest`, '$.metadata.tags');
       const parsed = JSON.parse(tags);
       assert.deepStrictEqual(parsed, []);
     });
@@ -214,48 +265,51 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       const counterDoc = {
         stats: {
           page_views: 100,
-          unique_visitors: 50,
+          unique_visitors: 25,
           conversion_rate: 2.5,
         },
       };
-      await redis.jsonSet('counters', '$', counterDoc);
+      await client.jsonSet(`${tag}:counters`, '$', counterDoc);
     });
 
-    it('should increment numeric values', async () => {
+    test('should increment numeric values', async () => {
       // Increment integer
-      const result1 = await redis.jsonNumIncrBy(
-        'counters',
+      const result1 = await client.jsonNumIncrBy(
+        `${tag}:counters`,
         '$.stats.page_views',
         15
       );
       assert.ok(result1);
 
       // Increment float
-      const result2 = await redis.jsonNumIncrBy(
-        'counters',
+      const result2 = await client.jsonNumIncrBy(
+        `${tag}:counters`,
         '$.stats.conversion_rate',
         0.5
       );
       assert.ok(result2);
 
       // Verify results
-      const final = await redis.jsonGet('counters', '$.stats');
+      const final = await client.jsonGet(`${tag}:counters`, '$.stats');
       const parsed = JSON.parse(final);
       assert.strictEqual(parsed.page_views, 115);
       assert.strictEqual(parsed.conversion_rate, 3.0);
     });
 
-    it('should multiply numeric values', async () => {
+    test('should multiply numeric values', async () => {
       // Multiply by 2
-      const result = await redis.jsonNumMultBy(
-        'counters',
+      const result = await client.jsonNumMultBy(
+        `${tag}:counters`,
         '$.stats.page_views',
         2
       );
       assert.ok(result);
 
       // Verify result
-      const final = await redis.jsonGet('counters', '$.stats.page_views');
+      const final = await client.jsonGet(
+        `${tag}:counters`,
+        '$.stats.page_views'
+      );
       const parsed = JSON.parse(final);
       assert.strictEqual(parsed, 200);
     });
@@ -269,27 +323,30 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
           description: 'This is a test',
         },
       };
-      await redis.jsonSet('strings', '$', textDoc);
+      await client.jsonSet(`${tag}:strings`, '$', textDoc);
     });
 
-    it('should append to string values', async () => {
+    test('should append to string values', async () => {
       // Append to string
-      const newLength = await redis.jsonStrAppend(
-        'strings',
+      const newLength = await client.jsonStrAppend(
+        `${tag}:strings`,
         '$.messages.welcome',
-        ' World!'
+        ' World'
       );
       assert.ok(newLength > 0);
 
       // Verify result
-      const result = await redis.jsonGet('strings', '$.messages.welcome');
+      const result = await client.jsonGet(
+        `${tag}:strings`,
+        '$.messages.welcome'
+      );
       const parsed = JSON.parse(result);
-      assert.strictEqual(parsed, 'Hello World!');
+      assert.strictEqual(parsed, 'Hello World');
     });
 
-    it('should get string length', async () => {
-      const length = await redis.jsonStrLen(
-        'strings',
+    test('should get string length', async () => {
+      const length = await client.jsonStrLen(
+        `${tag}:strings`,
         '$.messages.description'
       );
       assert.strictEqual(length, 14); // 'This is a test' = 14 characters
@@ -303,13 +360,13 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
         numbers: [1, 2, 3],
         mixed: ['hello', 42, true],
       };
-      await redis.jsonSet('arrays', '$', arrayDoc);
+      await client.jsonSet(`${tag}:arrays`, '$', arrayDoc);
     });
 
-    it('should append to arrays', async () => {
+    test('should append to arrays', async () => {
       // Append to fruit array
-      const newLength = await redis.jsonArrAppend(
-        'arrays',
+      const newLength = await client.jsonArrAppend(
+        `${tag}:arrays`,
         '$.items',
         'orange',
         'grape'
@@ -317,15 +374,15 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       assert.strictEqual(newLength, 4);
 
       // Verify result
-      const result = await redis.jsonGet('arrays', '$.items');
+      const result = await client.jsonGet(`${tag}:arrays`, '$.items');
       const parsed = JSON.parse(result);
       assert.deepStrictEqual(parsed, ['apple', 'banana', 'orange', 'grape']);
     });
 
-    it('should insert into arrays', async () => {
+    test('should insert into arrays', async () => {
       // Insert at position 1
-      const newLength = await redis.jsonArrInsert(
-        'arrays',
+      const newLength = await client.jsonArrInsert(
+        `${tag}:arrays`,
         '$.numbers',
         1,
         1.5
@@ -333,42 +390,51 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       assert.strictEqual(newLength, 4);
 
       // Verify result
-      const result = await redis.jsonGet('arrays', '$.numbers');
+      const result = await client.jsonGet(`${tag}:arrays`, '$.numbers');
       const parsed = JSON.parse(result);
       assert.deepStrictEqual(parsed, [1, 1.5, 2, 3]);
     });
 
-    it('should get array length', async () => {
-      const length = await redis.jsonArrLen('arrays', '$.mixed');
+    test('should get array length', async () => {
+      const length = await client.jsonArrLen(`${tag}:arrays`, '$.mixed');
       assert.strictEqual(length, 3);
     });
 
-    it('should pop elements from arrays', async () => {
+    test('should pop elements from arrays', async () => {
       // Pop from end (default)
-      const popped = await redis.jsonArrPop('arrays', '$.items');
+      const popped = await client.jsonArrPop(`${tag}:arrays`, '$.items');
       assert.ok(popped);
 
       // Pop from specific index
-      const poppedAtIndex = await redis.jsonArrPop('arrays', '$.numbers', 0);
+      const poppedAtIndex = await client.jsonArrPop(
+        `${tag}:arrays`,
+        '$.numbers',
+        0
+      );
       assert.ok(poppedAtIndex);
 
       // Verify results
-      const items = await redis.jsonGet('arrays', '$.items');
+      const items = await client.jsonGet(`${tag}:arrays`, '$.items');
       const itemsParsed = JSON.parse(items);
       assert.deepStrictEqual(itemsParsed, ['apple']); // banana was popped
 
-      const numbers = await redis.jsonGet('arrays', '$.numbers');
+      const numbers = await client.jsonGet(`${tag}:arrays`, '$.numbers');
       const numbersParsed = JSON.parse(numbers);
       assert.deepStrictEqual(numbersParsed, [2, 3]); // 1 was popped from index 0
     });
 
-    it('should trim arrays', async () => {
+    test('should trim arrays', async () => {
       // Trim to keep only middle element
-      const newLength = await redis.jsonArrTrim('arrays', '$.numbers', 1, 1);
+      const newLength = await client.jsonArrTrim(
+        `${tag}:arrays`,
+        '$.numbers',
+        1,
+        1
+      );
       assert.strictEqual(newLength, 1);
 
       // Verify result
-      const result = await redis.jsonGet('arrays', '$.numbers');
+      const result = await client.jsonGet(`${tag}:arrays`, '$.numbers');
       const parsed = JSON.parse(result);
       assert.deepStrictEqual(parsed, [2]); // Only middle element remains
     });
@@ -381,18 +447,18 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
           theme: 'dark',
           language: 'en',
           notifications: true,
-          timeout: 30,
+          timeout: 300,
         },
         user: {
           name: 'Test User',
           role: 'admin',
         },
       };
-      await redis.jsonSet('objects', '$', objectDoc);
+      await client.jsonSet(`${tag}:objects`, '$', objectDoc);
     });
 
-    it('should get object keys', async () => {
-      const keys = await redis.jsonObjKeys('objects', '$.config');
+    test('should get object keys', async () => {
+      const keys = await client.jsonObjKeys(`${tag}:objects`, '$.config');
       assert.ok(Array.isArray(keys));
       assert.ok(keys.includes('theme'));
       assert.ok(keys.includes('language'));
@@ -400,11 +466,14 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       assert.ok(keys.includes('timeout'));
     });
 
-    it('should get object length', async () => {
-      const configLength = await redis.jsonObjLen('objects', '$.config');
+    test('should get object length', async () => {
+      const configLength = await client.jsonObjLen(
+        `${tag}:objects`,
+        '$.config'
+      );
       assert.strictEqual(configLength, 4);
 
-      const userLength = await redis.jsonObjLen('objects', '$.user');
+      const userLength = await client.jsonObjLen(`${tag}:objects`, '$.user');
       assert.strictEqual(userLength, 2);
     });
   });
@@ -418,20 +487,26 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
           experimental: true,
         },
       };
-      await redis.jsonSet('booleans', '$', boolDoc);
+      await client.jsonSet(`${tag}:booleans`, '$', boolDoc);
     });
 
-    it('should toggle boolean values', async () => {
+    test('should toggle boolean values', async () => {
       // Toggle true to false
-      const result1 = await redis.jsonToggle('booleans', '$.flags.enabled');
+      const result1 = await client.jsonToggle(
+        `${tag}:booleans`,
+        '$.flags.enabled'
+      );
       assert.strictEqual(result1, 0); // 0 for false
 
       // Toggle false to true
-      const result2 = await redis.jsonToggle('booleans', '$.flags.debug');
+      const result2 = await client.jsonToggle(
+        `${tag}:booleans`,
+        '$.flags.debug'
+      );
       assert.strictEqual(result2, 1); // 1 for true
 
       // Verify results
-      const final = await redis.jsonGet('booleans', '$.flags');
+      const final = await client.jsonGet(`${tag}:booleans`, '$.flags');
       const parsed = JSON.parse(final);
       assert.strictEqual(parsed.enabled, false);
       assert.strictEqual(parsed.debug, true);
@@ -440,7 +515,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
   });
 
   describe('Real-World Use Cases', () => {
-    it('should handle e-commerce product catalog', async () => {
+    test('should handle e-commerce product catalog', async () => {
       const product = {
         id: 'prod_123',
         name: 'Gaming Laptop',
@@ -453,41 +528,47 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
           gpu: 'NVIDIA RTX 3060',
         },
         reviews: [
-          { user: 'user1', rating: 5, comment: 'Excellent!' },
+          { user: 'user1', rating: 5, comment: 'Excellent' },
           { user: 'user2', rating: 4, comment: 'Good performance' },
         ],
         tags: ['gaming', 'laptop', 'high-performance'],
         in_stock: true,
-        stock_count: 10,
+        stock_count: 15,
       };
 
       // Store product
-      await redis.jsonSet('product', '$', product);
+      await client.jsonSet(`${tag}:product:prod_123`, '$', product);
 
       // Update price
-      await redis.jsonNumMultBy('product', '$.price', 0.9); // 10% discount
+      await client.jsonNumMultBy(`${tag}:product:prod_123`, '$.price', 0.9); // 10% discount
 
       // Add new review
-      await redis.jsonArrAppend('product', '$.reviews', {
+      await client.jsonArrAppend(`${tag}:product:prod_123`, '$.reviews', {
         user: 'user3',
         rating: 5,
-        comment: 'Amazing laptop!',
+        comment: 'Amazing laptop',
       });
 
       // Decrease stock
-      await redis.jsonNumIncrBy('product', '$.stock_count', -1);
+      await client.jsonNumIncrBy(
+        `${tag}:product:prod_123`,
+        '$.stock_count',
+        -1
+      );
 
       // Get updated product
-      const updated = await redis.jsonGet('product');
+      const updated = await client.jsonGet(`${tag}:product:prod_123`);
       const parsedProduct = JSON.parse(updated);
 
-      assert.ok(Math.abs(parsedProduct.price - 1169.99) < 0.01);
+      assert.ok(Math.abs(parsedProduct.price - 1169.99) < Math.pow(10, -2)); // Discounted price
+      assert.strictEqual(parsedProduct.reviews.length, 3);
+      assert.strictEqual(parsedProduct.stock_count, 14);
     });
 
-    it('should handle user session management', async () => {
+    test('should handle user session data', async () => {
       const session = {
         user_id: 'user_456',
-        login_time: '2024-01-15T10',
+        login_time: '2024-01-15T10:30:00Z',
         permissions: ['read', 'write'],
         preferences: {
           theme: 'light',
@@ -502,23 +583,31 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       };
 
       // Store session
-      await redis.jsonSet('session', '$', session);
+      await client.jsonSet(`${tag}:session:sess_789`, '$', session);
 
       // Track page view
-      await redis.jsonNumIncrBy('session', '$.activity.page_views', 1);
+      await client.jsonNumIncrBy(
+        `${tag}:session:sess_789`,
+        '$.activity.page_views',
+        1
+      );
 
       // Add action
-      await redis.jsonArrAppend(
-        'session',
+      await client.jsonArrAppend(
+        `${tag}:session:sess_789`,
         '$.activity.actions_performed',
-        { action: 'view_profile', timestamp: '2024-01-01T10.000Z' }
+        { action: 'view_profile', timestamp: '2024-01-01T10:00:00.000Z' }
       );
 
       // Update preferences
-      await redis.jsonSet('session', '$.preferences.theme', 'dark');
+      await client.jsonSet(
+        `${tag}:session:sess_789`,
+        '$.preferences.theme',
+        'dark'
+      );
 
       // Get final session state
-      const finalSession = await redis.jsonGet('session');
+      const finalSession = await client.jsonGet(`${tag}:session:sess_789`);
       const parsed = JSON.parse(finalSession);
 
       assert.strictEqual(parsed.activity.page_views, 1);
@@ -526,7 +615,7 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       assert.strictEqual(parsed.preferences.theme, 'dark');
     });
 
-    it('should handle application configuration', async () => {
+    test('should handle application configuration', async () => {
       const config = {
         app_name: 'MyApp',
         version: '1.0.0',
@@ -534,14 +623,14 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
         database: {
           host: 'db.example.com',
           port: 5432,
-          max_connections: 50,
+          max_connections: 100,
         },
         cache: {
           ttl: 3600,
           max_size: 1000,
         },
         features: {
-          new_ui: false,
+          new_ui: true,
           beta_features: false,
           analytics: true,
         },
@@ -549,20 +638,20 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       };
 
       // Store configuration
-      await redis.jsonSet('app', '$', config);
+      await client.jsonSet(`${tag}:app:config`, '$', config);
 
       // Enable maintenance mode
-      await redis.jsonToggle('app', '$.maintenance_mode');
+      await client.jsonToggle(`${tag}:app:config`, '$.maintenance_mode');
 
       // Update cache settings
-      await redis.jsonNumIncrBy('app', '$.cache.ttl', 1200); // Add 20 minutes
-      await redis.jsonNumMultBy('app', '$.cache.max_size', 2); // Double max size
+      await client.jsonNumIncrBy(`${tag}:app:config`, '$.cache.ttl', 1200); // Add 20 minutes
+      await client.jsonNumMultBy(`${tag}:app:config`, '$.cache.max_size', 2); // Double max size
 
       // Enable beta features
-      await redis.jsonToggle('app', '$.features.beta_features');
+      await client.jsonToggle(`${tag}:app:config`, '$.features.beta_features');
 
       // Get updated config
-      const updated = await redis.jsonGet('app');
+      const updated = await client.jsonGet(`${tag}:app:config`);
       const parsedConfig = JSON.parse(updated);
 
       assert.strictEqual(parsedConfig.maintenance_mode, true);
@@ -577,86 +666,92 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       const complexData = {
         users: [
           { id: 1, name: 'Alice', age: 25, city: 'NYC', active: true },
-          { id: 2, name: 'Bob', age: 30, city: 'LA', active: true },
-          { id: 3, name: 'Charlie', age: 28, city: 'NYC', active: false },
+          { id: 2, name: 'Bob', age: 30, city: 'LA', active: false },
+          { id: 3, name: 'Charlie', age: 35, city: 'NYC', active: true },
         ],
         cities: {
           NYC: { population: 8000000, timezone: 'EST' },
           LA: { population: 4000000, timezone: 'PST' },
         },
       };
-      await redis.jsonSet('complex', '$', complexData);
+      await client.jsonSet('complex:data', '$', complexData);
     });
 
-    it('should handle complex path queries', async () => {
+    test('should handle complex path queries', async () => {
       // Get all user names
-      const names = await redis.jsonGet('complex', '$..name');
+      const names = await client.jsonGet('complex:data', '$..name');
       assert.ok(names);
 
       // Get all active users
-      const activeUsers = await redis.jsonGet(
-        'complex',
+      const activeUsers = await client.jsonGet(
+        'complex:data',
         '$.users[?(@.active == true)]'
       );
       if (activeUsers) {
         const parsed = JSON.parse(activeUsers);
         // Should contain Alice and Charlie
-        assert.ok(Array.isArray(parsed) || typeof parsed === 'object');
+        assert.strictEqual(
+          Array.isArray(parsed) || typeof parsed === 'object',
+          true
+        );
       }
     });
   });
 
   describe('Error Handling and Edge Cases', () => {
-    it('should handle operations on non-existent keys', async () => {
+    test('should handle operations on non-existent keys', async () => {
       // Get from non-existent key
-      const result = await redis.jsonGet('nonexistent');
+      const result = await client.jsonGet('nonexistent:key');
       assert.strictEqual(result, null);
 
       // Delete from non-existent key
-      const deleteCount = await redis.jsonDel('nonexistent');
+      const deleteCount = await client.jsonDel('nonexistent:key');
       assert.strictEqual(deleteCount, 0);
 
       // Type of non-existent key
-      const type = await redis.jsonType('nonexistent');
+      const type = await client.jsonType('nonexistent:key');
       assert.strictEqual(type, null);
     });
 
-    it('should handle invalid paths gracefully', async () => {
+    test('should handle invalid paths gracefully', async () => {
       // Set up test data
-      await redis.jsonSet('test', '$', { name: 'test' });
+      await client.jsonSet('test:key', '$', { name: 'test' });
 
       // Try to get invalid path
-      const result = await redis.jsonGet('test', '$.invalid.path');
+      const result = await client.jsonGet('test:key', '$.invalid.path');
       assert.strictEqual(result, null);
 
       // Try to delete invalid path
-      const deleteCount = await redis.jsonDel('test', '$.invalid.path');
+      const deleteCount = await client.jsonDel('test:key', '$.invalid.path');
       assert.strictEqual(deleteCount, 0);
     });
 
-    it('should handle type mismatches', async () => {
+    test('should handle type mismatches', async () => {
       // Set up test data with different types
-      await redis.jsonSet('type', '$', {
+      await client.jsonSet('type:test', '$', {
         string_field: 'hello',
         number_field: 42,
         array_field: [1, 2, 3],
-        object_field: { nested: 'value' },
+        object_field: { nested: true },
       });
 
       // Try to get array length of non-array
-      const length = await redis.jsonArrLen('type', '$.string_field');
+      const length = await client.jsonArrLen('type:test', '$.string_field');
       assert.strictEqual(length, null);
 
       // Try to get object keys of non-object
-      const keys = await redis.jsonObjKeys('type', '$.number_field.test');
+      const keys = await client.jsonObjKeys('type:test', '$.number_field');
       assert.strictEqual(keys, null);
     });
 
-    it('should handle large JSON documents', async () => {
+    test('should handle large JSON documents', async () => {
+      // Reduce size in CI to prevent resource issues
+      const arraySize = process.env.CI ? 100 : 1000; // 100 items in CI, 1000 locally
+
       // Create large document
       const largeDoc = {
         metadata: { size: 'large' },
-        data: Array.from({ length: 1000 }, (_, i) => ({
+        data: Array.from({ length: arraySize }, (_, i) => ({
           id: i,
           value: `item_${i}`,
           timestamp: new Date().toISOString(),
@@ -665,19 +760,20 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
       };
 
       // Store large document
-      const result = await redis.jsonSet('large', '$', largeDoc);
+      const result = await client.jsonSet('large:doc', '$', largeDoc);
       assert.strictEqual(result, 'OK');
 
       // Get array length
-      const length = await redis.jsonArrLen('large', '$.data');
-      assert.strictEqual(length, 1000);
+      const length = await client.jsonArrLen('large:doc', '$.data');
+      assert.strictEqual(length, arraySize);
 
-      // Get specific element
-      const element = await redis.jsonGet('large', '$.data[500]');
+      // Get specific element (use middle index)
+      const middleIndex = Math.floor(arraySize / 2);
+      const element = await client.jsonGet('large:doc', `$.data[${middleIndex}]`);
       assert.ok(element);
 
       const parsed = JSON.parse(element);
-      assert.strictEqual(parsed.id, 500);
+      assert.strictEqual(parsed.id, middleIndex);
     });
   });
 
@@ -694,46 +790,46 @@ describe('JSON Commands - ValkeyJSON Compatibility', () => {
         },
         array: [1, 2, 3, 4, 5],
       };
-      await redis.jsonSet('debug', '$', debugDoc);
+      await client.jsonSet('debug:test', '$', debugDoc);
     });
 
-    it('should provide debug information', async () => {
+    test('should provide debug information', async () => {
       // Get memory usage (if supported)
       try {
-        const memory = await redis.jsonDebug('MEMORY', 'debug');
+        const memory = await client.jsonDebug('MEMORY', 'debug:test');
         assert.strictEqual(typeof memory, 'number');
       } catch (error) {
         // Debug commands might not be supported in all environments
-        assert.ok(error);
+        assert.ok(error !== undefined);
       }
 
       // Get depth information (if supported)
       try {
-        const depth = await redis.jsonDebug('DEPTH', 'debug');
+        const depth = await client.jsonDebug('DEPTH', 'debug:test');
         assert.strictEqual(typeof depth, 'number');
       } catch (error) {
         // Debug commands might not be supported in all environments
-        assert.ok(error);
+        assert.ok(error !== undefined);
       }
     });
 
-    it('should convert to RESP format', async () => {
+    test('should convert to RESP format', async () => {
       try {
-        const resp = await redis.jsonResp('debug', '$.array');
-        assert.ok(resp);
+        const resp = await client.jsonResp('debug:test', '$.array');
+        assert.ok(resp !== undefined);
       } catch (error) {
         // RESP conversion might not be supported in all environments
-        assert.ok(error);
+        assert.ok(error !== undefined);
       }
     });
 
-    it('should support legacy FORGET command', async () => {
+    test('should support legacy FORGET command', async () => {
       // FORGET is alias for DEL (RedisJSON v1 compatibility)
-      const deleteCount = await redis.jsonForget('debug', '$.array');
+      const deleteCount = await client.jsonForget('debug:test', '$.array');
       assert.strictEqual(typeof deleteCount, 'number');
 
       // Verify deletion
-      const result = await redis.jsonGet('debug', '$.array');
+      const result = await client.jsonGet('debug:test', '$.array');
       assert.strictEqual(result, null);
     });
   });

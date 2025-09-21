@@ -4,61 +4,72 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-### Development
-- `npm run build` - Compile TypeScript to JavaScript in dist/
-- `npm run build:watch` - Compile with watch mode for development
-- `npm run dev` - Run both build:watch and test:watch concurrently
+### Most Common Commands
+```bash
+# Build the project
+npm run build
 
-### Testing
-- `npm test` - Run all tests using isolated test runner script
-- `npm run test:single` - Run single test with Node.js built-in test runner
-- `npm run test:watch` - Run tests in watch mode
-- `npm run test:coverage` - Run tests with coverage report
-- `npm run test:ci` - Run tests for CI with coverage and no watch
+# Run all tests (standalone → cluster → JSON)
+npm test
 
-### Code Quality
-- `npm run lint` - Run ESLint on src/ and tests/
-- `npm run lint:fix` - Run ESLint with auto-fix
-- `npm run format` - Format code with Prettier
-- `npm run format:check` - Check code formatting
+# Run quick test (standalone only)
+npm run test:quick
 
-### Specific Test Commands
-- `npm test tests/unit/` - Run unit tests only
-- `npm test tests/integration/` - Run integration tests only
-- `npm test tests/cluster/` - Run cluster-specific tests
-- `npm test -- tests/unit/json-commands.test.ts` - Run specific test file
-- `npm test -- --testNamePattern="pattern"` - Run tests matching pattern
-- `npm run test:json` - Run JSON module tests specifically
-- `npm run test:search` - Run Search module tests specifically (currently disabled)
-- `npm run test:modules` - Run both JSON and Search module tests
+# Run a single test file
+node --test tests/unit/string-commands.test.mjs
 
-### Node.js Native Test Commands
-- `VALKEY_HOST=localhost VALKEY_PORT=6381 timeout 30 node --test tests/unit/smoke.test.mjs` - Run specific native test
-- `./scripts/test-isolated.sh` - Run tests in isolated environment with proper cleanup
+# Lint and format
+npm run lint:fix
+npm run format
+```
 
-### Build & Release
-- `npm run clean` - Remove dist/ directory
-- `npm run prepublishOnly` - Clean, build, and test before publishing
-- `npm run release` - Create semantic release
-- `npm run release:dry` - Test release without publishing
-- `npm run release:patch|minor|major` - Create specific version releases
+### Test Commands
+```bash
+# Run all tests in sequence
+npm test
 
-### Valkey Module Testing Environment
-- `npm run valkey:start` - Start valkey-bundle Docker container with all modules
-- `npm run valkey:stop` - Stop valkey-bundle Docker container
-- `npm run valkey:test` - Start valkey-bundle for testing environment
+# Run specific test suites
+npm run test:standalone   # Standalone tests only (port 6383)
+npm run test:cluster      # Cluster tests only (ports 17000-17002)
+npm run test:json         # JSON module tests only (port 6380)
+
+# Quick test (standalone only)
+npm run test:quick
+
+# Generate JUnit reports
+npm run test:junit
+```
+
+### Development Commands
+```bash
+# Watch mode for development
+npm run build:watch
+
+# Clean build directory
+npm run clean
+
+# Release commands
+npm run release:dry    # Dry run
+npm run release:patch  # Patch release
+npm run release:minor  # Minor release
+npm run release:major  # Major release
+```
 
 ## Architecture
 
-This is a **Valkey GLIDE ioredis adapter** - a true drop-in replacement for ioredis that uses Valkey GLIDE's high-performance Rust core while maintaining full ioredis API compatibility.
+This is a **Valkey GLIDE ioredis adapter** - a drop-in replacement for ioredis that uses Valkey GLIDE's high-performance Rust core while maintaining full ioredis API compatibility.
 
-### Core Architecture
+### Core Architecture Flow
 ```
 Application Code (ioredis API)
        ↓
+ioredis-compatible Classes (Redis/Cluster)
+       ↓
+Base/Standalone/Cluster Clients
+       ↓
 Parameter Translation Layer
        ↓
-Valkey GLIDE Native Methods
+Valkey GLIDE Native Methods (@valkey/valkey-glide)
        ↓
 Result Translation Layer
        ↓
@@ -68,170 +79,138 @@ ioredis-compatible Results
 ### Key Components
 
 **Core Clients** (`src/`):
-- `BaseClient.ts` - Core GLIDE client wrapper with all common database operations
-- `StandaloneClient.ts` - Standalone-specific implementation extending BaseClient  
-- `ClusterClient.ts` - Cluster-specific implementation extending BaseClient
-- `Redis.ts` - ioredis-compatible Redis class wrapper around StandaloneClient
-- `Cluster.ts` - ioredis-compatible Cluster class wrapper around ClusterClient
+- `BaseClient.ts` - Core GLIDE wrapper with common database operations (~1000 lines)
+- `StandaloneClient.ts` - Standalone-specific implementation
+- `ClusterClient.ts` - Cluster-specific implementation
+- `Redis.ts` - ioredis-compatible wrapper for StandaloneClient
+- `Cluster.ts` - ioredis-compatible wrapper for ClusterClient
+- `index.ts` - Main exports
+
+**Command Modules** (`src/commands/`):
+- `strings.ts`, `hashes.ts`, `lists.ts`, `sets.ts`, `zsets.ts` - Data type operations
+- `streams.ts` - Stream operations (XADD, XREAD, etc.)
+- `geo.ts`, `hll.ts`, `bitmaps.ts` - Specialized data structures
+- `scripting.ts` - Lua scripting support
+- `server.ts` - Server management
+- `keys.ts` - Key management
 
 **Utilities** (`src/utils/`):
 - `ParameterTranslator.ts` - Converts ioredis parameters to GLIDE format
 - `ResultTranslator.ts` - Converts GLIDE results to ioredis format
+- `OptionsMapper.ts` - Maps connection options between ioredis and GLIDE
 - `IoredisPubSubClient.ts` - Binary-compatible pub/sub client using RESP protocol
 
-**Types** (`src/types/`):
-- Complete TypeScript type definitions matching ioredis interfaces
-- Connection options, command parameters, result types
+**Testing** (`tests/`):
+- `unit/` - Command module tests (40+ test files)
+- `integration/` - Real-world integration tests (Bull, Socket.IO, sessions)
+- `cluster/` - Cluster-specific tests
+- `utils/test-config.mjs` - Test configuration helpers
+- Uses Node.js built-in test runner (no Jest)
 
-### Current Implementation Status
+### Critical Development Rules
 
-**✅ Production Ready Features:**
-- All Valkey data types (String, Hash, List, Set, ZSet) - 100% functional
-- ValkeyJSON module support - 29 commands implemented
-  
-- Bull/BullMQ integration - Complete compatibility with createClient factory
-- Express sessions, Socket.IO, rate limiting - All validated
-- Transaction support (MULTI/EXEC, WATCH/UNWATCH)
-- Stream operations (XADD, XREAD, XRANGE, etc.)
-- System commands (CONFIG, INFO, DBSIZE, etc.)
-- Cluster operations - Core database commands working
+1. **NEVER ASSUME API OR BEHAVIOR** - Always check both GLIDE and ioredis APIs
+2. **Pure GLIDE Architecture** - Only use Valkey GLIDE APIs, no direct server commands
+3. **Method Placement**:
+   - `BaseClient`: Methods with identical signatures in GlideClient and GlideClusterClient
+   - `StandaloneClient/ClusterClient`: Methods with different signatures or mode-specific behavior
+   - Example: `watch(keys)` in BaseClient, `unwatch()` in Standalone/Cluster (different signatures)
+4. **Dual-Mode Testing** - All tests must work in both standalone AND cluster modes
+5. **Sequential Test Execution** - Use `--test-concurrency=1` to prevent connection issues
 
-**Test Coverage: Production-ready with all critical features validated**
+### Implementation Patterns
 
-### **Development Status & Priorities**
+**ZSET Operations**: Special WITHSCORES handling to match ioredis format
+```typescript
+// GLIDE returns: Map { 'member1' => 1, 'member2' => 2 }
+// Convert to ioredis format: ['member1', '1', 'member2', '2']
+```
 
-**✅ COMPLETE (Production Ready)**
-- All Valkey data types: String, Hash, List, Set, ZSet - fully functional
-- JSON module: 29 commands fully implemented and tested
-- Integration libraries: Bull/BullMQ, Socket.IO, Express Sessions - all validated
-- Connection management: Pipelines, transactions, connection lifecycle
-- Core cluster operations: All database commands work in cluster mode
+**Pub/Sub Architecture**: Dual implementation
+- Direct GLIDE callbacks for text messages
+- TCP-based IoredisPubSubClient for binary compatibility (Socket.IO)
 
-**🔧 IN PROGRESS (Minor refinements)**
-- Enhanced ZSET WITHSCORES result formatting edge cases
-- Cluster TypeScript sendCommand method signature
-- Complex Lua script execution patterns  
-- Advanced stream operations result parsing
-- Connection error handling in edge scenarios
+**Transaction Support**: Multi/Pipeline adapters wrap GLIDE transaction objects
 
-**📈 IMPACT ASSESSMENT**
-- **Most applications**: Can migrate immediately with zero code changes
-- **Advanced use cases**: Minor limitations in some scenarios, workarounds available
-- **Critical production patterns**: Validated and working
+**Connection Validation**: Prevents cluster/standalone configuration mismatches
 
-### Module Support
+**Error Handling**: Map GLIDE errors to ioredis-compatible error types
 
-**ValkeyJSON (RedisJSON v2 compatible)**:
-- 29 complete JSON commands (jsonSet, jsonGet, jsonDel, etc.)
-- Full JSONPath support for complex document operations
-- Array and object manipulation methods
+## Configuration
 
-**ValkeySearch (RediSearch v2 compatible)**:
-- ⚠️ TEMPORARILY REMOVED - Search functionality removed in commit abae1d8 until GLIDE supports valkey-bundle syntax
-- Previously had 18/20 tests passing with comprehensive FT command coverage
-- Will be re-enabled when GLIDE adds proper valkey-bundle module support
+### TypeScript Configuration
+- Target: ES2020/CommonJS
+- Strict mode with all checks enabled
+- Source maps and declarations generated
+- Compiles `src/` to `dist/`
 
+### Test Environment
+- Standalone tests: localhost:6383
+- Cluster tests: localhost:17000-17002
+- JSON module tests: localhost:6380
+- Environment variables:
+  - `VALKEY_HOST` / `VALKEY_PORT` - Override standalone connection
+  - `VALKEY_CLUSTER_NODES` - Override cluster nodes (comma-separated)
+  - `ENABLE_CLUSTER_TESTS=true` - Enable cluster testing
+  - `DISABLE_STANDALONE_TESTS=true` / `DISABLE_CLUSTER_TESTS=true` - Skip specific modes
 
-## Development Patterns
+## Production Readiness
 
-### Critical Development Rule
-- **NEVER ASSUME API OR BEHAVIOR** - Always check and research both GLIDE and ioredis APIs
-- Verify behavior through documentation, testing, or implementation inspection
-- Do not guess parameter mappings, connection semantics, or method signatures
-- Always validate assumptions against actual GLIDE and ioredis implementations
+### Validated Integrations
+- ✅ Bull/BullMQ job queues - Complete compatibility with createClient factory
+- ✅ Express sessions (connect-redis) - Zero code changes required
+- ✅ Socket.IO adapter - Binary pub/sub support
+- ✅ Rate limiting (express-rate-limit) - Full compatibility
+- ✅ ValkeyJSON module - 29 commands implemented (requires JSON module)
 
-### Pure GLIDE Architecture
-- **Only use Valkey GLIDE APIs** - no direct server commands
-- Custom logic implemented when GLIDE doesn't have direct equivalents
-- Maintain ioredis compatibility through translation layers
+### Test Suite
+- 40+ unit test files covering all command modules
+- Integration tests for real-world patterns
+- Three test modes: standalone, cluster, and JSON module
+- Uses Node.js 18+ built-in test runner
 
-### Code Structure
-- Commands are organized into modules by data type
-- Each command module extends base adapter functionality  
-- Parameter/result translation happens at module boundaries
-- Connection management centralized in base adapters
+## Module Support
 
-### Testing Requirements
-- Unit tests for each command module (`tests/unit/`)
-- Integration tests for real-world patterns (`tests/integration/`)
-- Coverage threshold: 80% (branches, functions, lines, statements)
-- Special module testing with valkey-bundle Docker setup
+### ValkeyJSON (RedisJSON v2 compatible)
+- 29 complete JSON commands implemented
+- Full JSONPath support
+- Atomic operations on JSON documents
+- Requires Valkey server with JSON module loaded
+- Start test servers: `./scripts/valkey.sh start {standalone|cluster|bundle}`
 
-### Key Implementation Notes
-- ZSET operations require special `WITHSCORES` result handling
-- JSON module is optional (graceful fallback)
-- Connection validation prevents cluster/standalone mismatches
-- Dual pub/sub architecture: Direct GLIDE callbacks (high-performance) + ioredis-compatible TCP (binary support)
-- Transaction support through MultiAdapter/PipelineAdapter
+### ValkeySearch (Not Yet Implemented)
+- Pending GLIDE support for valkey-bundle module command syntax
 
-## Configuration Files
+## Development Workflow
 
-- `jest.config.js` - Jest test configuration with 20s timeout, maxWorkers: 1 for stability
-- `tsconfig.json` - TypeScript config targeting ES2020/CommonJS
-- `eslint.config.js` - ESLint with TypeScript and Prettier integration
-- Test setup in `tests/setup/` with global setup and teardown
-- `scripts/` - Shell scripts for test environment management and releases
-- `docker-compose.valkey-bundle.yml` - Docker configuration for module testing
+### Making Changes
+1. Check existing implementations in similar command modules
+2. Verify GLIDE API signatures for both StandaloneClient and ClusterClient
+3. Place method in appropriate client (BaseClient vs Standalone/Cluster)
+4. Add parameter translation if needed (ParameterTranslator.ts)
+5. Add result translation if needed (ResultTranslator.ts)
+6. Write tests that work in both standalone and cluster modes
 
-## Testing Environment Requirements
+### Testing Changes
+```bash
+# Run specific test file during development
+node --test tests/unit/your-command.test.mjs
 
-### For Standard Tests
-- Valkey/Redis server running on localhost:6379 (or use environment variables)
-- Tests automatically use `VALKEY_BUNDLE_HOST=localhost VALKEY_BUNDLE_PORT=6380` when available
+# Run quick test (standalone only)
+npm run test:quick
 
-### For Module Tests (JSON)
-- Use valkey-bundle Docker container: `npm run valkey:start`
-- Or manually: `docker-compose -f docker-compose.valkey-bundle.yml up -d`
-- JSON module must be loaded on the server for full functionality
+# Run full test suite before committing
+npm test
 
-### Test Execution Patterns
-- **Sequential execution**: Jest configured with maxWorkers: 1 for connection stability
-- **Timeout handling**: 20s timeout for integration tests with Docker setup
-- **Environment detection**: Tests automatically detect available Valkey modules
+# Check linting
+npm run lint:fix
 
-## Compatibility Matrix
+# Build and verify TypeScript
+npm run build
+```
 
-The adapter maintains **complete compatibility** with:
-- Bull/BullMQ job queues
-- Express sessions (connect-redis)  
-- Socket.IO server adapter
-- Rate limiting (express-rate-limit)
-- All major ioredis usage patterns
-
-**19 real-world patterns validated** from GitHub/Stack Overflow production code.
-
-## Critical Architecture Rules
-
-### Method Implementation Pattern
-- **BaseClient**: Contains methods that work identically for both standalone and cluster
-- **StandaloneClient/ClusterClient**: Contains methods with different behavior between standalone and cluster
-- **WATCH**: Implemented in BaseClient because both `GlideClient` and `GlideClusterClient` have the same `watch(keys: GlideString[])` signature
-- **UNWATCH**: Implemented in specific clients because signatures differ:
-  - GlideClient: `unwatch(): Promise<"OK">` (no parameters)
-  - GlideClusterClient: `unwatch(options?: RouteOption): Promise<"OK">` (optional RouteOption)
-- **PUBLISH**: Implemented in specific clients because signatures differ:
-  - GlideClient (Standalone): `publish(message, channel)` - 2 parameters, no sharded pub/sub support
-  - GlideClusterClient (Cluster): `publish(message, channel, sharded?)` - optional 3rd parameter for sharded pub/sub
-- **Pub/Sub Subscription Modes**: Cluster clients support sharded channels, standalone clients don't:
-  - Standalone: Exact, Pattern channels only
-  - Cluster: Exact, Pattern, and Sharded channels (sharded available since Valkey 7.0)
-- When method signatures differ between standalone and cluster, implement in the specific client classes, not BaseClient
-
-### Development Methodology
-- Never work in a methodology of fail and retry
-- Always check GLIDE implementation AND ioredis implementation first
-- Then fix with knowledge, not trial and error
-
-## Recent Changes & Status
-
-### Current Development Focus (as of commit abae1d8)
-- **Search functionality temporarily removed** due to GLIDE not supporting valkey-bundle syntax
-- **Node.js built-in test runner migration completed** - 100% test pass rate achieved
-- **All core Valkey data types fully functional** - String, Hash, List, Set, ZSet operations production-ready
-- **JSON module remains fully functional** with 29 commands implemented
-
-### Test Framework Migration
-- Successfully migrated from Jest to Node.js built-in test runner
-- All tests now use native Node.js testing capabilities
-- Isolated test execution with proper cleanup via `./scripts/test-isolated.sh`
-- Environment variable support: `VALKEY_HOST`, `VALKEY_PORT`, `VALKEY_BUNDLE_HOST`, `VALKEY_BUNDLE_PORT`
+### Common Pitfalls
+- Assuming GLIDE and ioredis APIs are identical (they're not)
+- Not testing both standalone and cluster modes
+- Forgetting to handle parameter/result translation
+- Not checking for mode-specific method signatures
