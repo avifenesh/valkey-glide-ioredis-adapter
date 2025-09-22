@@ -279,11 +279,11 @@ describe('Cluster - Basic Tests', () => {
       });
 
       // Simulate events from pubsub commands
-      setTimeout(() => {
+      process.nextTick(() => {
         expectedEvents.forEach(event => {
           cluster.emit(event, 'test-channel', 'test-message');
         });
-      }, 10).unref();
+      });
 
       await eventPromise;
     });
