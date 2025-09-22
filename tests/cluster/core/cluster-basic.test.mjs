@@ -42,6 +42,7 @@ describe('Cluster - Basic Tests', () => {
 
       assert.ok(cluster instanceof Cluster);
       assert.strictEqual(cluster.status, 'disconnected');
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should create cluster adapter with multiple nodes', async () => {
@@ -56,6 +57,7 @@ describe('Cluster - Basic Tests', () => {
 
       assert.ok(cluster instanceof Cluster);
       assert.strictEqual(cluster.status, 'disconnected');
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should support createClient factory method', async () => {
@@ -66,6 +68,7 @@ describe('Cluster - Basic Tests', () => {
 
       assert.ok(cluster instanceof Cluster);
       assert.strictEqual(cluster.clientType, 'client');
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should support createClient with bclient type', async () => {
@@ -77,6 +80,7 @@ describe('Cluster - Basic Tests', () => {
       assert.ok(cluster instanceof Cluster);
       assert.strictEqual(cluster.clientType, 'bclient');
       assert.strictEqual(cluster.enableBlockingOps, true);
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should support createClient with subscriber type', async () => {
@@ -87,6 +91,7 @@ describe('Cluster - Basic Tests', () => {
 
       assert.ok(cluster instanceof Cluster);
       assert.strictEqual(cluster.clientType, 'subscriber');
+      await cluster.disconnect().catch(() => {});
     });
   });
 
@@ -109,6 +114,7 @@ describe('Cluster - Basic Tests', () => {
       assert.strictEqual(cluster.clusterOptions.retryDelayOnFailover, 200);
       assert.strictEqual(cluster.clusterOptions.enableOfflineQueue, false);
       assert.strictEqual(cluster.clusterOptions.readOnly, true);
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should use default cluster options', async () => {
@@ -122,6 +128,7 @@ describe('Cluster - Basic Tests', () => {
       assert.ok(cluster.clusterOptions.retryDelayOnFailover === undefined);
       assert.ok(cluster.clusterOptions.enableOfflineQueue === undefined);
       assert.ok(cluster.clusterOptions.readOnly === undefined);
+      await cluster.disconnect().catch(() => {});
     });
   });
 
@@ -137,6 +144,8 @@ describe('Cluster - Basic Tests', () => {
       assert.ok(duplicate instanceof Cluster);
       assert.notStrictEqual(duplicate, original);
       assert.strictEqual(duplicate.clusterOptions.enableReadFromReplicas, true);
+      await original.disconnect().catch(() => {});
+      await duplicate.disconnect().catch(() => {});
     });
 
     it('should preserve blocking operations in duplicate', async () => {
@@ -148,6 +157,8 @@ describe('Cluster - Basic Tests', () => {
       const duplicate = original.duplicate();
 
       assert.strictEqual(duplicate.enableBlockingOps, true);
+      await original.disconnect().catch(() => {});
+      await duplicate.disconnect().catch(() => {});
     });
   });
 
@@ -159,6 +170,7 @@ describe('Cluster - Basic Tests', () => {
 
       const pipeline = cluster.pipeline();
       assert.ok(pipeline);
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should create multi transaction', async () => {
@@ -168,6 +180,7 @@ describe('Cluster - Basic Tests', () => {
 
       const multi = cluster.multi();
       assert.ok(multi);
+      await cluster.disconnect().catch(() => {});
     });
   });
 
@@ -178,6 +191,10 @@ describe('Cluster - Basic Tests', () => {
       cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
         lazyConnect: true,
       });
+    });
+
+    afterEach(async () => {
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should have string command methods', async () => {
@@ -286,6 +303,7 @@ describe('Cluster - Basic Tests', () => {
       });
 
       await eventPromise;
+      await cluster.disconnect().catch(() => {});
     });
   });
 
@@ -300,6 +318,7 @@ describe('Cluster - Basic Tests', () => {
       assert.ok(cluster.quit instanceof Function);
       assert.ok(cluster.ping instanceof Function);
       assert.ok(cluster.info instanceof Function);
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should have sendCommand method', async () => {
@@ -309,6 +328,7 @@ describe('Cluster - Basic Tests', () => {
 
       assert.ok(cluster.sendCommand instanceof Function);
       assert.ok(cluster.call instanceof Function);
+      await cluster.disconnect().catch(() => {});
     });
   });
 
@@ -337,6 +357,9 @@ describe('Cluster - Basic Tests', () => {
       assert.strictEqual(subscriber.clientType, 'subscriber');
       assert.strictEqual(bclient.clientType, 'bclient');
       assert.strictEqual(bclient.enableBlockingOps, true);
+      await client.disconnect().catch(() => {});
+      await subscriber.disconnect().catch(() => {});
+      await bclient.disconnect().catch(() => {});
     });
   });
 
@@ -417,6 +440,7 @@ describe('Cluster - Cluster Specific Features', () => {
       });
 
       assert.strictEqual(cluster.clusterOptions.scaleReads, 'master');
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should support slave read scaling', async () => {
@@ -426,6 +450,7 @@ describe('Cluster - Cluster Specific Features', () => {
       });
 
       assert.strictEqual(cluster.clusterOptions.scaleReads, 'slave');
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should support all nodes read scaling', async () => {
@@ -435,6 +460,7 @@ describe('Cluster - Cluster Specific Features', () => {
       });
 
       assert.strictEqual(cluster.clusterOptions.scaleReads, 'all');
+      await cluster.disconnect().catch(() => {});
     });
   });
 
@@ -446,6 +472,7 @@ describe('Cluster - Cluster Specific Features', () => {
       });
 
       assert.strictEqual(cluster.clusterOptions.enableReadFromReplicas, true);
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should support read-only mode', async () => {
@@ -455,6 +482,7 @@ describe('Cluster - Cluster Specific Features', () => {
       });
 
       assert.strictEqual(cluster.clusterOptions.readOnly, true);
+      await cluster.disconnect().catch(() => {});
     });
   });
 
@@ -466,6 +494,7 @@ describe('Cluster - Cluster Specific Features', () => {
       });
 
       assert.strictEqual(cluster.clusterOptions.maxRedirections, 32);
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should configure retry delay on failover', async () => {
@@ -475,6 +504,7 @@ describe('Cluster - Cluster Specific Features', () => {
       });
 
       assert.strictEqual(cluster.clusterOptions.retryDelayOnFailover, 500);
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should support offline queue configuration', async () => {
@@ -484,6 +514,7 @@ describe('Cluster - Cluster Specific Features', () => {
       });
 
       assert.strictEqual(cluster.clusterOptions.enableOfflineQueue, false);
+      await cluster.disconnect().catch(() => {});
     });
   });
 });
