@@ -383,7 +383,11 @@ describe('Cluster - Basic Tests', () => {
       if (!errorEmitted) {
         await Promise.race([
           errorPromise,
-          new Promise(resolve => setTimeout(resolve, 1000).unref()), // 1 second max wait
+          new Promise(resolve => {
+            process.nextTick(() => {
+              resolve();
+            });
+          }),
         ]);
       }
 
