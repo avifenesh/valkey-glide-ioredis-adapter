@@ -8,11 +8,19 @@ afterEach(async () => {
   try {
     const pkg = await import('../dist/index.js');
     const { Redis } = pkg;
-    if (Redis.forceCloseAllClients) {
+    if (Redis.closeAllClientsGracefully) {
       await Promise.race([
-        Redis.forceCloseAllClients(2000), // Give GLIDE Rust core more time
+        Redis.closeAllClientsGracefully(2000),
         new Promise(resolve => {
-          const t = setTimeout(resolve, 3000); // Longer race timeout
+          const t = setTimeout(resolve, 3000);
+          if (typeof t.unref === 'function') t.unref();
+        }),
+      ]);
+    } else if (Redis.forceCloseAllClients) {
+      await Promise.race([
+        Redis.forceCloseAllClients(2000),
+        new Promise(resolve => {
+          const t = setTimeout(resolve, 3000);
           if (typeof t.unref === 'function') t.unref();
         }),
       ]);
@@ -22,12 +30,7 @@ afterEach(async () => {
     try {
       const { SocketFileManager } = pkg;
       if (SocketFileManager) {
-        // Use aggressive cleanup in CI environment
-        if (process.env.CI) {
-          await SocketFileManager.forceCleanupAllGlideSocketFiles();
-        } else {
-          await SocketFileManager.closeAllSocketFiles();
-        }
+        await SocketFileManager.closeAllSocketFiles();
       }
     } catch {}
 
@@ -68,12 +71,21 @@ after(async () => {
     const pkg = await import('../dist/index.js');
     const { Redis } = pkg;
 
-    if (Redis.forceCloseAllClients) {
-      // Force close all clients with a timeout
+    if (Redis.closeAllClientsGracefully) {
+      // Prefer graceful close at test end
       await Promise.race([
-        Redis.forceCloseAllClients(3000), // Give GLIDE Rust core even more time at test end
+        Redis.closeAllClientsGracefully(3000),
         new Promise(resolve => {
-          const t = setTimeout(resolve, 5000); // Longer race timeout for final cleanup
+          const t = setTimeout(resolve, 5000);
+          if (typeof t.unref === 'function') t.unref();
+        }),
+      ]);
+    } else if (Redis.forceCloseAllClients) {
+      // Fallback to force close
+      await Promise.race([
+        Redis.forceCloseAllClients(3000),
+        new Promise(resolve => {
+          const t = setTimeout(resolve, 5000);
           if (typeof t.unref === 'function') t.unref();
         }),
       ]);
