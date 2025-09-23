@@ -244,7 +244,7 @@ export class Redis extends StandaloneClient {
    *
    * @param timeout Maximum time to wait per client for graceful shutdown
    */
-  static async closeAllClientsGracefully(timeout: number = 1000): Promise<void> {
+  static async closeAllClientsGracefully(): Promise<void> {
     const { getGlobalClientRegistry } = require('./BaseClient');
     if (!getGlobalClientRegistry) return;
 
@@ -255,24 +255,12 @@ export class Redis extends StandaloneClient {
     await Promise.all(
       clients.map(async (client: any) => {
         try {
-          await Promise.race([
-            client.disconnect(),
-            new Promise((resolve) => {
-              const t = setTimeout(resolve, timeout);
-              if (typeof (t as any).unref === 'function') (t as any).unref();
-            }),
-          ]);
+          await client.disconnect();
         } catch {
           // ignore individual disconnect errors during graceful close
         }
       })
     );
-
-    // Small delay to let event loop flush disconnect callbacks
-    await new Promise(resolve => {
-      const t = setTimeout(resolve, 50);
-      if (typeof (t as any).unref === 'function') (t as any).unref();
-    });
   }
 
   /**
