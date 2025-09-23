@@ -8,32 +8,7 @@ import assert from 'node:assert';
 import pkg from '../../../dist/index.js';
 const { Cluster } = pkg;
 
-// Mock Redis cluster for testing
-class MockRedisCluster {
-  servers = new Map();
-
-  createServer(port, handler) {
-    // This would be implemented with actual Redis cluster mock
-    // For now, we'll create a placeholder
-    this.servers.set(port, { port, handler });
-  }
-
-  cleanup() {
-    this.servers.clear();
-  }
-}
-
 describe('Cluster - Basic Tests', () => {
-  let mockCluster;
-
-  beforeEach(() => {
-    mockCluster = new MockRedisCluster();
-  });
-
-  afterEach(() => {
-    mockCluster.cleanup();
-  });
-
   describe('Basic Operations', () => {
     it('should create cluster adapter with single node', async () => {
       const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
