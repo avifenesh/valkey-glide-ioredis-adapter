@@ -9,21 +9,7 @@ afterEach(async () => {
     const pkg = await import('../dist/index.js');
     const { Redis } = pkg;
     if (Redis.closeAllClientsGracefully) {
-      await Promise.race([
-        Redis.closeAllClientsGracefully(2000),
-        new Promise(resolve => {
-          const t = setTimeout(resolve, 3000);
-          if (typeof t.unref === 'function') t.unref();
-        }),
-      ]);
-    } else if (Redis.forceCloseAllClients) {
-      await Promise.race([
-        Redis.forceCloseAllClients(2000),
-        new Promise(resolve => {
-          const t = setTimeout(resolve, 3000);
-          if (typeof t.unref === 'function') t.unref();
-        }),
-      ]);
+      await Redis.closeAllClientsGracefully(2000);
     }
 
     // Ensure socket files are cleaned up after each test
@@ -72,23 +58,7 @@ after(async () => {
     const { Redis } = pkg;
 
     if (Redis.closeAllClientsGracefully) {
-      // Prefer graceful close at test end
-      await Promise.race([
-        Redis.closeAllClientsGracefully(3000),
-        new Promise(resolve => {
-          const t = setTimeout(resolve, 5000);
-          if (typeof t.unref === 'function') t.unref();
-        }),
-      ]);
-    } else if (Redis.forceCloseAllClients) {
-      // Fallback to force close
-      await Promise.race([
-        Redis.forceCloseAllClients(3000),
-        new Promise(resolve => {
-          const t = setTimeout(resolve, 5000);
-          if (typeof t.unref === 'function') t.unref();
-        }),
-      ]);
+      await Redis.closeAllClientsGracefully(3000);
     }
   } catch (error) {
     // Ignore errors during cleanup
