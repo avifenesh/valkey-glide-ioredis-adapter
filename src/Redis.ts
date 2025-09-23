@@ -239,6 +239,43 @@ export class Redis extends StandaloneClient {
   }
 
   /**
+   * Gracefully close all Redis client instances
+   * Useful for testing a non-aggressive shutdown path.
+   *
+   * @param timeout Maximum time to wait per client for graceful shutdown
+   */
+  static async closeAllClientsGracefully(timeout: number = 1000): Promise<void> {
+    const { getGlobalClientRegistry } = require('./BaseClient');
+    if (!getGlobalClientRegistry) return;
+
+    const registry = getGlobalClientRegistry();
+    const clients = Array.from(registry);
+    if (clients.length === 0) return;
+
+    await Promise.all(
+      clients.map(async (client: any) => {
+        try {
+          await Promise.race([
+            client.disconnect(),
+            new Promise((resolve) => {
+              const t = setTimeout(resolve, timeout);
+              if (typeof (t as any).unref === 'function') (t as any).unref();
+            }),
+          ]);
+        } catch {
+          // ignore individual disconnect errors during graceful close
+        }
+      })
+    );
+
+    // Small delay to let event loop flush disconnect callbacks
+    await new Promise(resolve => {
+      const t = setTimeout(resolve, 50);
+      if (typeof (t as any).unref === 'function') (t as any).unref();
+    });
+  }
+
+  /**
    * Emergency process termination - use only in test environments
    * when forceCloseAllClients() isn't sufficient for hanging processes.
    *
