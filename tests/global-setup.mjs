@@ -9,7 +9,7 @@ afterEach(async () => {
     const pkg = await import('../dist/index.js');
     const { Redis } = pkg;
     if (Redis.closeAllClientsGracefully) {
-      await Redis.closeAllClientsGracefully(2000);
+      await Redis.closeAllClientsGracefully();
     }
 
     // Ensure socket files are cleaned up after each test
@@ -58,7 +58,7 @@ after(async () => {
     const { Redis } = pkg;
 
     if (Redis.closeAllClientsGracefully) {
-      await Redis.closeAllClientsGracefully(3000);
+      await Redis.closeAllClientsGracefully();
     }
   } catch (error) {
     // Ignore errors during cleanup
