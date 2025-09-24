@@ -377,18 +377,6 @@ describe('Cluster - Basic Tests', () => {
         assert.ok(error instanceof Error);
       }
 
-      // Wait a short time for error event
-      if (!errorEmitted) {
-        await Promise.race([
-          errorPromise,
-          new Promise(resolve => {
-            process.nextTick(() => {
-              resolve();
-            });
-          }),
-        ]);
-      }
-
       // Clean up the cluster connection
       try {
         await cluster.disconnect();
