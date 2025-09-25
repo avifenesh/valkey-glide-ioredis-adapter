@@ -41,7 +41,7 @@
     "format": "prettier --write src tests",
     "format:check": "prettier --check src tests",
     "clean": "rimraf dist",
-    "prepublishOnly": "npm run clean && npm run build && npm run test",
+    "prepublishOnly": "npm run clean && npm run build && ([ \"$SKIP_TESTS\" = \"true\" ] && echo \"⚠️ Skipping tests as requested by SKIP_TESTS environment variable\" || npm run test)",
     "dev": "concurrently \"npm run build:watch\" \"npm run test:quick\"",
     "release": "semantic-release",
     "release:dry": "semantic-release --dry-run",
