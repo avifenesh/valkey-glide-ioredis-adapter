@@ -1,6 +1,6 @@
 name: Release
 
-on:
+"on":
   workflow_dispatch:
     inputs:
       tag:
@@ -10,8 +10,11 @@ on:
       skip-tests:
         description: "Skip running tests during publish"
         required: false
-        type: boolean
-        default: false
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+        default: 'false'
   push:
     tags:
       - 'v*.*.*'
@@ -86,9 +89,22 @@ jobs:
       - name: Build
         run: npm run build
 
+      - name: Skip Tests Notice
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.skip-tests == 'true'
+        run: |
+          echo "⚠️ Tests are being skipped as requested via workflow_dispatch input"
+          echo "This is only recommended for hotfixes or when tests have already been validated"
+
       - name: Test
         if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.skip-tests != 'true')
-        run: npm test
+        run: |
+          echo "🧪 Running tests before publish..."
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Tests are running because skip-tests is set to '${{ github.event.inputs.skip-tests }}'"
+          else
+            echo "Tests are running because this is a tag push event"
+          fi
+          npm test
 
       - name: Publish to NPM
         env:
