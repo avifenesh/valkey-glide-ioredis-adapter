@@ -21,6 +21,8 @@ jobs:
   dispatch-create-tag:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.create-tag.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -39,7 +41,8 @@ jobs:
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Create tag if missing and push
+      - name: Create tag if missing (without push)
+        id: create-tag
         env:
           TAG: ${{ steps.norm.outputs.tag }}
         run: |
@@ -48,15 +51,18 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git fetch --tags --force
           if git show-ref --tags --verify --quiet "refs/tags/$TAG"; then
-            echo "Tag $TAG already exists; skipping creation."
+            echo "Tag $TAG already exists; will use existing tag."
           else
             git tag -a "$TAG" -m "Release $TAG"
-            git push origin "$TAG"
+            echo "Created new tag $TAG"
           fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
   publish-and-release:
-    if: github.event_name == 'push'
+    if: always() && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && needs.dispatch-create-tag.result == 'success'))
     runs-on: ubuntu-latest
+    needs: 
+      - dispatch-create-tag
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -82,7 +88,12 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ needs.dispatch-create-tag.outputs.tag }}"
+            VERSION=${TAG#v}
+          else
+            VERSION=${GITHUB_REF#refs/tags/v}
+          fi
           if [[ "$VERSION" == *"-"* ]]; then
             npm publish --tag prerelease
           else
@@ -92,6 +103,15 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && needs.dispatch-create-tag.outputs.tag || github.ref_name }}
           generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(github.event_name == 'workflow_dispatch' && needs.dispatch-create-tag.outputs.tag || github.ref_name, '-') }}
+
+      - name: Push tag (workflow_dispatch only)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          TAG: ${{ needs.dispatch-create-tag.outputs.tag }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git push origin "$TAG"
