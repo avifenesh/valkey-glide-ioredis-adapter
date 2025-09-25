@@ -109,6 +109,7 @@ jobs:
       - name: Publish to NPM
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          SKIP_TESTS: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.skip-tests == 'true' && 'true' || 'false' }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             TAG="${{ needs.dispatch-create-tag.outputs.tag }}"
