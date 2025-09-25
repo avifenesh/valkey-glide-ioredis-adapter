@@ -1,50 +1,89 @@
 name: Release
 
 on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag name to release (e.g., v1.2.3). 'v' prefix optional."
+        required: true
+        type: string
   push:
     tags:
-      - 'v*.*.*'
+      - "v*"
 
 permissions:
   contents: write
-  issues: write
-  pull-requests: write
-  id-token: write
 
 jobs:
-  release:
+  # When manually dispatched, create the tag if it doesn't already exist.
+  dispatch-create-tag:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # need full history and tags
+
+      - name: Normalize tag input
+        id: norm
+        run: |
+          set -euo pipefail
+          INPUT="${{ github.event.inputs.tag }}"
+          if [[ "$INPUT" =~ ^v ]]; then
+            TAG="$INPUT"
+          else
+            TAG="v$INPUT"
+          fi
+          echo "Normalized tag: $TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create tag if missing and push
+        env:
+          TAG: ${{ steps.norm.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Ensure we know about remote tags
+          git fetch --tags --force
+
+          if git show-ref --tags --verify --quiet "refs/tags/$TAG"; then
+            echo "Tag $TAG already exists; skipping creation."
+          else
+            echo "Creating and pushing tag $TAG"
+            git tag -a "$TAG" -m "Release $TAG"
+            git push origin "$TAG"
+          fi
+
+  # On tag pushes, create a GitHub Release (skip if it already exists).
+  create-release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v5
-        with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-
-      - run: npm ci
-      - run: npm run build
-      - run: npm test
-
-      - name: Publish to NPM
+      - name: Check if release already exists
+        id: check
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          if [[ "$VERSION" == *"-"* ]]; then
-            npm publish --tag prerelease
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Release for $TAG already exists; skipping."
           else
-            npm publish
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create GitHub Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          gh release create "v$VERSION" \
-            --title "v$VERSION" \
-            --generate-notes \
-            $([[ "$VERSION" == *"-"* ]] && echo "--prerelease")
+        if: steps.check.outputs.exists == 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
