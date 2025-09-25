@@ -7,6 +7,11 @@ on:
         description: "Tag name to release (e.g., v1.2.3). 'v' prefix optional."
         required: true
         type: string
+      skip-tests:
+        description: "Skip running tests during publish"
+        required: false
+        type: boolean
+        default: false
   push:
     tags:
       - 'v*.*.*'
@@ -82,6 +87,7 @@ jobs:
         run: npm run build
 
       - name: Test
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.skip-tests != 'true')
         run: npm test
 
       - name: Publish to NPM
