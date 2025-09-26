@@ -16,6 +16,7 @@ import {
 import assert from 'node:assert';
 import pkg from '../../../../dist/index.js';
 const { Cluster } = pkg;
+import { getClusterConfig } from '../../../utils/test-config.mjs';
 
 // Mock Bull Queue for testing
 class MockBullQueue {
@@ -58,14 +59,8 @@ describe('Bull Integration with Cluster', () => {
 
   beforeEach(() => {
     clusterConfig = {
-      nodes: [
-        { host: 'localhost', port: 7000 },
-        { host: 'localhost', port: 7001 },
-        { host: 'localhost', port: 7002 },
-        { host: 'localhost', port: 7003 },
-        { host: 'localhost', port: 7004 },
-        { host: 'localhost', port: 7005 },
-      ],
+      // Provided by tests/global-setup.mjs
+      nodes: getClusterConfig(),
     };
   });
 
@@ -123,11 +118,7 @@ describe('Bull Integration with Cluster', () => {
   describe('Cluster Configuration', () => {
     it('should accept cluster-specific options in createClient', async () => {
       const clusterOptions = {
-        nodes: [
-          { host: '127.0.0.1', port: 7000 },
-          { host: '127.0.0.1', port: 7001 },
-          { host: '127.0.0.1', port: 7002 },
-        ],
+        nodes: clusterConfig.nodes,
         enableReadFromReplicas: true,
         scaleReads: 'all',
         maxRedirections: 32,
@@ -151,7 +142,7 @@ describe('Bull Integration with Cluster', () => {
 
     it('should support single node cluster configuration', async () => {
       const singleNodeConfig = {
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
+        nodes: [clusterConfig.nodes[0]],
       };
 
       const createClient = type => {
@@ -488,7 +479,7 @@ describe('Bull Integration with Cluster', () => {
     it('should handle individual node failures', async () => {
       const mixedConfig = {
         nodes: [
-          { host: 'localhost', port: 7000 }, // Valid
+          clusterConfig.nodes[0], // Valid
           { host: 'localhost', port: 9999 }, // Invalid port
         ],
       };
