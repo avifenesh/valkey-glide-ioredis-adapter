@@ -8,26 +8,15 @@ afterEach(async () => {
   try {
     const pkg = await import('../dist/index.js');
     const { Redis } = pkg;
-    if (Redis.forceCloseAllClients) {
-      await Promise.race([
-        Redis.forceCloseAllClients(2000), // Give GLIDE Rust core more time
-        new Promise(resolve => {
-          const t = setTimeout(resolve, 3000); // Longer race timeout
-          if (typeof t.unref === 'function') t.unref();
-        }),
-      ]);
+    if (Redis.closeAllClientsGracefully) {
+      await Redis.closeAllClientsGracefully();
     }
 
     // Ensure socket files are cleaned up after each test
     try {
       const { SocketFileManager } = pkg;
       if (SocketFileManager) {
-        // Use aggressive cleanup in CI environment
-        if (process.env.CI) {
-          await SocketFileManager.forceCleanupAllGlideSocketFiles();
-        } else {
-          await SocketFileManager.closeAllSocketFiles();
-        }
+        await SocketFileManager.closeAllSocketFiles();
       }
     } catch {}
 
@@ -64,70 +53,12 @@ afterEach(async () => {
 });
 
 after(async () => {
-  // CI-specific aggressive cleanup with forced exit
-  if (process.env.CI) {
-    console.log('[CI] Starting aggressive cleanup...');
-
-    // Set a hard timeout to force exit if cleanup hangs
-    const forceExitTimer = setTimeout(() => {
-      console.log('[CI] Cleanup timeout - forcing exit');
-      process.exit(0);
-    }, 8000); // 8 second hard limit
-
-    try {
-      // Import Redis dynamically to avoid circular dependencies
-      const pkg = await import('../dist/index.js');
-      const { Redis, SocketFileManager } = pkg;
-
-      // Aggressive parallel cleanup
-      const cleanupPromises = [];
-
-      if (Redis.forceCloseAllClients) {
-        cleanupPromises.push(
-          Promise.race([
-            Redis.forceCloseAllClients(2000),
-            new Promise(resolve => setTimeout(resolve, 3000).unref())
-          ])
-        );
-      }
-
-      if (SocketFileManager) {
-        cleanupPromises.push(SocketFileManager.forceCleanupAllGlideSocketFiles());
-      }
-
-      // Run all cleanup in parallel with timeout
-      await Promise.race([
-        Promise.allSettled(cleanupPromises),
-        new Promise(resolve => setTimeout(resolve, 6000).unref())
-      ]);
-
-      console.log('[CI] Cleanup completed successfully');
-
-    } catch (error) {
-      console.log('[CI] Cleanup error (proceeding anyway):', error.message);
-    }
-
-    clearTimeout(forceExitTimer);
-
-    // Force exit in CI to prevent hanging
-    setTimeout(() => process.exit(0), 100).unref();
-    return;
-  }
-
-  // Non-CI normal cleanup
   try {
     const pkg = await import('../dist/index.js');
     const { Redis } = pkg;
 
-    if (Redis.forceCloseAllClients) {
-      // Force close all clients with a timeout
-      await Promise.race([
-        Redis.forceCloseAllClients(3000), // Give GLIDE Rust core even more time at test end
-        new Promise(resolve => {
-          const t = setTimeout(resolve, 5000); // Longer race timeout for final cleanup
-          if (typeof t.unref === 'function') t.unref();
-        }),
-      ]);
+    if (Redis.closeAllClientsGracefully) {
+      await Redis.closeAllClientsGracefully();
     }
   } catch (error) {
     // Ignore errors during cleanup

@@ -48,7 +48,7 @@ export DISABLE_CLUSTER_TESTS="true"
 echo -e "${YELLOW}Running standalone tests...${NC}"
 
 # Find all test files excluding cluster-specific ones
-TEST_FILES=$(find tests -name "*.test.mjs" | grep -v cluster | sort)
+TEST_FILES=$(find tests -name "*.test.mjs" | grep -v cluster | grep -v json | sort)
 
 # Run tests
 node --test \

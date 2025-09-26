@@ -7,36 +7,13 @@ import { describe, it, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert';
 import pkg from '../../../dist/index.js';
 const { Cluster } = pkg;
-
-// Mock Redis cluster for testing
-class MockRedisCluster {
-  servers = new Map();
-
-  createServer(port, handler) {
-    // This would be implemented with actual Redis cluster mock
-    // For now, we'll create a placeholder
-    this.servers.set(port, { port, handler });
-  }
-
-  cleanup() {
-    this.servers.clear();
-  }
-}
+import { getClusterConfig } from '../../utils/test-config.mjs';
+const nodes = getClusterConfig();
 
 describe('Cluster - Basic Tests', () => {
-  let mockCluster;
-
-  beforeEach(() => {
-    mockCluster = new MockRedisCluster();
-  });
-
-  afterEach(() => {
-    mockCluster.cleanup();
-  });
-
   describe('Basic Operations', () => {
     it('should create cluster adapter with single node', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster([nodes[0]], {
         lazyConnect: true,
       });
 
@@ -45,14 +22,7 @@ describe('Cluster - Basic Tests', () => {
     });
 
     it('should create cluster adapter with multiple nodes', async () => {
-      const cluster = new Cluster(
-        [
-          { host: '127.0.0.1', port: 7000 },
-          { host: '127.0.0.1', port: 7001 },
-          { host: '127.0.0.1', port: 7002 },
-        ],
-        { lazyConnect: true }
-      );
+      const cluster = new Cluster(nodes, { lazyConnect: true });
 
       assert.ok(cluster instanceof Cluster);
       assert.strictEqual(cluster.status, 'disconnected');
@@ -60,7 +30,7 @@ describe('Cluster - Basic Tests', () => {
 
     it('should support createClient factory method', async () => {
       const cluster = Cluster.createClient('client', {
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
+        nodes,
         lazyConnect: true,
       });
 
@@ -70,7 +40,7 @@ describe('Cluster - Basic Tests', () => {
 
     it('should support createClient with bclient type', async () => {
       const cluster = Cluster.createClient('bclient', {
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
+        nodes,
         lazyConnect: true,
       });
 
@@ -81,7 +51,7 @@ describe('Cluster - Basic Tests', () => {
 
     it('should support createClient with subscriber type', async () => {
       const cluster = Cluster.createClient('subscriber', {
-        nodes: [{ host: '127.0.0.1', port: 7000 }],
+        nodes,
         lazyConnect: true,
       });
 
@@ -92,7 +62,7 @@ describe('Cluster - Basic Tests', () => {
 
   describe('Configuration Options', () => {
     it('should accept cluster-specific options', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster(nodes, {
         enableReadFromReplicas: true,
         scaleReads: 'all',
         maxRedirections: 32,
@@ -109,10 +79,11 @@ describe('Cluster - Basic Tests', () => {
       assert.strictEqual(cluster.clusterOptions.retryDelayOnFailover, 200);
       assert.strictEqual(cluster.clusterOptions.enableOfflineQueue, false);
       assert.strictEqual(cluster.clusterOptions.readOnly, true);
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should use default cluster options', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster(nodes, {
         lazyConnect: true,
       });
 
@@ -127,7 +98,7 @@ describe('Cluster - Basic Tests', () => {
 
   describe('Duplicate Method', () => {
     it('should create duplicate cluster adapter', async () => {
-      const original = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const original = new Cluster(nodes, {
         enableReadFromReplicas: true,
         lazyConnect: true,
       });
@@ -137,10 +108,12 @@ describe('Cluster - Basic Tests', () => {
       assert.ok(duplicate instanceof Cluster);
       assert.notStrictEqual(duplicate, original);
       assert.strictEqual(duplicate.clusterOptions.enableReadFromReplicas, true);
+      await original.disconnect().catch(() => {});
+      await duplicate.disconnect().catch(() => {});
     });
 
     it('should preserve blocking operations in duplicate', async () => {
-      const original = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const original = new Cluster(nodes, {
         lazyConnect: true,
       });
       original.enableBlockingOps = true;
@@ -148,26 +121,30 @@ describe('Cluster - Basic Tests', () => {
       const duplicate = original.duplicate();
 
       assert.strictEqual(duplicate.enableBlockingOps, true);
+      await original.disconnect().catch(() => {});
+      await duplicate.disconnect().catch(() => {});
     });
   });
 
   describe('Pipeline and Multi', () => {
     it('should create pipeline', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster(nodes, {
         lazyConnect: true,
       });
 
       const pipeline = cluster.pipeline();
       assert.ok(pipeline);
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should create multi transaction', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster(nodes, {
         lazyConnect: true,
       });
 
       const multi = cluster.multi();
       assert.ok(multi);
+      await cluster.disconnect().catch(() => {});
     });
   });
 
@@ -175,9 +152,13 @@ describe('Cluster - Basic Tests', () => {
     let cluster;
 
     beforeEach(() => {
-      cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      cluster = new Cluster(nodes, {
         lazyConnect: true,
       });
+    });
+
+    afterEach(async () => {
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should have string command methods', async () => {
@@ -253,7 +234,7 @@ describe('Cluster - Basic Tests', () => {
 
   describe('Event Handling', () => {
     it('should forward pub/sub events', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster(nodes, {
         lazyConnect: true,
       });
 
@@ -279,19 +260,20 @@ describe('Cluster - Basic Tests', () => {
       });
 
       // Simulate events from pubsub commands
-      setTimeout(() => {
+      process.nextTick(() => {
         expectedEvents.forEach(event => {
           cluster.emit(event, 'test-channel', 'test-message');
         });
-      }, 10).unref();
+      });
 
       await eventPromise;
+      await cluster.disconnect().catch(() => {});
     });
   });
 
   describe('Connection Management', () => {
     it('should have connection methods', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster(nodes, {
         lazyConnect: true,
       });
 
@@ -300,15 +282,17 @@ describe('Cluster - Basic Tests', () => {
       assert.ok(cluster.quit instanceof Function);
       assert.ok(cluster.ping instanceof Function);
       assert.ok(cluster.info instanceof Function);
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should have sendCommand method', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster(nodes, {
         lazyConnect: true,
       });
 
       assert.ok(cluster.sendCommand instanceof Function);
       assert.ok(cluster.call instanceof Function);
+      await cluster.disconnect().catch(() => {});
     });
   });
 
@@ -316,11 +300,7 @@ describe('Cluster - Basic Tests', () => {
     it('should work with Bull createClient pattern', async () => {
       const createClient = type => {
         return Cluster.createClient(type, {
-          nodes: [
-            { host: '127.0.0.1', port: 7000 },
-            { host: '127.0.0.1', port: 7001 },
-            { host: '127.0.0.1', port: 7002 },
-          ],
+          nodes,
           lazyConnect: true,
         });
       };
@@ -337,6 +317,9 @@ describe('Cluster - Basic Tests', () => {
       assert.strictEqual(subscriber.clientType, 'subscriber');
       assert.strictEqual(bclient.clientType, 'bclient');
       assert.strictEqual(bclient.enableBlockingOps, true);
+      await client.disconnect().catch(() => {});
+      await subscriber.disconnect().catch(() => {});
+      await bclient.disconnect().catch(() => {});
     });
   });
 
@@ -379,14 +362,6 @@ describe('Cluster - Basic Tests', () => {
         assert.ok(error instanceof Error);
       }
 
-      // Wait a short time for error event
-      if (!errorEmitted) {
-        await Promise.race([
-          errorPromise,
-          new Promise(resolve => setTimeout(resolve, 1000).unref()), // 1 second max wait
-        ]);
-      }
-
       // Clean up the cluster connection
       try {
         await cluster.disconnect();
@@ -407,79 +382,87 @@ describe('Cluster - Cluster Specific Features', () => {
       return; // Skip scaling tests in CI
     }
     it('should support master read scaling', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster(nodes[0], {
         scaleReads: 'master',
         lazyConnect: true,
       });
 
       assert.strictEqual(cluster.clusterOptions.scaleReads, 'master');
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should support slave read scaling', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster([nodes[0]], {
         scaleReads: 'slave',
         lazyConnect: true,
       });
 
       assert.strictEqual(cluster.clusterOptions.scaleReads, 'slave');
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should support all nodes read scaling', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster(nodes[0], {
         scaleReads: 'all',
         lazyConnect: true,
       });
 
       assert.strictEqual(cluster.clusterOptions.scaleReads, 'all');
+      await cluster.disconnect().catch(() => {});
     });
   });
 
   describe('Replica Configuration', () => {
     it('should support reading from replicas', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster(nodes[0], {
         enableReadFromReplicas: true,
         lazyConnect: true,
       });
 
       assert.strictEqual(cluster.clusterOptions.enableReadFromReplicas, true);
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should support read-only mode', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster(nodes[0], {
         readOnly: true,
         lazyConnect: true,
       });
 
       assert.strictEqual(cluster.clusterOptions.readOnly, true);
+      await cluster.disconnect().catch(() => {});
     });
   });
 
   describe('Cluster Resilience', () => {
     it('should configure max redirections', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster(nodes[0], {
         maxRedirections: 32,
         lazyConnect: true,
       });
 
       assert.strictEqual(cluster.clusterOptions.maxRedirections, 32);
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should configure retry delay on failover', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster(nodes[0], {
         retryDelayOnFailover: 500,
         lazyConnect: true,
       });
 
       assert.strictEqual(cluster.clusterOptions.retryDelayOnFailover, 500);
+      await cluster.disconnect().catch(() => {});
     });
 
     it('should support offline queue configuration', async () => {
-      const cluster = new Cluster([{ host: '127.0.0.1', port: 7000 }], {
+      const cluster = new Cluster(nodes[0], {
         enableOfflineQueue: false,
         lazyConnect: true,
       });
 
       assert.strictEqual(cluster.clusterOptions.enableOfflineQueue, false);
+      await cluster.disconnect().catch(() => {});
     });
   });
 });
